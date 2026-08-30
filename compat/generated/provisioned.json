@@ -1,0 +1,420 @@
+{
+  "artifacts": [
+    {
+      "bytes": 260665334,
+      "consumer": "antelopev2",
+      "detail": "",
+      "kind": "weight",
+      "path": "C:\\ComfyUI\\output\\.AImodels\\insightface\\models\\antelopev2\\glintr100.onnx",
+      "source": "",
+      "verdict": "PRESENT"
+    },
+    {
+      "bytes": 16923827,
+      "consumer": "antelopev2",
+      "detail": "",
+      "kind": "weight",
+      "path": "C:\\ComfyUI\\output\\.AImodels\\insightface\\models\\antelopev2\\scrfd_10g_bnkps.onnx",
+      "source": "",
+      "verdict": "PRESENT"
+    },
+    {
+      "bytes": 143607619,
+      "consumer": "antelopev2",
+      "detail": "",
+      "kind": "weight",
+      "path": "C:\\ComfyUI\\output\\.AImodels\\insightface\\models\\antelopev2\\1k3d68.onnx",
+      "source": "",
+      "verdict": "PRESENT"
+    },
+    {
+      "bytes": 5030888,
+      "consumer": "antelopev2",
+      "detail": "",
+      "kind": "weight",
+      "path": "C:\\ComfyUI\\output\\.AImodels\\insightface\\models\\antelopev2\\2d106det.onnx",
+      "source": "",
+      "verdict": "PRESENT"
+    },
+    {
+      "bytes": 1322532,
+      "consumer": "antelopev2",
+      "detail": "",
+      "kind": "weight",
+      "path": "C:\\ComfyUI\\output\\.AImodels\\insightface\\models\\antelopev2\\genderage.onnx",
+      "source": "",
+      "verdict": "PRESENT"
+    },
+    {
+      "bytes": 16923827,
+      "consumer": "buffalo_l",
+      "detail": "",
+      "kind": "weight",
+      "path": "C:\\ComfyUI\\output\\.AImodels\\insightface\\models\\buffalo_l\\det_10g.onnx",
+      "source": "",
+      "verdict": "PRESENT"
+    },
+    {
+      "bytes": 174383860,
+      "consumer": "buffalo_l",
+      "detail": "",
+      "kind": "weight",
+      "path": "C:\\ComfyUI\\output\\.AImodels\\insightface\\models\\buffalo_l\\w600k_r50.onnx",
+      "source": "",
+      "verdict": "PRESENT"
+    },
+    {
+      "bytes": 143607619,
+      "consumer": "buffalo_l",
+      "detail": "",
+      "kind": "weight",
+      "path": "C:\\ComfyUI\\output\\.AImodels\\insightface\\models\\buffalo_l\\1k3d68.onnx",
+      "source": "",
+      "verdict": "PRESENT"
+    },
+    {
+      "bytes": 5030888,
+      "consumer": "buffalo_l",
+      "detail": "",
+      "kind": "weight",
+      "path": "C:\\ComfyUI\\output\\.AImodels\\insightface\\models\\buffalo_l\\2d106det.onnx",
+      "source": "",
+      "verdict": "PRESENT"
+    },
+    {
+      "bytes": 1322532,
+      "consumer": "buffalo_l",
+      "detail": "",
+      "kind": "weight",
+      "path": "C:\\ComfyUI\\output\\.AImodels\\insightface\\models\\buffalo_l\\genderage.onnx",
+      "source": "",
+      "verdict": "PRESENT"
+    },
+    {
+      "bytes": 109497761,
+      "consumer": "facexlib",
+      "detail": "",
+      "kind": "weight",
+      "path": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv-compat\\Lib\\site-packages\\facexlib\\weights\\detection_Resnet50_Final.pth",
+      "source": "",
+      "verdict": "PRESENT"
+    },
+    {
+      "bytes": 175367323,
+      "consumer": "facexlib",
+      "detail": "",
+      "kind": "weight",
+      "path": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv-compat\\Lib\\site-packages\\facexlib\\weights\\recognition_arcface_ir_se50.pth",
+      "source": "",
+      "verdict": "PRESENT"
+    },
+    {
+      "bytes": 53289463,
+      "consumer": "facexlib",
+      "detail": "",
+      "kind": "weight",
+      "path": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv-compat\\Lib\\site-packages\\facexlib\\weights\\parsing_bisenet.pth",
+      "source": "",
+      "verdict": "PRESENT"
+    },
+    {
+      "bytes": 1398992729,
+      "consumer": "anystory",
+      "detail": "",
+      "kind": "vendor_weight",
+      "path": "anystory/anystory_flux.bin",
+      "source": "Junjie96/AnyStory",
+      "verdict": "PRESENT"
+    },
+    {
+      "bytes": 109497761,
+      "consumer": "consisid",
+      "detail": "",
+      "kind": "vendor_weight",
+      "path": "consisid/face_encoder/detection_Resnet50_Final.pth",
+      "source": "BestWishYsh/ConsisID-preview",
+      "verdict": "PRESENT"
+    },
+    {
+      "bytes": 856461210,
+      "consumer": "consisid",
+      "detail": "",
+      "kind": "vendor_weight",
+      "path": "consisid/face_encoder/EVA02_CLIP_L_336_psz14_s6B.pt",
+      "source": "BestWishYsh/ConsisID-preview",
+      "verdict": "PRESENT"
+    },
+    {
+      "bytes": 143607619,
+      "consumer": "consisid",
+      "detail": "",
+      "kind": "vendor_weight",
+      "path": "consisid/face_encoder/models/antelopev2/1k3d68.onnx",
+      "source": "BestWishYsh/ConsisID-preview",
+      "verdict": "PRESENT"
+    },
+    {
+      "bytes": 5030888,
+      "consumer": "consisid",
+      "detail": "",
+      "kind": "vendor_weight",
+      "path": "consisid/face_encoder/models/antelopev2/2d106det.onnx",
+      "source": "BestWishYsh/ConsisID-preview",
+      "verdict": "PRESENT"
+    },
+    {
+      "bytes": 1322532,
+      "consumer": "consisid",
+      "detail": "",
+      "kind": "vendor_weight",
+      "path": "consisid/face_encoder/models/antelopev2/genderage.onnx",
+      "source": "BestWishYsh/ConsisID-preview",
+      "verdict": "PRESENT"
+    },
+    {
+      "bytes": 260665334,
+      "consumer": "consisid",
+      "detail": "",
+      "kind": "vendor_weight",
+      "path": "consisid/face_encoder/models/antelopev2/glintr100.onnx",
+      "source": "BestWishYsh/ConsisID-preview",
+      "verdict": "PRESENT"
+    },
+    {
+      "bytes": 16923827,
+      "consumer": "consisid",
+      "detail": "",
+      "kind": "vendor_weight",
+      "path": "consisid/face_encoder/models/antelopev2/scrfd_10g_bnkps.onnx",
+      "source": "BestWishYsh/ConsisID-preview",
+      "verdict": "PRESENT"
+    },
+    {
+      "bytes": 53289463,
+      "consumer": "consisid",
+      "detail": "",
+      "kind": "vendor_weight",
+      "path": "consisid/face_encoder/parsing_bisenet.pth",
+      "source": "BestWishYsh/ConsisID-preview",
+      "verdict": "PRESENT"
+    },
+    {
+      "bytes": 85331193,
+      "consumer": "consisid",
+      "detail": "",
+      "kind": "vendor_weight",
+      "path": "consisid/face_encoder/parsing_parsenet.pth",
+      "source": "BestWishYsh/ConsisID-preview",
+      "verdict": "PRESENT"
+    },
+    {
+      "bytes": 338413026,
+      "consumer": "infiniteyou",
+      "detail": "",
+      "kind": "vendor_weight",
+      "path": "infiniteyou/infu_flux_v1.0/aes_stage2/image_proj_model.bin",
+      "source": "ByteDance/InfiniteYou",
+      "verdict": "PRESENT"
+    },
+    {
+      "bytes": 1691134141,
+      "consumer": "instantid",
+      "detail": "",
+      "kind": "vendor_weight",
+      "path": "instantid/ip-adapter.bin",
+      "source": "InstantX/InstantID",
+      "verdict": "PRESENT"
+    },
+    {
+      "bytes": 156558509,
+      "consumer": "ipadapter",
+      "detail": "",
+      "kind": "vendor_weight",
+      "path": "ipadapter/ip-adapter-faceid-plusv2_sd15.bin",
+      "source": "h94/IP-Adapter-FaceID + h94/IP-Adapter",
+      "verdict": "PRESENT"
+    },
+    {
+      "bytes": 64586623,
+      "consumer": "ipadapter",
+      "detail": "",
+      "kind": "vendor_weight",
+      "path": "ipadapter/ip-adapter-faceid-portrait-v11_sd15.bin",
+      "source": "h94/IP-Adapter-FaceID + h94/IP-Adapter",
+      "verdict": "PRESENT"
+    },
+    {
+      "bytes": 96740574,
+      "consumer": "ipadapter",
+      "detail": "",
+      "kind": "vendor_weight",
+      "path": "ipadapter/ip-adapter-faceid_sd15.bin",
+      "source": "h94/IP-Adapter-FaceID + h94/IP-Adapter",
+      "verdict": "PRESENT"
+    },
+    {
+      "bytes": 2528373448,
+      "consumer": "ipadapter",
+      "detail": "",
+      "kind": "vendor_weight",
+      "path": "ipadapter/models/image_encoder/model.safetensors",
+      "source": "h94/IP-Adapter-FaceID + h94/IP-Adapter",
+      "verdict": "PRESENT"
+    },
+    {
+      "bytes": 3758596,
+      "consumer": "mediapipe",
+      "detail": "",
+      "kind": "vendor_weight",
+      "path": "mediapipe/face_landmarker.task",
+      "source": "storage.googleapis.com/mediapipe-models",
+      "verdict": "PRESENT"
+    },
+    {
+      "bytes": 934103417,
+      "consumer": "photomaker",
+      "detail": "",
+      "kind": "vendor_weight",
+      "path": "photomaker/photomaker-v1.bin",
+      "source": "TencentARC/PhotoMaker + PhotoMaker-V2",
+      "verdict": "PRESENT"
+    },
+    {
+      "bytes": 1799993138,
+      "consumer": "photomaker",
+      "detail": "",
+      "kind": "vendor_weight",
+      "path": "photomaker/photomaker-v2.bin",
+      "source": "TencentARC/PhotoMaker + PhotoMaker-V2",
+      "verdict": "PRESENT"
+    },
+    {
+      "bytes": 984405232,
+      "consumer": "pulid",
+      "detail": "",
+      "kind": "vendor_weight",
+      "path": "pulid/pulid_v1.1.safetensors",
+      "source": "guozinan/PuLID",
+      "verdict": "PRESENT"
+    },
+    {
+      "bytes": 1582858505,
+      "consumer": "pulid",
+      "detail": "",
+      "kind": "vendor_weight",
+      "path": "pulid/pulid_v1.bin",
+      "source": "guozinan/PuLID",
+      "verdict": "PRESENT"
+    },
+    {
+      "bytes": 288621354,
+      "consumer": "reactor",
+      "detail": "",
+      "kind": "vendor_weight",
+      "path": "reactor/models/buffalo_l.zip",
+      "source": "datasets/Gourieff/ReActor",
+      "verdict": "PRESENT"
+    },
+    {
+      "bytes": 554253681,
+      "consumer": "reactor",
+      "detail": "",
+      "kind": "vendor_weight",
+      "path": "reactor/models/inswapper_128.onnx",
+      "source": "datasets/Gourieff/ReActor",
+      "verdict": "PRESENT"
+    },
+    {
+      "bytes": 261202954,
+      "consumer": "uniportrait",
+      "detail": "",
+      "kind": "vendor_weight",
+      "path": "uniportrait/glint360k_curricular_face_r101_backbone.bin",
+      "source": "Junjie96/UniPortrait + h94/IP-Adapter",
+      "verdict": "PRESENT"
+    },
+    {
+      "bytes": 2528373448,
+      "consumer": "uniportrait",
+      "detail": "",
+      "kind": "vendor_weight",
+      "path": "uniportrait/models/image_encoder/model.safetensors",
+      "source": "Junjie96/UniPortrait + h94/IP-Adapter",
+      "verdict": "PRESENT"
+    },
+    {
+      "bytes": 44642825,
+      "consumer": "uniportrait",
+      "detail": "",
+      "kind": "vendor_weight",
+      "path": "uniportrait/models/ip-adapter_sd15.bin",
+      "source": "Junjie96/UniPortrait + h94/IP-Adapter",
+      "verdict": "PRESENT"
+    },
+    {
+      "bytes": 223921488,
+      "consumer": "uniportrait",
+      "detail": "",
+      "kind": "vendor_weight",
+      "path": "uniportrait/uniportrait-faceid_sd15.bin",
+      "source": "Junjie96/UniPortrait + h94/IP-Adapter",
+      "verdict": "PRESENT"
+    },
+    {
+      "bytes": 226451570,
+      "consumer": "uniportrait",
+      "detail": "",
+      "kind": "vendor_weight",
+      "path": "uniportrait/uniportrait-router_sd15.bin",
+      "source": "Junjie96/UniPortrait + h94/IP-Adapter",
+      "verdict": "PRESENT"
+    },
+    {
+      "bytes": 560,
+      "consumer": "ipadapter",
+      "detail": "",
+      "kind": "vendor_weight",
+      "path": "ipadapter/models/image_encoder/config.json",
+      "source": "h94/IP-Adapter models/image_encoder",
+      "verdict": "PRESENT"
+    },
+    {
+      "bytes": 560,
+      "consumer": "uniportrait",
+      "detail": "",
+      "kind": "vendor_weight",
+      "path": "uniportrait/models/image_encoder/config.json",
+      "source": "h94/IP-Adapter models/image_encoder",
+      "verdict": "PRESENT"
+    },
+    {
+      "bytes": 7967853746,
+      "consumer": "id_v2v",
+      "detail": "",
+      "kind": "hf_snapshot",
+      "path": "sam3",
+      "source": "facebook/sam3",
+      "verdict": "FETCHED"
+    },
+    {
+      "bytes": 1380619058,
+      "consumer": "id_v2v",
+      "detail": "",
+      "kind": "url",
+      "path": "david/multi-task-model-vitl16_384.onnx",
+      "source": "facesyntheticspubwedata.z6.web.core.windows.net",
+      "verdict": "PRESENT"
+    },
+    {
+      "bytes": 1341395338,
+      "consumer": "id_v2v",
+      "detail": "",
+      "kind": "hf_file",
+      "path": "depthv2/depth_anything_v2_vitl.pth",
+      "source": "depth-anything/Depth-Anything-V2-Large",
+      "verdict": "PRESENT"
+    }
+  ],
+  "missing": [],
+  "root": "C:\\ComfyUI\\output\\.AImodels\\idv2v"
+}

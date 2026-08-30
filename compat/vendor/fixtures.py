@@ -13,11 +13,11 @@ from __future__ import annotations
 
 import hashlib
 import json
-import subprocess
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Final
 
+import proc
 from compat.harness import provenance
 
 ROOT: Final[Path] = Path(__file__).resolve().parent.parent
@@ -25,7 +25,6 @@ ROOT: Final[Path] = Path(__file__).resolve().parent.parent
 #: Every git call here is bounded. `pinned_source.py:44` and
 #: `provenance.py:44` already were, with the reason: a hang turns a red
 #: gate into a run that never finishes, which reports nothing at all.
-GIT_SECONDS: Final[float] = 60.0
 
 #: Where run-time-downloaded vendor inputs are cached. Beside the repository,
 #: never inside it: these are third-party media under their own licences.
@@ -69,9 +68,22 @@ SAMPLES: Final[tuple[VendorSample, ...]] = (
     ),
     VendorSample(
         consumer_id="ipadapter_upstream",
-        entrypoint="ip_adapter-plus-face_demo.ipynb",
-        cited="README.md:94 'generation with face image as prompt'",
-        inputs=("assets/images/ai_face.png", "assets/images/ai_face2.png", "assets/images/woman.png"),
+        # The FACEID notebook, which is the boundary this consumer declares:
+        # `ip_adapter/ip_adapter_faceid.py::IPAdapterFaceID.get_image_embeds`.
+        # This row used to name `ip_adapter-plus-face_demo.ipynb`, which
+        # constructs no FaceAnalysis at all at the pin -- it is the CLIP
+        # image-encoder path -- and to carry that demo's `ai_face.png`. So a
+        # detector the vendor never points at that file was being asked to
+        # find a face in it, at the single 640 this consumer sweeps, and the
+        # failure was recorded against our adapter. buffalo_l does find that
+        # face, at 448.
+        entrypoint="visualization_attnmap_faceid.ipynb",
+        cited=(
+            'visualization_attnmap_faceid.ipynb:72-73 FaceAnalysis(name="buffalo_l"), '
+            "prepare(det_size=(640, 640)); :175 cv2.imread('assets/images/woman.png'); "
+            ":177 faces[0].normed_embedding"
+        ),
+        inputs=("assets/images/woman.png",),
     ),
     VendorSample(
         consumer_id="photomaker_v2",
@@ -324,9 +336,10 @@ class Resolved:
 
 
 def _blob(repo: Path, commit: str, path: str) -> bytes | None:
-    argv: list[str] = ["git", "-C", str(repo), "cat-file", "blob", f"{commit}:{path}"]
-    done = subprocess.run(argv, capture_output=True, check=False, timeout=GIT_SECONDS)
-    return done.stdout if done.returncode == 0 else None
+    code, out, _ = proc.run(
+        ["git", "-C", str(repo), "cat-file", "blob", f"{commit}:{path}"], timeout=proc.LOCAL_SECONDS
+    )
+    return out if code == 0 else None
 
 
 def resolve() -> dict[str, Any]:

@@ -32,7 +32,7 @@
       "notes": [
         "patch_origin <- origin_at_zero: exact_bytes: 37632 of 37632 elements differ, worst 225.0"
       ],
-      "observed": "0 removal(s) and 498 substitution(s) broke their replay, e.g. aligned_crop_112_1_id_document on patch_origin <- origin_at_zero",
+      "observed": "0 removal(s) and 520 substitution(s) broke their replay, e.g. aligned_crop_112_1_id_document on patch_origin <- origin_at_zero",
       "targets": "a primitive whose removal or degradation broke the replay"
     },
     {
@@ -48,7 +48,7 @@
       "expected": "a second run serialises to the same bytes as the first",
       "name": "evidence_not_reproducible",
       "notes": [],
-      "observed": "the two runs differ from byte 1,851: '794d851ed758567a407759ca73d49697cf15b48e4ffc37bfec' against '01b29616bd7b7c34ab27ae86685c9bb7aa32dc69ffd7e9a5b4'",
+      "observed": "the two runs differ from byte 24,847: '9d2de5ec739dd65cf3a7bd6adeca98acd5b9a10c94336e1457' against '4a39d667391f596ba6d52971b43dff1fdc6bba00655b9d9db8'",
       "targets": "generated/cases.json"
     },
     {
@@ -64,7 +64,7 @@
       "expected": "provenance PASSES and the matrix reports every consumer exercised",
       "name": "positive_control",
       "notes": [],
-      "observed": "provenance PASS; 16/22 reproduced; blocking totals: {'primitives_unproven': 20}",
+      "observed": "provenance PASS; 22/22 reproduced; blocking totals: {'primitives_unproven': 4}",
       "targets": "the real manifest and the real evidence"
     }
   ],

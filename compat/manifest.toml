@@ -24,6 +24,42 @@ recorded_at = "2026-08-28"
 refs_root = "../refs"          # relative to the repository root
 
 
+# Artifacts the suite REQUIRES that no repository vendors: they are downloaded
+# rather than committed. Declared here so `just compat weights` can fetch every
+# one, instead of a case raising "download it and the case runs" at whoever
+# happens to run the suite next.
+[provisioned]
+# Machine-local, so an env var overrides it. The default is what makes the
+# suite runnable on a clone: an unset variable used to leave every id_v2v case
+# raising FileNotFoundError with nothing naming where the file should go.
+root = "C:/ComfyUI/output/.AImodels/idv2v"
+override_env = "IDV2V_CHECKPOINTS"
+
+[[provisioned.artifacts]]
+consumer = "id_v2v"
+kind = "hf_snapshot"
+source = "facebook/sam3"
+path = "sam3"
+gated = true
+cited = "ID-V2V@33dd047835cf checkpoints/README.md: 'SAM3 HuggingFace model dir (gated)' -> https://huggingface.co/facebook/sam3"
+
+[[provisioned.artifacts]]
+consumer = "id_v2v"
+kind = "url"
+source = "facesyntheticspubwedata.z6.web.core.windows.net"
+url = "https://facesyntheticspubwedata.z6.web.core.windows.net/iccv-2025/models/multi-task-model-vitl16_384.onnx"
+path = "david/multi-task-model-vitl16_384.onnx"
+cited = "ID-V2V@33dd047835cf checkpoints/README.md: 'DAViD multi-task ONNX' download column"
+
+[[provisioned.artifacts]]
+consumer = "id_v2v"
+kind = "hf_file"
+source = "depth-anything/Depth-Anything-V2-Large"
+file = "depth_anything_v2_vitl.pth"
+path = "depthv2/depth_anything_v2_vitl.pth"
+cited = "ID-V2V@33dd047835cf checkpoints/README.md: 'DepthAnything-V2 ViT-L' -> https://huggingface.co/depth-anything/Depth-Anything-V2-Large"
+
+
 [equivalence]
 # Default comparison for tensor boundaries. A runner may NARROW this; widening
 # it requires an `equivalence` block on the runner naming the first stage at
@@ -366,7 +402,7 @@ notes = [
 [[vendor_weights]]
 consumer = "anystory"
 file = "anystory/anystory_flux.bin"
-source = "?"
+source = "Junjie96/AnyStory"
 bytes = 1398992729
 sha256 = "c4814b0f82ac58f5b9729676c3f7eaedec0eccf98c00b02637f155716140a835"
 
@@ -479,6 +515,10 @@ sha256 = "6ca9667da1ca9e0b0f75e46bb030f7e011f44f86cbfb8d5a36590fcd7507b030"
 consumer = "mediapipe"
 file = "mediapipe/face_landmarker.task"
 source = "storage.googleapis.com/mediapipe-models"
+# Google publishes this as a file at a URL rather than in any repository, so
+# there is no lfs pointer to read and the digest is taken from the bytes the
+# vendor serves. The URL must sit under `source`, which is the authority.
+url = "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task"
 bytes = 3758596
 sha256 = "64184e229b263107bc2b804c6625db1341ff2bb731874b0bcc2fe6544e0bc9ff"
 
@@ -624,11 +664,46 @@ root = "C:/ComfyUI/output/.AImodels/insightface/models/antelopev2"
 file = "glintr100.onnx"
 role = "recognition -- the 512-d embedding every identity claim rests on"
 
+[[weights.attestations]]
+source_class = "huggingface_snapshot"
+repo_id = "BestWishYsh/ConsisID-preview"
+revision = "4e89e896ebd0105472dc89669bcf0eafc0fdf87f"
+path = "face_encoder/models/antelopev2/glintr100.onnx"
+sha256 = "4ab1d6435d639628a6f3e5008dd4f929edf4c4124b1a7169e1048f9fef534cdf"
+authority = "first_party_consumer_snapshot"
+note = "git-lfs oid at an immutable HF revision; consisid is a declared consumer"
+
+[[weights.attestations]]
+source_class = "git_published_checksum"
+repo_id = "deepinsight/insightface"
+revision = "7fadd420c2351d0ffa8cac403421c1a3ed733365"
+path = "server/backend/insightface_server/models/packages.py:192"
+sha256 = "4ab1d6435d639628a6f3e5008dd4f929edf4c4124b1a7169e1048f9fef534cdf"
+authority = "canonical_vendor"
+note = "ANTELOPEV2 PackageFile"
+
 [[weights]]
 pack = "antelopev2"
 root = "C:/ComfyUI/output/.AImodels/insightface/models/antelopev2"
 file = "scrfd_10g_bnkps.onnx"
 role = "detection -- bbox, det_score and the 5 keypoints the whole arcface family aligns on"
+
+[[weights.attestations]]
+source_class = "huggingface_snapshot"
+repo_id = "BestWishYsh/ConsisID-preview"
+revision = "4e89e896ebd0105472dc89669bcf0eafc0fdf87f"
+path = "face_encoder/models/antelopev2/scrfd_10g_bnkps.onnx"
+sha256 = "5838f7fe053675b1c7a08b633df49e7af5495cee0493c7dcf6697200b85b5b91"
+authority = "first_party_consumer_snapshot"
+
+[[weights.attestations]]
+source_class = "git_published_checksum"
+repo_id = "deepinsight/insightface"
+revision = "7fadd420c2351d0ffa8cac403421c1a3ed733365"
+path = "server/backend/insightface_server/models/packages.py:181"
+sha256 = "5838f7fe053675b1c7a08b633df49e7af5495cee0493c7dcf6697200b85b5b91"
+authority = "canonical_vendor"
+note = "ANTELOPEV2 PackageFile"
 
 [[weights]]
 pack = "antelopev2"
@@ -636,17 +711,41 @@ root = "C:/ComfyUI/output/.AImodels/insightface/models/antelopev2"
 file = "1k3d68.onnx"
 role = "landmark_3d_68, and pose is derived from its output rather than emitted separately"
 
+[[weights.attestations]]
+source_class = "huggingface_snapshot"
+repo_id = "BestWishYsh/ConsisID-preview"
+revision = "4e89e896ebd0105472dc89669bcf0eafc0fdf87f"
+path = "face_encoder/models/antelopev2/1k3d68.onnx"
+sha256 = "df5c06b8a0c12e422b2ed8947b8869faa4105387f199c477af038aa01f9a45cc"
+authority = "first_party_consumer_snapshot"
+
 [[weights]]
 pack = "antelopev2"
 root = "C:/ComfyUI/output/.AImodels/insightface/models/antelopev2"
 file = "2d106det.onnx"
 role = "landmark_2d_106 -- 848 bytes per face, the second-largest retained candidate"
 
+[[weights.attestations]]
+source_class = "huggingface_snapshot"
+repo_id = "BestWishYsh/ConsisID-preview"
+revision = "4e89e896ebd0105472dc89669bcf0eafc0fdf87f"
+path = "face_encoder/models/antelopev2/2d106det.onnx"
+sha256 = "f001b856447c413801ef5c42091ed0cd516fcd21f2d6b79635b1e733a7109dbf"
+authority = "first_party_consumer_snapshot"
+
 [[weights]]
 pack = "antelopev2"
 root = "C:/ComfyUI/output/.AImodels/insightface/models/antelopev2"
 file = "genderage.onnx"
 role = "gender and age; not derivable from anything else the pass returns"
+
+[[weights.attestations]]
+source_class = "huggingface_snapshot"
+repo_id = "BestWishYsh/ConsisID-preview"
+revision = "4e89e896ebd0105472dc89669bcf0eafc0fdf87f"
+path = "face_encoder/models/antelopev2/genderage.onnx"
+sha256 = "4fde69b1c810857b88c64a335084f1c3fe8f01246c9a191b48c7bb756d6652fb"
+authority = "first_party_consumer_snapshot"
 
 # buffalo_l: insightface's DEFAULT_MP_NAME. UniPortrait constructs
 # FaceAnalysis with no name=, so it gets THIS pack -- det_10g + w600k_r50,
@@ -657,17 +756,40 @@ role = "gender and age; not derivable from anything else the pass returns"
 pack = "buffalo_l"
 root = "C:/ComfyUI/output/.AImodels/insightface/models/buffalo_l"
 file = "det_10g.onnx"
-published_sha256 = "5838f7fe053675b1c7a08b633df49e7af5495cee0493c7dcf6697200b85b5b91"
-published_by = "Gourieff/ComfyUI-ReActor README.md:452 Models Hashsum"
 role = "detection for UniPortrait; NOT the same detector as antelopev2"
+
+[[weights.attestations]]
+source_class = "git_published_checksum"
+repo_id = "Gourieff/ComfyUI-ReActor"
+revision = ""
+path = "README.md:452 Models Hashsum"
+sha256 = "5838f7fe053675b1c7a08b633df49e7af5495cee0493c7dcf6697200b85b5b91"
+authority = "corroborating_mirror"
+note = "README on a mutable default branch"
+
+[[weights.attestations]]
+source_class = "git_published_checksum"
+repo_id = "deepinsight/insightface"
+revision = "7fadd420c2351d0ffa8cac403421c1a3ed733365"
+path = "server/backend/insightface_server/models/packages.py:82"
+sha256 = "5838f7fe053675b1c7a08b633df49e7af5495cee0493c7dcf6697200b85b5b91"
+authority = "canonical_vendor"
+note = "BUFFALO_L PackageFile"
 
 [[weights]]
 pack = "buffalo_l"
 root = "C:/ComfyUI/output/.AImodels/insightface/models/buffalo_l"
 file = "w600k_r50.onnx"
-published_sha256 = "4c06341c33c2ca1f86781dab0e829f88ad5b64be9fba56e56bc9ebdefc619e43"
-published_by = "Gourieff/ComfyUI-ReActor README.md:466 Models Hashsum"
 role = "buffalo_l recognition; a third embedding space alongside glintr100 and facexlib arcface"
+
+[[weights.attestations]]
+source_class = "git_published_checksum"
+repo_id = "deepinsight/insightface"
+revision = "7fadd420c2351d0ffa8cac403421c1a3ed733365"
+path = "server/backend/insightface_server/models/packages.py:93"
+sha256 = "4c06341c33c2ca1f86781dab0e829f88ad5b64be9fba56e56bc9ebdefc619e43"
+authority = "canonical_vendor"
+note = "BUFFALO_L PackageFile"
 
 # ReActor's own persisted format (reactor_utils.py:184-200) names
 # landmark_3d_68, pose, landmark_2d_106, gender and age, and buffalo_l
@@ -680,25 +802,43 @@ role = "buffalo_l recognition; a third embedding space alongside glintr100 and f
 pack = "buffalo_l"
 root = "C:/ComfyUI/output/.AImodels/insightface/models/buffalo_l"
 file = "1k3d68.onnx"
-published_sha256 = "df5c06b8a0c12e422b2ed8947b8869faa4105387f199c477af038aa01f9a45cc"
-published_by = "Gourieff/ComfyUI-ReActor README.md:438 Models Hashsum"
 role = "landmark_3d_68 for ReActor's face model; absent under PhotoMaker's allowed_modules"
+
+[[weights.attestations]]
+source_class = "huggingface_snapshot"
+repo_id = "BestWishYsh/ConsisID-preview"
+revision = "4e89e896ebd0105472dc89669bcf0eafc0fdf87f"
+path = "face_encoder/models/buffalo_l/1k3d68.onnx"
+sha256 = "df5c06b8a0c12e422b2ed8947b8869faa4105387f199c477af038aa01f9a45cc"
+authority = "first_party_consumer_snapshot"
 
 [[weights]]
 pack = "buffalo_l"
 root = "C:/ComfyUI/output/.AImodels/insightface/models/buffalo_l"
 file = "2d106det.onnx"
-published_sha256 = "f001b856447c413801ef5c42091ed0cd516fcd21f2d6b79635b1e733a7109dbf"
-published_by = "Gourieff/ComfyUI-ReActor README.md:445 Models Hashsum"
 role = "landmark_2d_106 for ReActor's face model; absent under PhotoMaker's allowed_modules"
+
+[[weights.attestations]]
+source_class = "huggingface_snapshot"
+repo_id = "BestWishYsh/ConsisID-preview"
+revision = "4e89e896ebd0105472dc89669bcf0eafc0fdf87f"
+path = "face_encoder/models/buffalo_l/2d106det.onnx"
+sha256 = "f001b856447c413801ef5c42091ed0cd516fcd21f2d6b79635b1e733a7109dbf"
+authority = "first_party_consumer_snapshot"
 
 [[weights]]
 pack = "buffalo_l"
 root = "C:/ComfyUI/output/.AImodels/insightface/models/buffalo_l"
 file = "genderage.onnx"
-published_sha256 = "4fde69b1c810857b88c64a335084f1c3fe8f01246c9a191b48c7bb756d6652fb"
-published_by = "Gourieff/ComfyUI-ReActor README.md:459 Models Hashsum"
 role = "gender and age for ReActor's face model; absent under PhotoMaker's allowed_modules"
+
+[[weights.attestations]]
+source_class = "huggingface_snapshot"
+repo_id = "BestWishYsh/ConsisID-preview"
+revision = "4e89e896ebd0105472dc89669bcf0eafc0fdf87f"
+path = "face_encoder/models/buffalo_l/genderage.onnx"
+sha256 = "4fde69b1c810857b88c64a335084f1c3fe8f01246c9a191b48c7bb756d6652fb"
+authority = "first_party_consumer_snapshot"
 
 # facexlib's own weights. PuLID, ConsisID and InfiniteYou re-detect with
 # retinaface_resnet50 rather than reusing insightface keypoints, and
@@ -713,7 +853,24 @@ pack = "facexlib"
 root_package = "facexlib"
 root_subdir = "weights"
 file = "detection_Resnet50_Final.pth"
+
+[[weights.attestations]]
+source_class = "huggingface_snapshot"
+repo_id = "BestWishYsh/ConsisID-preview"
+revision = "4e89e896ebd0105472dc89669bcf0eafc0fdf87f"
+path = "face_encoder/detection_Resnet50_Final.pth"
+authority = "first_party_consumer_snapshot"
+note = "consisid ships facexlib's own weights; upstream facexlib publishes no digest"
+
 role = "retinaface_resnet50 -- the detector in the loop for PuLID/ConsisID/InfiniteYou"
+
+[[weights.attestations]]
+source_class = "github_release_asset"
+repo_id = "xinntao/facexlib"
+revision = "38201344@2021-06-07T12:52:28Z"
+path = "releases/download/v0.1.0/detection_Resnet50_Final.pth"
+authority = "canonical_vendor"
+note = "named at facexlib/detection/__init__.py:11; upstream publishes no digest"
 
 [[weights]]
 pack = "facexlib"
@@ -723,7 +880,24 @@ pack = "facexlib"
 root_package = "facexlib"
 root_subdir = "weights"
 file = "recognition_arcface_ir_se50.pth"
+
+[[weights.attestations]]
+source_class = "huggingface_snapshot"
+repo_id = "leonelhs/facexlib"
+revision = "d3ad6bbf8333a8f4286c9cdd71b12dc7cd66fd8a"
+path = "recognition_arcface_ir_se50.pth"
+authority = "corroborating_mirror"
+note = "third-party mirror; upstream facexlib publishes no digest (hash_prefix=None)"
+
 role = "InfiniteYou's embedding model; a DIFFERENT 512-d space from glintr100"
+
+[[weights.attestations]]
+source_class = "github_release_asset"
+repo_id = "xinntao/facexlib"
+revision = "38201356@2021-06-07T12:52:45Z"
+path = "releases/download/v0.1.0/recognition_arcface_ir_se50.pth"
+authority = "canonical_vendor"
+note = "named at facexlib/recognition/__init__.py:10; upstream publishes no digest"
 
 [[weights]]
 pack = "facexlib"
@@ -733,7 +907,24 @@ pack = "facexlib"
 root_package = "facexlib"
 root_subdir = "weights"
 file = "parsing_bisenet.pth"
+
+[[weights.attestations]]
+source_class = "huggingface_snapshot"
+repo_id = "BestWishYsh/ConsisID-preview"
+revision = "4e89e896ebd0105472dc89669bcf0eafc0fdf87f"
+path = "face_encoder/parsing_bisenet.pth"
+authority = "first_party_consumer_snapshot"
+note = "consisid ships facexlib's own weights; upstream facexlib publishes no digest"
+
 role = "face parsing for PuLID/ConsisID masked crops"
+
+[[weights.attestations]]
+source_class = "github_release_asset"
+repo_id = "xinntao/facexlib"
+revision = "41869402@2021-08-06T06:53:14Z"
+path = "releases/download/v0.2.0/parsing_bisenet.pth"
+authority = "canonical_vendor"
+note = "named at facexlib/parsing/__init__.py:11; upstream publishes no digest"
 
 # --- face-native consumers --------------------------------------------------
 
@@ -1417,7 +1608,6 @@ family = "whole_reference"
 repo = "https://github.com/VectorSpaceLab/OmniGen2.git"
 commit = "18e6f9d5271b517fcb32e999f10df943ae9b8f20"
 entrypoint = "inference.py::main"
-source_unread = true
 boundary = ["reference_images"]
 retained = ["whole_reference_image"]
 rebuilt = []
@@ -1481,7 +1671,7 @@ cited = [
   "pipeline.py:64-65 object_image_pil_low_res 384 and object_image_pil_high_res 768",
 ]
 kind = "whole_reference"
-# Recorded as rgb_only while `source_unread` was set. pipeline.py:379 squares
+# pipeline.py:379 squares
 # the reference to its LONGER edge and :64-65 resamples that to 384 and 768
 # for two encoder paths. The boundary is the squared image: the last artifact
 # before the branch, and both branches derive from it.

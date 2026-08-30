@@ -31,13 +31,13 @@ commit and never vendored into this repository.
 from __future__ import annotations
 
 import hashlib
-import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
 
 import numpy as np
 
+import proc
 from compat.assertions.arrays import digest
 from compat.contracts.case import (
     Ablation,
@@ -75,11 +75,12 @@ class Pair:
 
 
 def _blob(repo: Path, commit: str, path: str) -> bytes:
-    argv: list[str] = ["git", "-C", str(repo), "cat-file", "blob", f"{commit}:{path}"]
-    done = subprocess.run(argv, capture_output=True, check=False, timeout=60)
-    if done.returncode != 0:
+    code, out, _ = proc.run(
+        ["git", "-C", str(repo), "cat-file", "blob", f"{commit}:{path}"], timeout=proc.LOCAL_SECONDS
+    )
+    if code != 0:
         raise ValueError(f"{path} is not in {repo.name} at {commit[:12]}")
-    return done.stdout
+    return out
 
 
 def _repo() -> tuple[Path, str]:

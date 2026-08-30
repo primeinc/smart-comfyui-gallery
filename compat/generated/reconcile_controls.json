@@ -1,0 +1,95 @@
+{
+  "controls": [
+    {
+      "detail": "{'surprise.onnx': 'POPULATION_DEFECT', 'org/known': 'UNEXERCISED'}",
+      "held": true,
+      "name": "A observed_but_not_static"
+    },
+    {
+      "detail": "{'org/known': 'UNEXERCISED'}",
+      "held": true,
+      "name": "B static_but_not_observed"
+    },
+    {
+      "detail": "{'org/known': 'AGREED'}",
+      "held": true,
+      "name": "C agreement_is_reachable"
+    },
+    {
+      "detail": "1 ambiguity, 0 credited by guess",
+      "held": true,
+      "name": "D ambiguous_stem"
+    },
+    {
+      "detail": "{'weights/det_10g.onnx': 'AGREED'}",
+      "held": true,
+      "name": "E path_spelling_agrees"
+    },
+    {
+      "detail": "{'antelopev2/det_10g.onnx': 'AGREED'}",
+      "held": true,
+      "name": "F windows_spelling_agrees"
+    },
+    {
+      "detail": "{'antelopev2': 'AGREED'}",
+      "held": true,
+      "name": "G extension_stripped_agrees"
+    },
+    {
+      "detail": "{'UNRESOLVED_ARTIFACT:insightface.app.FaceAnalysis': 'POPULATION_DEFECT', 'org/known': 'UNEXERCISED'}",
+      "held": true,
+      "name": "H unresolved_artifact_rows"
+    },
+    {
+      "detail": "{'org/known': 'UNEXERCISED'}",
+      "held": true,
+      "name": "I unresolved_call_rows"
+    },
+    {
+      "detail": "{'org/known': 'AGREED'}",
+      "held": true,
+      "name": "J empty_identity_dropped"
+    },
+    {
+      "detail": "{'org/known': 'UNEXERCISED'}",
+      "held": true,
+      "name": "K native_marker_skipped"
+    },
+    {
+      "detail": "4 rows, 4 distinct, {'AGREED': 1, 'UNEXERCISED': 2, 'POPULATION_DEFECT': 1}",
+      "held": true,
+      "name": "L every_artifact_once"
+    },
+    {
+      "detail": "loaders=['open', 'onnx']",
+      "held": true,
+      "name": "M second_loader_is_kept"
+    },
+    {
+      "detail": "artifact_population.json was built under an older tre",
+      "held": true,
+      "name": "N stale_population"
+    },
+    {
+      "detail": "both artifacts stamped for this tree",
+      "held": true,
+      "name": "O fresh_population"
+    },
+    {
+      "detail": "the cases did not run, so nothing here is evidence about what loaded",
+      "held": true,
+      "name": "P dead_run_is_not_absence"
+    },
+    {
+      "detail": "every probe holds and the cases ran, so an unobserved artifact is evidence it did not load",
+      "held": true,
+      "name": "Q live_run_is_absence"
+    },
+    {
+      "detail": "observe-attack has not run; coverage is unmeasured",
+      "held": true,
+      "name": "R unmeasured_observer"
+    }
+  ],
+  "failing": []
+}

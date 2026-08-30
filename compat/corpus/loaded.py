@@ -178,13 +178,28 @@ def our_face(shot: Shot) -> Any:
     held = cache.face_get(shot.fixture.sha256)
     cache.note("ours", held is not None)
     if held is None:
-        faces = producer.analysis().get(shot.frame)
+        # The application's own ladder, not a single-size `get`: this is the
+        # observation the database row describes, and `vision/faces.py`
+        # descends until a size finds a face.
+        faces = producer.detect(shot.frame)
         if not faces:
             raise ValueError(f"our own producer found no face in {shot.label}")
         held = best_face(faces)
         cache.face_put(shot.fixture.sha256, held)
 
     _detections[key] = held
+    return _detections[key]
+
+
+def our_recovery_face(shot: Shot) -> Any | None:
+    """The padded-recovery face our store keeps beside the primary one.
+
+    None when detection at the first size already found a face, because no
+    recovery ran and there is no second detection to keep.
+    """
+    key = ("recovery", shot.fixture.sha256)
+    if key not in _detections:
+        _detections[key] = producer.detect_padded(shot.frame)
     return _detections[key]
 
 

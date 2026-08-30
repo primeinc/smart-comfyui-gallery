@@ -27,21 +27,21 @@ import importlib.metadata
 import importlib.util
 import json
 import platform
-import subprocess
+import re
 import sys
 import tomllib
+import urllib.parse
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Final
 
+import requests
+
+import proc
+
 HERE: Path = Path(__file__).resolve().parent
 ROOT: Path = HERE.parent
 MANIFEST: Path = ROOT / "manifest.toml"
-
-#: Seconds any single git call may take. Every subprocess in this tree carries
-#: one: a call that can hang forever turns a red gate into a stalled run, and
-#: an operator waiting on nothing cannot tell those apart.
-GIT_SECONDS: float = 60.0
 
 
 @dataclass
@@ -101,11 +101,10 @@ def _git(where: Path | None, *args: str) -> tuple[int, str]:
     if where is not None:
         argv += ["-C", str(where)]
     argv += list(args)
-    try:
-        done = subprocess.run(argv, capture_output=True, text=True, check=False, timeout=GIT_SECONDS)
-    except subprocess.TimeoutExpired:
-        return 124, f"timed out after {GIT_SECONDS}s: {' '.join(argv)}"
-    return done.returncode, (done.stdout + done.stderr).strip()
+    code, out, err = proc.text(argv, timeout=proc.LOCAL_SECONDS)
+    if code == proc.TIMED_OUT:
+        return code, f"timed out after {proc.LOCAL_SECONDS}s: {' '.join(argv)}"
+    return code, (out + err).strip()
 
 
 def _git_bytes(where: Path, *args: str) -> tuple[int, bytes]:
@@ -118,11 +117,10 @@ def _git_bytes(where: Path, *args: str) -> tuple[int, bytes]:
     as "nothing matches its pin" rather than as its own bug.
     """
     argv: list[str] = ["git", "-C", str(where), *args]
-    try:
-        done = subprocess.run(argv, capture_output=True, check=False, timeout=GIT_SECONDS)
-    except subprocess.TimeoutExpired:
-        return 124, f"timed out after {GIT_SECONDS}s: {' '.join(argv)}".encode()
-    return done.returncode, (done.stdout if done.returncode == 0 else done.stderr)
+    code, out, err = proc.run(argv, timeout=proc.LOCAL_SECONDS)
+    if code == proc.TIMED_OUT:
+        return code, f"timed out after {proc.LOCAL_SECONDS}s: {' '.join(argv)}".encode()
+    return code, (out if code == 0 else err)
 
 
 def defines_symbol(source: str, symbol: str) -> bool:
@@ -409,8 +407,328 @@ def vendor_weight_identity(manifest: dict[str, Any]) -> list[dict[str, Any]]:
     return out
 
 
-def weight_identity(manifest: dict[str, Any]) -> list[dict[str, Any]]:
-    """The model files themselves, by content.
+#: What a weight row resolved to this run. Four states, and the three that are
+#: not VERIFIED say WHICH question is open rather than sharing one word.
+WEIGHT_VERIFIED: Final[str] = "VERIFIED"
+WEIGHT_UNATTESTED: Final[str] = "UNATTESTED"
+WEIGHT_MISMATCH: Final[str] = "MISMATCH"
+WEIGHT_MISSING: Final[str] = "MISSING"
+
+#: A weight whose attestations disagree WITH EACH OTHER, which is a question
+#: about which source to believe. MISMATCH is the other one: an attestation
+#: disagreeing with our local bytes.
+WEIGHT_CONTRADICTED: Final[str] = "CONTRADICTED"
+
+#: Bytes an independent immutable source agrees with, from nobody who can
+#: speak for the vendor. A mirror establishes that those bytes exist under
+#: that name, never that they are the bytes the vendor released.
+WEIGHT_CORROBORATED: Final[str] = "CORROBORATED"
+
+#: Authorities that can speak for what the vendor shipped. A mirror cannot.
+CANONICAL_AUTHORITY: Final[frozenset[str]] = frozenset({"canonical_vendor", "first_party_consumer_snapshot"})
+
+#: DERIVED by the resolvers, never declared. The manifest carries locators
+#: only, so an attestation cannot assert its own truth by naming a repository
+#: nobody has and supplying the digest it wants.
+EVIDENCE_PROVEN: Final[str] = "PROVEN"
+EVIDENCE_OBSERVED: Final[str] = "OBSERVED"
+EVIDENCE_UNRESOLVABLE: Final[str] = "UNRESOLVABLE"
+
+#: git-lfs pointer body: the content digest of a file the clone does not hold.
+_LFS_OID = re.compile(r"^oid sha256:([0-9a-f]{64})$", re.MULTILINE)
+_LFS_SIZE = re.compile(r"^size (\d+)$", re.MULTILINE)
+_SHA256 = re.compile(r"\b([0-9a-f]{64})\b")
+
+
+def _blob_at(where: Path, revision: str, path: str) -> str | None:
+    """One file's text at one revision, or None if either is absent here."""
+    if not where.is_dir():
+        return None
+    code, out = _git(where, "show", f"{revision}:{path}")
+    return out if code == 0 else None
+
+
+def _resolve_huggingface_snapshot(one: dict[str, Any], refs_root: Path) -> dict[str, Any]:
+    """Read the LFS pointer at revision:path and take its oid as the digest.
+
+    The pointer IS the content address: a Hugging Face revision is immutable
+    and the pointer names the bytes without holding them, so a clone with
+    smudge disabled is enough to attest a 260 MB weight.
+    """
+    where = refs_root / one["repo_id"]
+    body = _blob_at(where, one["revision"], one["path"])
+    if body is None:
+        return {
+            "evidence": EVIDENCE_UNRESOLVABLE,
+            "resolved_sha256": "",
+            "detail": f"no {one['repo_id']} clone at {one['revision'][:12]} holding {one['path']}",
+        }
+    found = _LFS_OID.search(body)
+    if not found:
+        return {
+            "evidence": EVIDENCE_UNRESOLVABLE,
+            "resolved_sha256": "",
+            "detail": "the blob at that path is not an lfs pointer",
+        }
+    size = _LFS_SIZE.search(body)
+    return {
+        "evidence": EVIDENCE_PROVEN,
+        "resolved_sha256": found.group(1),
+        "detail": f"lfs oid at {one['revision'][:12]}" + (f", size {size.group(1)}" if size else ""),
+    }
+
+
+def _resolve_git_published_checksum(one: dict[str, Any], refs_root: Path) -> dict[str, Any]:
+    """Read the checksum out of a pinned git blob, at the cited line.
+
+    `path` is `<file>:<line>`. The digest is taken from THAT line, so a
+    citation pointing at a line which does not carry one is unresolvable
+    rather than quietly satisfied by a digest elsewhere in the file.
+    """
+    where = refs_root / one["repo_id"]
+    file, _, line_no = one["path"].partition(":")
+    revision = one["revision"] or "HEAD"
+    body = _blob_at(where, revision, file)
+    if body is None:
+        return {
+            "evidence": EVIDENCE_UNRESOLVABLE,
+            "resolved_sha256": "",
+            "detail": f"no {one['repo_id']} blob {file} at {revision[:12]}",
+        }
+    lines = body.splitlines()
+    if not line_no.isdigit() or not (1 <= int(line_no) <= len(lines)):
+        return {
+            "evidence": EVIDENCE_UNRESOLVABLE,
+            "resolved_sha256": "",
+            "detail": f"{one['path']} is not a line in that blob",
+        }
+    found = _SHA256.search(lines[int(line_no) - 1])
+    if not found:
+        return {"evidence": EVIDENCE_UNRESOLVABLE, "resolved_sha256": "", "detail": f"{one['path']} carries no sha256"}
+    # An unpinned revision is a moving target even when it resolves today.
+    evidence = EVIDENCE_PROVEN if one["revision"] else EVIDENCE_OBSERVED
+    return {"evidence": evidence, "resolved_sha256": found.group(1), "detail": f"read from {one['path']}"}
+
+
+#: GitHub's release-asset API, and the seconds one call may take. A 175 MB
+#: body over a slow link needs more than the git timeout.
+_GITHUB_API: Final[str] = "https://api.github.com"
+ASSET_SECONDS: float = 900.0
+
+
+def _release_asset_cache(refs_root: Path) -> Path:
+    """Where downloaded release assets live. A mirror, like the clones."""
+    return refs_root / "_release_assets"
+
+
+#: Hosts this resolver will fetch from. A `browser_download_url` is a field in
+#: a response, so it is data: an API that returned `file:///` or a redirect to
+#: somewhere else would otherwise be hashed and reported as the vendor's bytes.
+ASSET_HOSTS: Final[frozenset[str]] = frozenset({"api.github.com", "github.com", "objects.githubusercontent.com"})
+
+
+def _checked(url: str) -> str:
+    """The url, if it is https on a host this resolver trusts."""
+    parsed = urllib.parse.urlsplit(url)
+    if parsed.scheme != "https" or parsed.hostname not in ASSET_HOSTS:
+        raise ValueError(f"refusing to fetch {url!r}: not https on {sorted(ASSET_HOSTS)}")
+    return url
+
+
+def _read_json(url: str) -> Any:
+    """One unauthenticated GitHub API read.
+
+    Unauthenticated on purpose: these are public releases, and a gate that
+    only resolves for someone holding a token reports a different verdict per
+    operator. The rate limit is 60/hour against three cached rows.
+    """
+    answer = requests.get(
+        _checked(url),
+        headers={"Accept": "application/vnd.github+json", "User-Agent": "compat"},
+        timeout=ASSET_SECONDS,
+    )
+    answer.raise_for_status()
+    return answer.json()
+
+
+def _fetch_asset(url: str, into: Path) -> None:
+    """Stream one asset to disk. Never held whole in memory.
+
+    Written to `.partial` and renamed, so an interrupted download cannot leave
+    a short file that the next run finds, hashes and reports as the vendor's.
+    """
+    into.parent.mkdir(parents=True, exist_ok=True)
+    partial = into.with_suffix(into.suffix + ".partial")
+    with requests.get(
+        _checked(url),
+        headers={"Accept": "application/octet-stream", "User-Agent": "compat"},
+        timeout=ASSET_SECONDS,
+        stream=True,
+    ) as body:
+        body.raise_for_status()
+        with partial.open("wb") as handle:
+            for chunk in body.iter_content(1 << 20):
+                handle.write(chunk)
+    partial.replace(into)
+
+
+def _resolve_github_release_asset(one: dict[str, Any], refs_root: Path) -> dict[str, Any]:
+    """Resolve a release asset to the digest of the bytes the VENDOR serves.
+
+    A vendor that publishes no checksum still publishes bytes, and this reads
+    them rather than giving up: the asset is fetched once into a local mirror
+    and hashed there. The digest is DERIVED from the canonical source, so it
+    carries the same standing as an lfs oid and the weight can reach VERIFIED
+    on the vendor's own authority instead of a third party's mirror.
+
+    A release asset is mutable where a Hugging Face revision is not, so the
+    locator pins the two fields that witness a replacement:
+
+        revision = "<asset_id>@<updated_at>"
+
+    Both are re-read from the API on every run and both must still match. An
+    asset id is never reused, and re-uploading under the same name moves
+    `updated_at` -- so a swap fails the gate rather than being hashed as if it
+    were the original. `size` is checked too, which catches a truncated
+    download that would otherwise hash cleanly to the wrong answer.
+    """
+    tag, _, name = one["path"].rpartition("/")
+    tag = tag.rsplit("/", 1)[-1]
+    pinned_id, _, pinned_stamp = one["revision"].partition("@")
+    if not pinned_id.isdigit() or not pinned_stamp:
+        return {
+            "evidence": EVIDENCE_UNRESOLVABLE,
+            "resolved_sha256": "",
+            "detail": f"revision {one['revision']!r} is not <asset_id>@<updated_at>",
+        }
+
+    cache = _release_asset_cache(refs_root) / one["repo_id"] / pinned_id
+    meta_file = cache / "asset.json"
+    try:
+        if meta_file.is_file():
+            asset = json.loads(meta_file.read_text(encoding="utf-8"))
+        else:
+            release = _read_json(f"{_GITHUB_API}/repos/{one['repo_id']}/releases/tags/{tag}")
+            matched = [row for row in release.get("assets", []) if row.get("name") == name]
+            if not matched:
+                return {
+                    "evidence": EVIDENCE_UNRESOLVABLE,
+                    "resolved_sha256": "",
+                    "detail": f"{one['repo_id']} {tag} publishes no asset named {name}",
+                }
+            asset = matched[0]
+            cache.mkdir(parents=True, exist_ok=True)
+            meta_file.write_text(json.dumps(asset, indent=2, sort_keys=True), encoding="utf-8", newline="")
+    except (requests.RequestException, TimeoutError, OSError, ValueError) as problem:
+        return {
+            "evidence": EVIDENCE_UNRESOLVABLE,
+            "resolved_sha256": "",
+            "detail": f"could not read {one['repo_id']} {tag}: {type(problem).__name__}: {problem}",
+        }
+
+    if str(asset.get("id")) != pinned_id or str(asset.get("updated_at")) != pinned_stamp:
+        return {
+            "evidence": EVIDENCE_UNRESOLVABLE,
+            "resolved_sha256": "",
+            "detail": (
+                f"{name} is now asset {asset.get('id')} at {asset.get('updated_at')}, "
+                f"not {pinned_id} at {pinned_stamp}: the vendor replaced it"
+            ),
+        }
+
+    where = cache / name
+    try:
+        if not where.is_file():
+            _fetch_asset(str(asset["browser_download_url"]), where)
+    except (requests.RequestException, TimeoutError, OSError, ValueError, KeyError) as problem:
+        return {
+            "evidence": EVIDENCE_UNRESOLVABLE,
+            "resolved_sha256": "",
+            "detail": f"could not fetch {name}: {type(problem).__name__}: {problem}",
+        }
+
+    size = where.stat().st_size
+    if size != int(asset.get("size", -1)):
+        return {
+            "evidence": EVIDENCE_UNRESOLVABLE,
+            "resolved_sha256": "",
+            "detail": f"mirrored {name} is {size} bytes; the release says {asset.get('size')}",
+        }
+    return {
+        "evidence": EVIDENCE_PROVEN,
+        "resolved_sha256": digest_file(where),
+        "detail": f"vendor asset {pinned_id} at {pinned_stamp}, {size} bytes, hashed from the mirror",
+    }
+
+
+RESOLVERS: Final[dict[str, Any]] = {
+    "huggingface_snapshot": _resolve_huggingface_snapshot,
+    "git_published_checksum": _resolve_git_published_checksum,
+    "github_release_asset": _resolve_github_release_asset,
+}
+
+
+def _attestations(row: dict[str, Any], refs_root: Path) -> list[dict[str, Any]]:
+    """Every external artifact this row LOCATES, resolved against the source.
+
+    The manifest supplies the locator -- source class, repository, revision,
+    path, authority -- and nothing else. The digest and the evidence class are
+    read out of the artifact the locator names, so an attestation that cites
+    a repository nobody has cannot assert its own truth.
+    """
+    out: list[dict[str, Any]] = []
+    for one in row.get("attestations", []):
+        located = {
+            "source_class": one.get("source_class", ""),
+            "repo_id": one.get("repo_id", ""),
+            "revision": one.get("revision", ""),
+            "path": one.get("path", ""),
+            "authority": one.get("authority", ""),
+            "note": one.get("note", ""),
+        }
+        resolve = RESOLVERS.get(located["source_class"])
+        derived = (
+            resolve(located, refs_root)
+            if resolve
+            else {
+                "evidence": EVIDENCE_UNRESOLVABLE,
+                "resolved_sha256": "",
+                "detail": f"no resolver for source_class {located['source_class']!r}",
+            }
+        )
+        out.append({**located, **derived})
+    return out
+
+
+def weight_state(measured: str | None, found: bool, attestations: list[dict[str, Any]]) -> str:
+    """Which state this weight is in, from RESOLVED attestations only.
+
+    Order matters. Attestations that disagree with each other are
+    CONTRADICTED and are reported as that rather than resolved by preferring
+    one source, because choosing between them is an authority question this
+    function has no standing to answer.
+    """
+    if not found or measured is None:
+        return WEIGHT_MISSING
+    resolved = [one for one in attestations if one.get("resolved_sha256")]
+    digests = {one["resolved_sha256"] for one in resolved}
+    if len(digests) > 1:
+        return WEIGHT_CONTRADICTED
+    if digests and digests != {measured}:
+        return WEIGHT_MISMATCH
+    proven = [one for one in resolved if one["evidence"] == EVIDENCE_PROVEN]
+    if not proven:
+        return WEIGHT_UNATTESTED
+    # AUTHORITY decides, not just immutability. An immutable revision of a
+    # third-party mirror proves the bytes exist under that name at that
+    # revision; it does not prove the vendor shipped them.
+    if any(one["authority"] in CANONICAL_AUTHORITY for one in proven):
+        return WEIGHT_VERIFIED
+    return WEIGHT_CORROBORATED
+
+
+def weight_identity(manifest: dict[str, Any], refs_root: Path) -> list[dict[str, Any]]:
+    """The model files themselves, by content, against external attestation.
 
     The largest single determinant of every number in this evidence is not a
     line of Python: it is `glintr100.onnx`. A suite that pins twenty
@@ -418,18 +736,18 @@ def weight_identity(manifest: dict[str, Any]) -> list[dict[str, Any]]:
     its own code exactly, produce different embeddings on the next machine,
     and have nothing in the record able to say why.
 
-    Absent files are reported as absent, never skipped: a pack that is not
-    there is the reason a case is UNSUPPORTED, and that has to stay visible.
+    `published_sha256` was a single nullable digest, and the gate read it
+    through `is not False` -- so a weight nothing published passed. It is
+    replaced by typed attestations and a four-state verdict: a row says
+    whether it is unattested, contradicted, or absent, and those are three
+    different pieces of work.
     """
     out: list[dict[str, Any]] = []
     for row in manifest.get("weights", []):
         where = _weight_root(row) / row["file"]
         found = where.is_file()
         measured = digest_file(where) if found else None
-        # A hash WE computed proves our copy has not changed since we hashed
-        # it, not that it is the one the vendor shipped. A vendor-published
-        # digest is recorded and checked separately.
-        published = row.get("published_sha256")
+        attestations = _attestations(row, refs_root)
         out.append(
             {
                 "pack": row["pack"],
@@ -439,9 +757,8 @@ def weight_identity(manifest: dict[str, Any]) -> list[dict[str, Any]]:
                 "present": found,
                 "bytes": where.stat().st_size if found else 0,
                 "sha256": measured,
-                "published_sha256": published,
-                "published_by": row.get("published_by", ""),
-                "matches_published": None if not (published and measured) else measured == published,
+                "attestations": attestations,
+                "state": weight_state(measured, found, attestations),
             }
         )
     return out
@@ -582,14 +899,18 @@ def verify_all(manifest: dict[str, Any], repo_root: Path) -> dict[str, Any]:
             proofs.append(verify_repo(f"consumer:{consumer['id']}", consumer, refs_root))
 
     runtimes: list[RuntimeProof] = verify_runtimes(manifest, refs_root)
-    weights: list[dict[str, Any]] = weight_identity(manifest)
+    weights: list[dict[str, Any]] = weight_identity(manifest, refs_root)
     vendor_weights: list[dict[str, Any]] = vendor_weight_identity(manifest)
 
-    unread: list[str] = [one["id"] for one in consumers if one.get("source_unread")]
+    # Imported here, not at module scope: `identity` imports this module. An
+    # artifact that names no tree cannot be checked for currency, and closure
+    # reads this one.
+    from compat.harness import identity as evidence_identity
 
     return {
         "manifest_version": manifest["version"],
         "recorded_at": manifest["recorded_at"],
+        "identity": evidence_identity.identity()["digest"],
         "runtime": runtime_identity(),
         "refs_root": str(refs_root),
         "repos": [asdict(one) for one in proofs],
@@ -597,7 +918,6 @@ def verify_all(manifest: dict[str, Any], repo_root: Path) -> dict[str, Any]:
         "weights": weights,
         "population": {
             "total": len(consumers),
-            "source_unread": unread,
         },
         # Four checks, none excusing the others: a clone at the right commit,
         # what the interpreter imports, which of OUR weights computed the
@@ -607,14 +927,11 @@ def verify_all(manifest: dict[str, Any], repo_root: Path) -> dict[str, Any]:
             all(one.ok for one in proofs)
             and all(one.matches for one in runtimes)
             and all(one["present"] for one in weights)
-            # A vendor checkpoint that IS here and does not match what was
-            # recorded for it. Absent ones are not a failure: they are why
-            # most of these consumers are not attempted on this machine.
             and all(one["matches"] is not False for one in vendor_weights)
-            # A weight whose measured digest contradicts the digest its vendor
-            # PUBLISHES is not our copy of their file. That is a harder
-            # failure than absence: the run would proceed and be wrong.
-            and all(one["matches_published"] is not False for one in weights)
+            # Off the typed state, not a boolean: no boolean separates
+            # "nothing attests this" from "an attestation contradicts this"
+            # from "the file is gone".
+            and all(one["state"] == WEIGHT_VERIFIED for one in weights)
         ),
     }
 
@@ -645,24 +962,20 @@ def report(out: dict[str, Any]) -> None:
         print(f"{mark} runtime:{row['package']:<38} {row['pinned_commit'][:12]}  {state}")
 
     for row in out["weights"]:
-        mark = "ok  " if row["present"] and row["matches_published"] is not False else "FAIL"
+        mark = "ok  " if row["state"] == WEIGHT_VERIFIED else "FAIL"
         digest = row["sha256"][:12] if row["sha256"] else "ABSENT"
-        against = ""
-        if row["matches_published"] is True:
-            against = f"  == published by {row['published_by']}"
-        elif row["matches_published"] is False:
-            against = f"  != PUBLISHED {row['published_sha256'][:12]} ({row['published_by']})"
-        print(f"{mark} weight:{row['pack']}/{row['file']:<32} {digest}  {row['bytes']:>12,} bytes{against}")
+        print(f"{mark} weight:{row['pack']}/{row['file']:<32} {digest}  {row['bytes']:>12,} bytes  {row['state']}")
+        for one in row["attestations"]:
+            where = f"{one['repo_id']}@{one['revision'][:12]}" if one["revision"] else one["repo_id"]
+            print(f"         {one['evidence']:<9} {one['source_class']:<24} {where} {one['path']}")
 
-    verified = [one for one in out["weights"] if one["matches_published"] is True]
-    unverified = [one for one in out["weights"] if one["matches_published"] is None]
-    print(
-        f"\nweights vs vendor-published digests: {len(verified)} verified, {len(unverified)} with no published digest"
-    )
+    tally: dict[str, int] = {}
+    for one in out["weights"]:
+        tally[one["state"]] = tally.get(one["state"], 0) + 1
+    print("\nweights by attestation state: " + ", ".join(f"{count} {state}" for state, count in sorted(tally.items())))
 
     pop: dict[str, Any] = out["population"]
     print(f"\npopulation: {pop['total']} consumers")
-    print(f"  source unread: {len(pop['source_unread'])}  {pop['source_unread']}")
     print(f"\nprovenance: {'PASS' if out['provenance_ok'] else 'FAIL'}")
 
 

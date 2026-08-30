@@ -44,6 +44,7 @@ from typing import Final
 
 import numpy as np
 
+import proc
 from compat.assertions.arrays import digest
 from compat.contracts.case import (
     Ablation,
@@ -117,7 +118,6 @@ def references() -> dict[str, list[Reference]]:
     Written outside the repository and never committed: these are third-party
     media under the vendor's own terms.
     """
-    import subprocess
 
     root, commit = _repo_root("photomaker_v2")
     cache = Path(__file__).resolve().parent.parent.parent.parent / "sg-vendor-fixtures" / "photomaker_v2"
@@ -125,18 +125,19 @@ def references() -> dict[str, list[Reference]]:
     for identity, paths in IDENTITIES.items():
         held: list[Reference] = []
         for path in paths:
-            argv: list[str] = ["git", "-C", str(root), "cat-file", "blob", f"{commit}:{path}"]
-            done = subprocess.run(argv, capture_output=True, check=False, timeout=60)
-            if done.returncode != 0:
+            code, blob, why = proc.run(
+                ["git", "-C", str(root), "cat-file", "blob", f"{commit}:{path}"], timeout=proc.LOCAL_SECONDS
+            )
+            if code != 0:
                 # A missing blob silently shrank an identity, and `_slots`
                 # then raised IndexError, which `run_case` recorded as
                 # UNSUPPORTED -- an absent-runtime verdict for an absent file.
-                note_skip(CONSUMER_ID, path, f"not at {commit[:12]}: {done.stderr.decode('utf-8', 'replace')[:120]}")
+                note_skip(CONSUMER_ID, path, f"not at {commit[:12]}: {why.decode('utf-8', 'replace')[:120]}")
                 continue
             target = cache / Path(path).name
             target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_bytes(done.stdout)
-            held.append(Reference(identity=identity, path=str(target), sha256=hashlib.sha256(done.stdout).hexdigest()))
+            target.write_bytes(blob)
+            held.append(Reference(identity=identity, path=str(target), sha256=hashlib.sha256(blob).hexdigest()))
         if held:
             out[identity] = held
     return out

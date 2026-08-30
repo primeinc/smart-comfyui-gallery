@@ -1,0 +1,548 @@
+{
+  "evidence_from_one_tree": {
+    "agree": false,
+    "detail": "cases.json was built under 9d2de5ec739d",
+    "tree": "4a39d667391f596ba6d52971b43dff1fdc6bba00655b9d9db8c60fd731c6bb11"
+  },
+  "observed_artifacts": 39,
+  "observer_is_complete": {
+    "cases_ran": true,
+    "complete": true,
+    "detail": "every probe holds and the cases ran, so an unobserved artifact is evidence it did not load",
+    "failing_probes": [],
+    "known": true
+  },
+  "rows": [
+    {
+      "consumers": [
+        "id_v2v"
+      ],
+      "detail": "observed as 'C:\\\\ComfyUI\\\\output\\\\.AImodels\\\\idv2v\\\\sam3' through PreTrainedModel.from_pretrained",
+      "identity": "facebook/sam3",
+      "loaders": [
+        "PreTrainedModel.from_pretrained"
+      ],
+      "statuses": [
+        "CONDITIONAL"
+      ],
+      "verdict": "AGREED"
+    },
+    {
+      "consumers": [],
+      "detail": "onnxruntime.InferenceSession opened it and static discovery names no such artifact",
+      "identity": "1k3d68.onnx",
+      "loaders": [
+        "onnxruntime.InferenceSession"
+      ],
+      "statuses": [],
+      "verdict": "POPULATION_DEFECT"
+    },
+    {
+      "consumers": [],
+      "detail": "open opened it and static discovery names no such artifact",
+      "identity": "1k3d68.onnx",
+      "loaders": [
+        "open"
+      ],
+      "statuses": [],
+      "verdict": "POPULATION_DEFECT"
+    },
+    {
+      "consumers": [],
+      "detail": "onnxruntime.InferenceSession opened it and static discovery names no such artifact",
+      "identity": "1k3d68.onnx",
+      "loaders": [
+        "onnxruntime.InferenceSession"
+      ],
+      "statuses": [],
+      "verdict": "POPULATION_DEFECT"
+    },
+    {
+      "consumers": [],
+      "detail": "open opened it and static discovery names no such artifact",
+      "identity": "1k3d68.onnx",
+      "loaders": [
+        "open"
+      ],
+      "statuses": [],
+      "verdict": "POPULATION_DEFECT"
+    },
+    {
+      "consumers": [],
+      "detail": "onnxruntime.InferenceSession opened it and static discovery names no such artifact",
+      "identity": "2d106det.onnx",
+      "loaders": [
+        "onnxruntime.InferenceSession"
+      ],
+      "statuses": [],
+      "verdict": "POPULATION_DEFECT"
+    },
+    {
+      "consumers": [],
+      "detail": "open opened it and static discovery names no such artifact",
+      "identity": "2d106det.onnx",
+      "loaders": [
+        "open"
+      ],
+      "statuses": [],
+      "verdict": "POPULATION_DEFECT"
+    },
+    {
+      "consumers": [],
+      "detail": "onnxruntime.InferenceSession opened it and static discovery names no such artifact",
+      "identity": "2d106det.onnx",
+      "loaders": [
+        "onnxruntime.InferenceSession"
+      ],
+      "statuses": [],
+      "verdict": "POPULATION_DEFECT"
+    },
+    {
+      "consumers": [],
+      "detail": "open opened it and static discovery names no such artifact",
+      "identity": "2d106det.onnx",
+      "loaders": [
+        "open"
+      ],
+      "statuses": [],
+      "verdict": "POPULATION_DEFECT"
+    },
+    {
+      "consumers": [],
+      "detail": "FaceAnalysis opened it and static discovery names no such artifact",
+      "identity": "antelopev2",
+      "loaders": [
+        "FaceAnalysis"
+      ],
+      "statuses": [],
+      "verdict": "POPULATION_DEFECT"
+    },
+    {
+      "consumers": [],
+      "detail": "FaceAnalysis opened it and static discovery names no such artifact",
+      "identity": "antelopev2",
+      "loaders": [
+        "FaceAnalysis"
+      ],
+      "statuses": [],
+      "verdict": "POPULATION_DEFECT"
+    },
+    {
+      "consumers": [],
+      "detail": "FaceAnalysis opened it and static discovery names no such artifact",
+      "identity": "buffalo_l",
+      "loaders": [
+        "FaceAnalysis"
+      ],
+      "statuses": [],
+      "verdict": "POPULATION_DEFECT"
+    },
+    {
+      "consumers": [],
+      "detail": "open opened it and static discovery names no such artifact",
+      "identity": "det_10g.onnx",
+      "loaders": [
+        "open"
+      ],
+      "statuses": [],
+      "verdict": "POPULATION_DEFECT"
+    },
+    {
+      "consumers": [],
+      "detail": "onnxruntime.InferenceSession opened it and static discovery names no such artifact",
+      "identity": "det_10g.onnx",
+      "loaders": [
+        "onnxruntime.InferenceSession"
+      ],
+      "statuses": [],
+      "verdict": "POPULATION_DEFECT"
+    },
+    {
+      "consumers": [],
+      "detail": "open opened it and static discovery names no such artifact",
+      "identity": "detection_Resnet50_Final.pth",
+      "loaders": [
+        "open"
+      ],
+      "statuses": [],
+      "verdict": "POPULATION_DEFECT"
+    },
+    {
+      "consumers": [],
+      "detail": "open opened it and static discovery names no such artifact",
+      "identity": "detection_Resnet50_Final.pth",
+      "loaders": [
+        "open"
+      ],
+      "statuses": [],
+      "verdict": "POPULATION_DEFECT"
+    },
+    {
+      "consumers": [],
+      "detail": "onnxruntime.InferenceSession opened it and static discovery names no such artifact",
+      "identity": "genderage.onnx",
+      "loaders": [
+        "onnxruntime.InferenceSession"
+      ],
+      "statuses": [],
+      "verdict": "POPULATION_DEFECT"
+    },
+    {
+      "consumers": [],
+      "detail": "open opened it and static discovery names no such artifact",
+      "identity": "genderage.onnx",
+      "loaders": [
+        "open"
+      ],
+      "statuses": [],
+      "verdict": "POPULATION_DEFECT"
+    },
+    {
+      "consumers": [],
+      "detail": "onnxruntime.InferenceSession opened it and static discovery names no such artifact",
+      "identity": "genderage.onnx",
+      "loaders": [
+        "onnxruntime.InferenceSession"
+      ],
+      "statuses": [],
+      "verdict": "POPULATION_DEFECT"
+    },
+    {
+      "consumers": [],
+      "detail": "open opened it and static discovery names no such artifact",
+      "identity": "genderage.onnx",
+      "loaders": [
+        "open"
+      ],
+      "statuses": [],
+      "verdict": "POPULATION_DEFECT"
+    },
+    {
+      "consumers": [],
+      "detail": "onnxruntime.InferenceSession opened it and static discovery names no such artifact",
+      "identity": "glintr100.onnx",
+      "loaders": [
+        "onnxruntime.InferenceSession"
+      ],
+      "statuses": [],
+      "verdict": "POPULATION_DEFECT"
+    },
+    {
+      "consumers": [],
+      "detail": "onnxruntime.InferenceSession opened it and static discovery names no such artifact",
+      "identity": "glintr100.onnx",
+      "loaders": [
+        "onnxruntime.InferenceSession"
+      ],
+      "statuses": [],
+      "verdict": "POPULATION_DEFECT"
+    },
+    {
+      "consumers": [],
+      "detail": "open opened it and static discovery names no such artifact",
+      "identity": "glintr100.onnx",
+      "loaders": [
+        "open"
+      ],
+      "statuses": [],
+      "verdict": "POPULATION_DEFECT"
+    },
+    {
+      "consumers": [],
+      "detail": "onnxruntime.InferenceSession opened it and static discovery names no such artifact",
+      "identity": "glintr100.onnx",
+      "loaders": [
+        "onnxruntime.InferenceSession"
+      ],
+      "statuses": [],
+      "verdict": "POPULATION_DEFECT"
+    },
+    {
+      "consumers": [],
+      "detail": "open opened it and static discovery names no such artifact",
+      "identity": "glintr100.onnx",
+      "loaders": [
+        "open"
+      ],
+      "statuses": [],
+      "verdict": "POPULATION_DEFECT"
+    },
+    {
+      "consumers": [],
+      "detail": "open opened it and static discovery names no such artifact",
+      "identity": "glintr100.onnx",
+      "loaders": [
+        "open"
+      ],
+      "statuses": [],
+      "verdict": "POPULATION_DEFECT"
+    },
+    {
+      "consumers": [],
+      "detail": "onnxruntime.InferenceSession opened it and static discovery names no such artifact",
+      "identity": "multi-task-model-vitl16_384.onnx",
+      "loaders": [
+        "onnxruntime.InferenceSession"
+      ],
+      "statuses": [],
+      "verdict": "POPULATION_DEFECT"
+    },
+    {
+      "consumers": [],
+      "detail": "open opened it and static discovery names no such artifact",
+      "identity": "parsing_bisenet.pth",
+      "loaders": [
+        "open"
+      ],
+      "statuses": [],
+      "verdict": "POPULATION_DEFECT"
+    },
+    {
+      "consumers": [],
+      "detail": "open opened it and static discovery names no such artifact",
+      "identity": "parsing_parsenet.pth",
+      "loaders": [
+        "open"
+      ],
+      "statuses": [],
+      "verdict": "POPULATION_DEFECT"
+    },
+    {
+      "consumers": [],
+      "detail": "open opened it and static discovery names no such artifact",
+      "identity": "recognition_arcface_ir_se50.pth",
+      "loaders": [
+        "open"
+      ],
+      "statuses": [],
+      "verdict": "POPULATION_DEFECT"
+    },
+    {
+      "consumers": [],
+      "detail": "open opened it and static discovery names no such artifact",
+      "identity": "recognition_arcface_ir_se50.pth",
+      "loaders": [
+        "open"
+      ],
+      "statuses": [],
+      "verdict": "POPULATION_DEFECT"
+    },
+    {
+      "consumers": [],
+      "detail": "onnxruntime.InferenceSession opened it and static discovery names no such artifact",
+      "identity": "scrfd_10g_bnkps.onnx",
+      "loaders": [
+        "onnxruntime.InferenceSession"
+      ],
+      "statuses": [],
+      "verdict": "POPULATION_DEFECT"
+    },
+    {
+      "consumers": [],
+      "detail": "open opened it and static discovery names no such artifact",
+      "identity": "scrfd_10g_bnkps.onnx",
+      "loaders": [
+        "open"
+      ],
+      "statuses": [],
+      "verdict": "POPULATION_DEFECT"
+    },
+    {
+      "consumers": [],
+      "detail": "onnxruntime.InferenceSession opened it and static discovery names no such artifact",
+      "identity": "scrfd_10g_bnkps.onnx",
+      "loaders": [
+        "onnxruntime.InferenceSession"
+      ],
+      "statuses": [],
+      "verdict": "POPULATION_DEFECT"
+    },
+    {
+      "consumers": [],
+      "detail": "onnxruntime.InferenceSession opened it and static discovery names no such artifact",
+      "identity": "w600k_r50.onnx",
+      "loaders": [
+        "onnxruntime.InferenceSession"
+      ],
+      "statuses": [],
+      "verdict": "POPULATION_DEFECT"
+    },
+    {
+      "consumers": [],
+      "detail": "open opened it and static discovery names no such artifact",
+      "identity": "w600k_r50.onnx",
+      "loaders": [
+        "open"
+      ],
+      "statuses": [],
+      "verdict": "POPULATION_DEFECT"
+    },
+    {
+      "consumers": [],
+      "detail": "open opened it and static discovery names no such artifact",
+      "identity": "w600k_r50.onnx",
+      "loaders": [
+        "open"
+      ],
+      "statuses": [],
+      "verdict": "POPULATION_DEFECT"
+    },
+    {
+      "consumers": [],
+      "detail": "onnxruntime.InferenceSession opened it and static discovery names no such artifact",
+      "identity": "w600k_r50.onnx",
+      "loaders": [
+        "onnxruntime.InferenceSession"
+      ],
+      "statuses": [],
+      "verdict": "POPULATION_DEFECT"
+    },
+    {
+      "consumers": [],
+      "detail": "open opened it and static discovery names no such artifact",
+      "identity": "w600k_r50.onnx",
+      "loaders": [
+        "open"
+      ],
+      "statuses": [],
+      "verdict": "POPULATION_DEFECT"
+    },
+    {
+      "consumers": [
+        "anystory"
+      ],
+      "detail": "discovered statically; no observation of it in this run",
+      "identity": "Junjie96/AnyStory",
+      "loaders": [],
+      "statuses": [
+        "REQUIRED"
+      ],
+      "verdict": "UNEXERCISED"
+    },
+    {
+      "consumers": [
+        "photomaker_v2"
+      ],
+      "detail": "discovered statically; no observation of it in this run",
+      "identity": "SG161222/RealVisXL_V4.0",
+      "loaders": [],
+      "statuses": [
+        "REQUIRED"
+      ],
+      "verdict": "UNEXERCISED"
+    },
+    {
+      "consumers": [
+        "photomaker_v2"
+      ],
+      "detail": "discovered statically; no observation of it in this run",
+      "identity": "TencentARC/PhotoMaker-V2",
+      "loaders": [],
+      "statuses": [
+        "REQUIRED"
+      ],
+      "verdict": "UNEXERCISED"
+    },
+    {
+      "consumers": [
+        "anystory"
+      ],
+      "detail": "discovered statically; no observation of it in this run",
+      "identity": "anystory_flux.bin",
+      "loaders": [],
+      "statuses": [
+        "REQUIRED"
+      ],
+      "verdict": "UNEXERCISED"
+    },
+    {
+      "consumers": [
+        "uno"
+      ],
+      "detail": "discovered statically; no observation of it in this run",
+      "identity": "bytedance-research/UNO",
+      "loaders": [],
+      "statuses": [
+        "CONDITIONAL"
+      ],
+      "verdict": "UNEXERCISED"
+    },
+    {
+      "consumers": [
+        "uso"
+      ],
+      "detail": "discovered statically; no observation of it in this run",
+      "identity": "bytedance-research/USO",
+      "loaders": [],
+      "statuses": [
+        "CONDITIONAL"
+      ],
+      "verdict": "UNEXERCISED"
+    },
+    {
+      "consumers": [
+        "uno"
+      ],
+      "detail": "discovered statically; no observation of it in this run",
+      "identity": "dit_lora.safetensors",
+      "loaders": [],
+      "statuses": [
+        "CONDITIONAL"
+      ],
+      "verdict": "UNEXERCISED"
+    },
+    {
+      "consumers": [
+        "photomaker_v2"
+      ],
+      "detail": "discovered statically; no observation of it in this run",
+      "identity": "photomaker-v2.bin",
+      "loaders": [],
+      "statuses": [
+        "REQUIRED"
+      ],
+      "verdict": "UNEXERCISED"
+    },
+    {
+      "consumers": [
+        "instantid_upstream"
+      ],
+      "detail": "discovered statically; no observation of it in this run",
+      "identity": "stabilityai/stable-diffusion-xl-base-1.0",
+      "loaders": [],
+      "statuses": [
+        "CONDITIONAL"
+      ],
+      "verdict": "UNEXERCISED"
+    },
+    {
+      "consumers": [
+        "uso"
+      ],
+      "detail": "discovered statically; no observation of it in this run",
+      "identity": "uso_flux_v1.0/dit_lora.safetensors",
+      "loaders": [],
+      "statuses": [
+        "CONDITIONAL"
+      ],
+      "verdict": "UNEXERCISED"
+    },
+    {
+      "consumers": [
+        "uso"
+      ],
+      "detail": "discovered statically; no observation of it in this run",
+      "identity": "uso_flux_v1.0/projector.safetensors",
+      "loaders": [],
+      "statuses": [
+        "CONDITIONAL"
+      ],
+      "verdict": "UNEXERCISED"
+    }
+  ],
+  "totals": {
+    "AGREED": 1,
+    "POPULATION_DEFECT": 38,
+    "UNEXERCISED": 11
+  }
+}

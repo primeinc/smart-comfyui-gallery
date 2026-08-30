@@ -1,0 +1,95 @@
+{
+  "controls": [
+    {
+      "detail": "1 edge(s); deep/model found=True",
+      "held": true,
+      "name": "A deep_call_chain"
+    },
+    {
+      "detail": "required=['org/reached']; reachable present=True; unreachable excluded=True",
+      "held": true,
+      "name": "B unreachable_loader"
+    },
+    {
+      "detail": "no site carries two artifacts",
+      "held": true,
+      "name": "C two_loaders_one_file"
+    },
+    {
+      "detail": "bound=['facebook/sam3']; after changing the default=['other/model']",
+      "held": true,
+      "name": "D parameter_default"
+    },
+    {
+      "detail": "artifacts=['UNRESOLVED_ARTIFACT:control/repo@0427a121e44c5eb59fe167d1d39b746f3d9da795:entry.py:6', 'org/real']",
+      "held": true,
+      "name": "E unrelated_slash_string"
+    },
+    {
+      "detail": "variants=['UNRESOLVED_VARIANT:control/repo@a57af5a4a41e915ac4754ec7b32df41c95ab156f:entry.py:5']",
+      "held": true,
+      "name": "F unresolved_dispatch"
+    },
+    {
+      "detail": "artifacts=['org/relative']",
+      "held": true,
+      "name": "G relative_import"
+    },
+    {
+      "detail": "artifacts=['org/srclayout']",
+      "held": true,
+      "name": "H src_layout"
+    },
+    {
+      "detail": "artifacts=['org/fromshell']",
+      "held": true,
+      "name": "I shell_python_module"
+    },
+    {
+      "detail": "crossed the gitlink=True; read the PIN not HEAD=True; artifacts=['org/insubmodule']",
+      "held": true,
+      "name": "J pinned_git_submodule"
+    },
+    {
+      "detail": "artifacts=['org/aliased']",
+      "held": true,
+      "name": "K imported_alias"
+    },
+    {
+      "detail": "both found=True; both CONDITIONAL=True; conditional=['org/big', 'org/small']",
+      "held": true,
+      "name": "L branch_specific_selection"
+    }
+  ],
+  "failing": [],
+  "mutations": [
+    {
+      "control": "A deep_call_chain",
+      "detail": "under mutation: 2 edge(s); deep/model found=False",
+      "green_after_restore": true,
+      "name": "depth_cutoff",
+      "red_under_mutation": true
+    },
+    {
+      "control": "C two_loaders_one_file",
+      "detail": "under mutation: FAN-OUT {'entry.py:5': ['beta.pth', 'org/alpha']}",
+      "green_after_restore": true,
+      "name": "file_wide_literals",
+      "red_under_mutation": true
+    },
+    {
+      "control": "E unrelated_slash_string",
+      "detail": "under mutation: artifacts=['images/output', 'org/real']",
+      "green_after_restore": true,
+      "name": "slash_shape_hub",
+      "red_under_mutation": true
+    },
+    {
+      "control": "F unresolved_dispatch",
+      "detail": "under mutation: variants=['from_pretrained:DEFAULT']",
+      "green_after_restore": true,
+      "name": "unresolved_becomes_default",
+      "red_under_mutation": true
+    }
+  ]
+}

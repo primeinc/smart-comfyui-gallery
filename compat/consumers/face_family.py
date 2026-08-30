@@ -30,10 +30,9 @@ What actually differs between them, measured rather than assumed:
                  recognition model differs, which UniPortrait never loads.
 
 The baseline runs that vendor path over the original photograph. The replay
-runs it over the retained state and nothing else. Where the vendor re-detects,
-the replay re-detects too: a consumer that runs a detector over pixels cannot
-be served by a stored keypoint unless the detector agrees, and whether it
-agrees is measured, not argued.
+runs it over the retained state and nothing else, using the stored keypoints:
+a patch is a different input to a detector than the frame it came from, so
+re-detecting on it answers a different question.
 """
 
 from __future__ import annotations
@@ -56,7 +55,7 @@ from compat.contracts.case import (
     Tier,
     UInt8Array,
 )
-from compat.corpus.loaded import Shot, our_face, shots, vendor_face
+from compat.corpus.loaded import Shot, our_face, our_recovery_face, shots, vendor_face
 from compat.harness import provenance
 from compat.producers import insightface_pass as producer
 from compat.storage import derivatives, precision
@@ -278,7 +277,17 @@ def vendor_detect(setup: VendorSetup, image: npt.NDArray[np.uint8]) -> Any:
             # one, so `prepare` is re-run to match its FaceDetector.
             app.prepare(ctx_id=-1, det_size=(size, size))
         else:
-            app.det_model.input_size = (size, size)
+            # The DETECTOR's own prepare. `SCRFD._resolve_input_sizes` reads
+            # `input_sizes`, a list it always fills, so assigning the singular
+            # `input_size` moves nothing and every size runs the same detection.
+            app.det_model.prepare(-1, input_size=(size, size))
+            if tuple(app.det_model.input_sizes) != ((size, size),):
+                # A sweep that cannot move the detector reports about sizes it
+                # never ran.
+                raise ValueError(
+                    f"{setup.consumer_id}: asked the detector for {size} and it holds "
+                    f"{app.det_model.input_sizes}; the sweep cannot be performed"
+                )
         found = app.get(image)
         if found:
             break
@@ -525,6 +534,7 @@ class FaceFamilyRunner:
                     f"crop@{size}",
                     ("source_region_pixels", "patch_origin", "kps_source_px"),
                     crop_ablations(),
+                    measurements=("detection_equivalent_patch",),
                 )
                 for size in self.setup.crop_sizes
             )
@@ -577,6 +587,13 @@ class FaceFamilyRunner:
         """
         kind, shot = self._parts(case)
         best = our_face(shot)
+        # A consumer that recovers by padding is served the padded record.
+        # Our primary descends the det-size, and where the first size misses
+        # the two land 8.86 px apart: one record cannot serve both rules.
+        if self.setup.retry_pad_scale:
+            recovered = our_recovery_face(shot)
+            if recovered is not None:
+                best = recovered
         kps = np.asarray(best.kps, dtype=np.float32)
 
         if kind == "embedding":
@@ -665,6 +682,9 @@ class FaceFamilyRunner:
         size = int(kind.rsplit("@", 1)[1])
         patch = retained.pixels("source_region_pixels")
         origin = retained.pair("patch_origin")
+        # The STORED keypoints. Re-detecting on the patch is wrong: a patch is
+        # a different input to the detector than the frame it came from, so
+        # the face fills a different fraction of it and the keypoints move.
         kps = retained.points("kps_source_px")
         return _artifact(case.boundary, warp(patch, shifted_to(estimate_norm(kps, size), origin), size))
 
@@ -729,9 +749,68 @@ class FaceFamilyRunner:
             ),
         )
 
+    def _detection_equivalent_patch(self, case: Case) -> Measurement:
+        """How much of the frame this consumer needs kept to detect the same face.
+
+        These consumers re-detect over whatever pixels they are handed, so a
+        retained patch serves one only if its own detector finds the same face
+        in it. `analytic_footprint` sizes the patch for the WARP, and detection
+        is a separate question: a patch is a different input to a detector than
+        the frame it came from, and the face fills a different fraction of it.
+
+        Searched rather than asserted. The patch grows around the face until
+        the vendor's re-detection matches its detection on the full frame, and
+        the answer is that fraction -- the storage cost of serving this
+        consumer without the source file.
+        """
+        _kind, shot = self._parts(case)
+        whole = detect_for(self.setup, shot)
+        want = np.asarray(whole.kps, dtype=np.float32)
+        width, height = shot.frame_wh
+        cx, cy = float(want[:, 0].mean()), float(want[:, 1].mean())
+
+        for fraction in (0.25, 0.4, 0.55, 0.7, 0.85, 1.0):
+            if fraction >= 1.0:
+                # The WHOLE frame, not a box centred on the face and clipped:
+                # this step is the search's own positive control, and it can
+                # only be one if it is the input the baseline detected on.
+                x0, y0, x1, y1 = 0, 0, width, height
+            else:
+                half_w, half_h = width * fraction / 2, height * fraction / 2
+                x0, y0 = max(0, int(cx - half_w)), max(0, int(cy - half_h))
+                x1, y1 = min(width, int(cx + half_w)), min(height, int(cy + half_h))
+            patch = shot.frame[y0:y1, x0:x1]
+            if patch.size == 0:
+                continue
+            try:
+                found = vendor_detect(self.setup, np.ascontiguousarray(patch))
+            except ValueError:
+                continue
+            shifted = np.asarray(found.kps, dtype=np.float32) + np.asarray([x0, y0], dtype=np.float32)
+            if np.array_equal(shifted, want):
+                return Measurement(
+                    name="detection_equivalent_patch",
+                    unit="fraction_of_frame",
+                    value=float(patch.size) / float(shot.frame.size),
+                    basis="smallest searched patch whose re-detection equals detection on the whole frame",
+                    detail=(
+                        f"{patch.shape[1]}x{patch.shape[0]} of {width}x{height} reproduces the vendor's "
+                        f"keypoints exactly"
+                    ),
+                )
+        return Measurement(
+            name="detection_equivalent_patch",
+            unit="fraction_of_frame",
+            value=None,
+            basis="smallest searched patch whose re-detection equals detection on the whole frame",
+            detail="no searched patch, up to the whole frame, reproduced the vendor's keypoints",
+        )
+
     def measure(self, case: Case, retained: RetainedState, name: str) -> Measurement:
         if name == "stored_vector_agreement":
             return self._stored_vector_agreement(case, retained)
+        if name == "detection_equivalent_patch":
+            return self._detection_equivalent_patch(case)
         if name != "reference_pixels_unused":
             raise KeyError(f"{self.consumer_id} has no measurement called {name!r}")
 

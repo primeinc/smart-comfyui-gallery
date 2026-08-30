@@ -41,10 +41,13 @@ from compat.contracts.case import (
     Verdict,
 )
 from compat.contracts.case import (
+    considered as case_considered,
+)
+from compat.contracts.case import (
     skipped as case_skips,
 )
 from compat.harness import identity as evidence_identity
-from compat.harness import provenance
+from compat.harness import observe, provenance
 
 ROOT: Path = Path(__file__).resolve().parent.parent
 
@@ -202,21 +205,21 @@ def run_measurement(runner: Runner, case: Case, retained: RetainedState, name: s
 def run_case(runner: Runner, case: Case) -> CaseResult:
     """Baseline, replay, then every declared ablation."""
     began = time.perf_counter()
+    # A raise is DIVERGED: a red, blocking result carrying the exception as
+    # its evidence. Caught rather than allowed to escape, because one raise
+    # out of here kills the shard and reds its siblings as NOT EXERCISED.
     try:
         baseline = runner.baseline(case)
         retained = runner.retained_for(case)
         replayed = runner.replay(case, retained)
     except (KeyError, TypeError, ValueError, IndexError, OSError, NotImplementedError) as problem:
-        # NotImplementedError included deliberately: a lane that declares a
-        # boundary it has no derivation for could not run HERE, which is what
-        # UNSUPPORTED means.
         return CaseResult(
             case=case.name,
             consumer_id=case.consumer_id,
             tier=case.tier,
-            verdict=Verdict.UNSUPPORTED,
+            verdict=Verdict.DIVERGED,
             fixture_sha256=case.fixture.sha256,
-            unsupported_reason=f"{type(problem).__name__}: {problem}",
+            comparison=f"{type(problem).__name__}: {problem}",
             seconds=time.perf_counter() - began,
         )
 
@@ -368,6 +371,8 @@ EVIDENCE_KEYS: Final[frozenset[str]] = frozenset(
         "cases",
         "results",
         "skipped",
+        "considered",
+        "observed",
         "duplicated_cases",
         "shards_failed",
         "shards_exited_over_findings",
@@ -412,9 +417,9 @@ def blocking_failures(results: list[dict[str, Any]]) -> dict[str, list[str]]:
         passes[who] = passes.get(who, 0) + (row["verdict"] == Verdict.REPRODUCED.value)
         if row["verdict"] == Verdict.DIVERGED.value:
             out["diverged"].append(f"{row['case']}: {row.get('comparison', '')[:100]}")
-    # A lane whose every case raises reports no divergence, so UNSUPPORTED
-    # alone cannot distinguish it from a clean run. Individual UNSUPPORTED
-    # rows are recorded in compat/generated/cases.json and do not block.
+    # A lane whose every case raises no longer reaches here at all: the raise
+    # escapes `run_case` and fails the shard. This still holds the weaker
+    # condition, for a lane that ran and reproduced nothing.
     for who, held in sorted(cases.items()):
         if held and not passes.get(who):
             out["no case answered"].append(f"{who}: {held} case(s), not one reproduced")
@@ -446,10 +451,15 @@ def canonical(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
 def run_all(only: str = "") -> dict[str, Any]:
     registry = Registry()
     results: list[CaseResult] = []
-    for runner in runners(only):
-        cases = runner.cases()
-        registry.extend(cases)
-        results.extend(run_case(runner, one) for one in cases)
+    # INSIDE this function, not around the call to it. `evidence_shape` runs
+    # here, so an `observed` key added by the caller is a key this shape check
+    # never sees and every shard dies on the mismatch.
+    with observe.recording() as watching:
+        for runner in runners(only):
+            cases = runner.cases()
+            registry.extend(cases)
+            results.extend(run_case(runner, one) for one in cases)
+    observed = watching.rows()
 
     manifest = provenance.load_manifest()
     declared = {one["id"] for one in manifest.get("consumers", [])}
@@ -472,6 +482,12 @@ def run_all(only: str = "") -> dict[str, Any]:
         # Carrying them here is what makes a shrunk population visible in the
         # artifact rather than only in a difference between two case counts.
         "skipped": [asdict(one) for one in case_skips()],
+        # Candidates a search evaluated and passed over. Recorded so a reject
+        # stays reviewable; NOT a population hole, and not in `skipped`.
+        "considered": [asdict(one) for one in case_considered()],
+        # What this process actually opened while the cases ran. `reconcile`
+        # reads it against the static population; neither is that population.
+        "observed": observed,
         # Always present, always empty here: `sharded.merge` emits this key, so
         # omitting it would make the two serialisations different shapes.
         "shards_failed": [],
@@ -500,8 +516,6 @@ def run_all(only: str = "") -> dict[str, Any]:
 def report(out: dict[str, Any]) -> None:
     for row in out["results"]:
         print(f"{row['verdict']:<13} {row['case']:<38} {row['comparison']}")
-        if row["unsupported_reason"]:
-            print(f"    -- {row['unsupported_reason']}")
         for one in row["ablations"]:
             mark = "ok " if one["verdict"] == Verdict.REPRODUCED.value else "!! "
             expected = "breaks" if one["expect_breaks"] else "survives"

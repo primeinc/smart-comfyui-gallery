@@ -32,16 +32,12 @@ from __future__ import annotations
 import ast
 import hashlib
 import importlib.util
-import subprocess
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-#: Seconds any single git call may take, matching `provenance.py`. A call that
-#: can hang forever turns a red gate into a stalled run, and an operator
-#: waiting on nothing cannot tell those apart.
-GIT_SECONDS: float = 60.0
+import proc
 
 #: Where extracted sources are materialised: written to disk rather than
 #: exec'd from a string, so the loaded object has a real `__file__` and the
@@ -68,10 +64,10 @@ class LoadedSymbol:
 
 def _blob(repo: Path, commit: str, path: str) -> bytes:
     argv = ["git", "-C", str(repo), "show", f"{commit}:{path}"]
-    done = subprocess.run(argv, capture_output=True, check=False, timeout=GIT_SECONDS)
-    if done.returncode != 0:
-        raise FileNotFoundError(f"{path} is not at {commit[:12]} in {repo}: {done.stderr.decode('utf-8', 'replace')}")
-    return done.stdout
+    code, out, err = proc.run(argv, timeout=proc.LOCAL_SECONDS)
+    if code != 0:
+        raise FileNotFoundError(f"{path} is not at {commit[:12]} in {repo}: {err.decode('utf-8', 'replace')}")
+    return out
 
 
 def _body_of(node: ast.stmt) -> list[ast.stmt] | None:

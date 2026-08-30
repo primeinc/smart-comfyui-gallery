@@ -1,6 +1,6 @@
 {
   "declared_against_derived": {
-    "agrees": true,
+    "agrees": false,
     "declared_but_not_exercised": {
       "consisid": [
         "embedding_raw",
@@ -124,7 +124,13 @@
         "whole_reference_image"
       ]
     },
-    "exercised_but_not_declared": {},
+    "exercised_but_not_declared": {
+      "id_v2v": [
+        "david_normal_mp4",
+        "depth_mp4",
+        "orig_pixel_mp4"
+      ]
+    },
     "exercised_by_consumer": {
       "aligned_crop": [
         "kps_source_px",
@@ -150,6 +156,9 @@
         "audio_waveform"
       ],
       "id_v2v": [
+        "david_normal_mp4",
+        "depth_mp4",
+        "orig_pixel_mp4",
         "source_video_bytes"
       ],
       "infiniteyou": [
@@ -257,7 +266,7 @@
     }
   ],
   "derived_from": {
-    "cases": 299,
+    "cases": 302,
     "producers_ran": 4,
     "union_bytes_per_face": 10352,
     "union_keys": 13,
@@ -299,6 +308,19 @@
         "space_facexlib_arcface_1_id_document: exact_bytes: 512 of 512 elements differ, worst 0.02890197187",
         "space_facexlib_arcface_1_selfie: exact_bytes: 512 of 512 elements differ, worst 0.02118980139",
         "space_facexlib_arcface_2_id_document: exact_bytes: 512 of 512 elements differ, worst 0.03244902007"
+      ],
+      "verdict": "NECESSARY AT THIS WIDTH"
+    },
+    {
+      "bytes_per_face": 8,
+      "consumers": [
+        "id_lora"
+      ],
+      "measured": false,
+      "name": "audio_sample_rate",
+      "note": "no cheaper form served: vae_rate_assumed",
+      "proof": [
+        "id_lora_reference_waveform: shape: baseline (2, 220500) against replay (2, 80000)"
       ],
       "verdict": "NECESSARY AT THIS WIDTH"
     },
@@ -397,6 +419,23 @@
         "select_first_ipadapter_faceid_1649731234: exact_bytes: 4 of 4 elements differ, worst 0.468353271484375",
         "select_first_ipadapter_faceid_1717292131: exact_bytes: 4 of 4 elements differ, worst 0.455780029296875",
         "select_first_ipadapter_faceid_1922908529: exact_bytes: 4 of 4 elements differ, worst 0.4326171875"
+      ],
+      "verdict": "NECESSARY AT THIS WIDTH"
+    },
+    {
+      "bytes_per_face": 16,
+      "consumers": [
+        "infiniteyou",
+        "instantid",
+        "instantid_upstream"
+      ],
+      "measured": false,
+      "name": "frame_dimensions",
+      "note": "no cheaper form served: preview_dimensions",
+      "proof": [
+        "infiniteyou_kps_render_1_id_document: shape: baseline (4032, 3024, 3) against replay (1440, 1080, ",
+        "infiniteyou_kps_render_1_selfie: shape: baseline (3088, 2316, 3) against replay (1440, 1080, ",
+        "infiniteyou_kps_render_2_id_document: shape: baseline (4000, 3000, 3) against replay (1440, 1080, "
       ],
       "verdict": "NECESSARY AT THIS WIDTH"
     },
@@ -638,7 +677,7 @@
       "consumers": [
         "id_lora"
       ],
-      "measured": false,
+      "measured": true,
       "name": "audio_sample_rate <- vae_rate_assumed",
       "note": "every break here is a SHAPE divergence: the substitute is a different size, which says nothing about whether it carries the information",
       "proof": [
@@ -775,7 +814,7 @@
         "instantid",
         "instantid_upstream"
       ],
-      "measured": false,
+      "measured": true,
       "name": "frame_dimensions <- preview_dimensions",
       "note": "every break here is a SHAPE divergence: the substitute is a different size, which says nothing about whether it carries the information",
       "proof": [
@@ -971,9 +1010,9 @@
       "name": "source_video_bytes <- face_row",
       "note": "",
       "proof": [
-        "id_v2v_source_frames_cover_eyes: ValueError: these bytes are not decodable video: InvalidData",
-        "id_v2v_source_frames_woman_dancing: ValueError: these bytes are not decodable video: InvalidData",
-        "id_v2v_source_frames_woman_phone: ValueError: these bytes are not decodable video: InvalidData"
+        "id_v2v_source_frames_longer_video_woman_dancing: ValueError: these bytes are not decodable video: InvalidData",
+        "id_v2v_source_frames_non_aligned_keyframe_woman_phone: ValueError: these bytes are not decodable video: InvalidData",
+        "id_v2v_source_frames_relighting_cover_eyes: ValueError: these bytes are not decodable video: InvalidData"
       ],
       "verdict": "SUBSTITUTE_FAILS"
     },
@@ -1180,6 +1219,17 @@
       "swap": "stored_glintr100"
     },
     {
+      "case": "ipadapter_faceid_embedding_vendor_ipadapter_faceid_ai_face",
+      "consumer_id": "ipadapter_faceid",
+      "corroborated": true,
+      "expected_break": true,
+      "measured": 0.039503,
+      "measurement": "stored_vector_agreement",
+      "primitive": "embedding_raw",
+      "substitution_broke": true,
+      "swap": "stored_glintr100"
+    },
+    {
       "case": "ipadapter_faceid_embedding_vendor_ipadapter_faceid_ai_face2",
       "consumer_id": "ipadapter_faceid",
       "corroborated": true,
@@ -1229,6 +1279,17 @@
       "corroborated": true,
       "expected_break": true,
       "measured": 0.053755,
+      "measurement": "stored_vector_agreement",
+      "primitive": "embedding_raw",
+      "substitution_broke": true,
+      "swap": "stored_glintr100"
+    },
+    {
+      "case": "ipadapter_faceid_plus_embedding_vendor_ipadapter_faceid_plus_ai_face",
+      "consumer_id": "ipadapter_faceid_plus",
+      "corroborated": true,
+      "expected_break": true,
+      "measured": 0.039503,
       "measurement": "stored_vector_agreement",
       "primitive": "embedding_raw",
       "substitution_broke": true,
@@ -1290,11 +1351,11 @@
       "swap": "stored_glintr100"
     },
     {
-      "case": "ipadapter_upstream_embedding_vendor_ipadapter_upstream_ai_face2",
+      "case": "ipadapter_upstream_embedding_vendor_ipadapter_upstream_woman",
       "consumer_id": "ipadapter_upstream",
       "corroborated": true,
       "expected_break": true,
-      "measured": -0.057761,
+      "measured": 0.003705,
       "measurement": "stored_vector_agreement",
       "primitive": "embedding_raw",
       "substitution_broke": true,
@@ -1529,12 +1590,12 @@
   ],
   "unproven": [
     {
-      "bytes_per_face": 8,
+      "bytes_per_face": 49766400,
       "consumers": [
-        "id_lora"
+        "id_v2v"
       ],
       "measured": false,
-      "name": "audio_sample_rate",
+      "name": "david_normal_mp4",
       "note": "every removal ended in MissingPrimitive: the replay indexes this key, it was not shown to need the value",
       "proof": [
         "no removal of this primitive produced a measurable difference"
@@ -1542,14 +1603,25 @@
       "verdict": "UNPROVEN"
     },
     {
-      "bytes_per_face": 16,
+      "bytes_per_face": 49766400,
       "consumers": [
-        "infiniteyou",
-        "instantid",
-        "instantid_upstream"
+        "id_v2v"
       ],
       "measured": false,
-      "name": "frame_dimensions",
+      "name": "depth_mp4",
+      "note": "every removal ended in MissingPrimitive: the replay indexes this key, it was not shown to need the value",
+      "proof": [
+        "no removal of this primitive produced a measurable difference"
+      ],
+      "verdict": "UNPROVEN"
+    },
+    {
+      "bytes_per_face": 49766400,
+      "consumers": [
+        "id_v2v"
+      ],
+      "measured": false,
+      "name": "orig_pixel_mp4",
       "note": "every removal ended in MissingPrimitive: the replay indexes this key, it was not shown to need the value",
       "proof": [
         "no removal of this primitive produced a measurable difference"

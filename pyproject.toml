@@ -143,6 +143,22 @@ compat = [
     # in the current schema -- which is the claim under test.
     "face-alignment>=1.4.1",
     "mediapipe>=0.10.14",
+    # facexlib publishes no checksum for the three weights it releases, so
+    # `pins` resolves them by fetching the vendor's own release asset and
+    # hashing it. Transitive through huggingface_hub already; named here
+    # because provenance.py imports it directly and a dependency you rely on
+    # by accident is one a resolver upstream can drop.
+    "requests>=2.32",
+    # `just compat acceptance` executes each vendor's OWN entrypoint from its
+    # pinned clone, so the suite's dependency set is the union of theirs and
+    # not just what compat/ imports. These three were installed by hand into
+    # .venv-compat and then removed by the next `uv sync` -- which is correct
+    # behaviour and exactly the trap compat.just:13-21 records: sync uninstalls
+    # what nothing declares. A package the suite needs is a declaration, never
+    # a command someone remembers to re-run.
+    "accelerate>=1.14",
+    "easydict>=1.13",
+    "pycocotools>=2.0.11",
 ]
 dev = [
     "pytest",

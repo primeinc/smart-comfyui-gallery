@@ -1,0 +1,53 @@
+{
+  "failing": [],
+  "probes": [
+    {
+      "detail": "rows=1",
+      "expected": true,
+      "name": "1 python_open",
+      "observed": true
+    },
+    {
+      "detail": "rows=1",
+      "expected": true,
+      "name": "2 alias_before_install",
+      "observed": true
+    },
+    {
+      "detail": "the CRT opened it=True; observer rows=2",
+      "expected": true,
+      "name": "3 native_open",
+      "observed": true
+    },
+    {
+      "detail": "child returned 1 row(s); observer rows=1",
+      "expected": true,
+      "name": "4 subprocess_open",
+      "observed": true
+    },
+    {
+      "detail": "armed native openers recorded: ['_wfopen']",
+      "expected": true,
+      "name": "7 native_open_noticed",
+      "observed": true
+    },
+    {
+      "detail": "wrapped -> 'Derived:weights', restored -> 'Derived:weights', recorded [\"('weights',)\"]",
+      "expected": true,
+      "name": "8 wrapping_preserves_dispatch",
+      "observed": true
+    },
+    {
+      "detail": "5 graph(s): ['1k3d68.onnx', '2d106det.onnx', 'genderage.onnx', 'glintr100.onnx', 'scrfd_10g_bnkps.onnx']",
+      "expected": true,
+      "name": "5 native_model_loader",
+      "observed": true
+    },
+    {
+      "detail": "rows=[{'loader': 'snapshot_download', 'identity': 'org/model', 'path': '', 'revision': 'deadbeef'}]",
+      "expected": true,
+      "name": "6 hub_identity",
+      "observed": true
+    }
+  ]
+}

@@ -122,7 +122,7 @@ def test_this_interpreter_serves_without_a_handover(monkeypatch):
     Named first because a handover that fires when it should not is the
     expensive failure: every start would pay for a second interpreter.
     """
-    monkeypatch.setattr(launcher.subprocess, "Popen", _never_spawned)
+    monkeypatch.setattr(launcher.proc, "background", _never_spawned)
     assert launcher.missing() is None, "the test environment is the one that serves"
     launcher.handover()  # returns, or _never_spawned raises
 
@@ -147,11 +147,11 @@ def test_an_interpreter_without_a_server_is_handed_to_the_one_that_has_it(monkey
     monkeypatch.delenv(launcher._HANDED_OVER, raising=False)
     handed = {}
 
-    def _spawn(argv, env):
-        handed.update(argv=argv, env=env)
+    def _spawn(argv, **options):
+        handed.update(argv=argv, **options)
         return _Waited(7)
 
-    monkeypatch.setattr(launcher.subprocess, "Popen", _spawn)
+    monkeypatch.setattr(launcher.proc, "background", _spawn)
 
     with pytest.raises(SystemExit) as ended:
         launcher.handover()
@@ -161,6 +161,7 @@ def test_an_interpreter_without_a_server_is_handed_to_the_one_that_has_it(monkey
     assert handed["argv"][1:3] == ["-m", "sg_web"], "the same command"
     assert handed["argv"][3:] == ["--port", "8791"], "carrying the argv it was given"
     assert handed["env"][launcher._HANDED_OVER] == "1", "and marked, so the child cannot repeat it"
+    assert handed["inherit_streams"] is True, "the child gets this console, so its log is this log and ^C reaches it"
 
 
 def test_a_handover_never_hands_over_again(monkeypatch):
@@ -173,7 +174,7 @@ def test_a_handover_never_hands_over_again(monkeypatch):
     """
     monkeypatch.setattr(launcher, "missing", lambda: "uvicorn")
     monkeypatch.setenv(launcher._HANDED_OVER, "1")
-    monkeypatch.setattr(launcher.subprocess, "Popen", _never_spawned)
+    monkeypatch.setattr(launcher.proc, "background", _never_spawned)
     launcher.handover()  # returns, so `main` goes on to refuse and say why
 
 
@@ -187,7 +188,7 @@ def test_without_an_environment_to_hand_to_it_refuses_and_names_the_command(monk
     monkeypatch.setattr(launcher, "missing", lambda: "uvicorn")
     monkeypatch.setattr(launcher, "interpreter", lambda: None)
     monkeypatch.setattr(sys, "argv", ["sg_web"])
-    monkeypatch.setattr(launcher.subprocess, "Popen", _never_spawned)
+    monkeypatch.setattr(launcher.proc, "background", _never_spawned)
 
     with pytest.raises(SystemExit) as refused:
         launcher.main()
@@ -220,15 +221,27 @@ def _never_spawned(*args, **kwargs):
 
 
 class _Waited:
-    """A child that has already finished, standing in for Popen.
+    """A child that has already finished, standing in for `proc.Running`.
 
     A real one would be a second interpreter serving a real socket, which
     is the thing a test does not start (sglint SG006). What the launcher
     owes its caller is the child's status, so that is what this carries.
+
+    `proc.background` is a context manager, so the double is entered and
+    left the way the launcher enters and leaves the real one. A plain object
+    would pass a test that never proved the launcher waits inside the scope
+    that kills the tree on the way out.
     """
 
     def __init__(self, ended: int) -> None:
         self._ended = ended
+        self.left = False
+
+    def __enter__(self) -> _Waited:
+        return self
+
+    def __exit__(self, *_details: object) -> None:
+        self.left = True
 
     def wait(self) -> int:
         return self._ended

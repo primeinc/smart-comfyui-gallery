@@ -1,9 +1,7 @@
 {
+  "identity": "0ab752e0f991ddf331b393f5840a74c4c85d916774af8f77dd6f2c8538fb8451",
   "manifest_version": 1,
   "population": {
-    "source_unread": [
-      "omnigen2"
-    ],
     "total": 22
   },
   "provenance_ok": true,
@@ -1497,7 +1495,7 @@
       "recorded_bytes": 1398992729,
       "recorded_sha256": "c4814b0f82ac58f5b9729676c3f7eaedec0eccf98c00b02637f155716140a835",
       "sha256": "c4814b0f82ac58f5b9729676c3f7eaedec0eccf98c00b02637f155716140a835",
-      "source": "?"
+      "source": "Junjie96/AnyStory"
     },
     {
       "bytes": 109497761,
@@ -1821,160 +1819,369 @@
   ],
   "weights": [
     {
+      "attestations": [
+        {
+          "authority": "first_party_consumer_snapshot",
+          "detail": "lfs oid at 4e89e896ebd0, size 260665334",
+          "evidence": "PROVEN",
+          "note": "git-lfs oid at an immutable HF revision; consisid is a declared consumer",
+          "path": "face_encoder/models/antelopev2/glintr100.onnx",
+          "repo_id": "BestWishYsh/ConsisID-preview",
+          "resolved_sha256": "4ab1d6435d639628a6f3e5008dd4f929edf4c4124b1a7169e1048f9fef534cdf",
+          "revision": "4e89e896ebd0105472dc89669bcf0eafc0fdf87f",
+          "source_class": "huggingface_snapshot"
+        },
+        {
+          "authority": "canonical_vendor",
+          "detail": "read from server/backend/insightface_server/models/packages.py:192",
+          "evidence": "PROVEN",
+          "note": "ANTELOPEV2 PackageFile",
+          "path": "server/backend/insightface_server/models/packages.py:192",
+          "repo_id": "deepinsight/insightface",
+          "resolved_sha256": "4ab1d6435d639628a6f3e5008dd4f929edf4c4124b1a7169e1048f9fef534cdf",
+          "revision": "7fadd420c2351d0ffa8cac403421c1a3ed733365",
+          "source_class": "git_published_checksum"
+        }
+      ],
       "bytes": 260665334,
       "file": "glintr100.onnx",
-      "matches_published": null,
       "pack": "antelopev2",
       "path": "C:\\ComfyUI\\output\\.AImodels\\insightface\\models\\antelopev2\\glintr100.onnx",
       "present": true,
-      "published_by": "",
-      "published_sha256": null,
       "role": "recognition -- the 512-d embedding every identity claim rests on",
-      "sha256": "4ab1d6435d639628a6f3e5008dd4f929edf4c4124b1a7169e1048f9fef534cdf"
+      "sha256": "4ab1d6435d639628a6f3e5008dd4f929edf4c4124b1a7169e1048f9fef534cdf",
+      "state": "VERIFIED"
     },
     {
+      "attestations": [
+        {
+          "authority": "first_party_consumer_snapshot",
+          "detail": "lfs oid at 4e89e896ebd0, size 16923827",
+          "evidence": "PROVEN",
+          "note": "",
+          "path": "face_encoder/models/antelopev2/scrfd_10g_bnkps.onnx",
+          "repo_id": "BestWishYsh/ConsisID-preview",
+          "resolved_sha256": "5838f7fe053675b1c7a08b633df49e7af5495cee0493c7dcf6697200b85b5b91",
+          "revision": "4e89e896ebd0105472dc89669bcf0eafc0fdf87f",
+          "source_class": "huggingface_snapshot"
+        },
+        {
+          "authority": "canonical_vendor",
+          "detail": "read from server/backend/insightface_server/models/packages.py:181",
+          "evidence": "PROVEN",
+          "note": "ANTELOPEV2 PackageFile",
+          "path": "server/backend/insightface_server/models/packages.py:181",
+          "repo_id": "deepinsight/insightface",
+          "resolved_sha256": "5838f7fe053675b1c7a08b633df49e7af5495cee0493c7dcf6697200b85b5b91",
+          "revision": "7fadd420c2351d0ffa8cac403421c1a3ed733365",
+          "source_class": "git_published_checksum"
+        }
+      ],
       "bytes": 16923827,
       "file": "scrfd_10g_bnkps.onnx",
-      "matches_published": null,
       "pack": "antelopev2",
       "path": "C:\\ComfyUI\\output\\.AImodels\\insightface\\models\\antelopev2\\scrfd_10g_bnkps.onnx",
       "present": true,
-      "published_by": "",
-      "published_sha256": null,
       "role": "detection -- bbox, det_score and the 5 keypoints the whole arcface family aligns on",
-      "sha256": "5838f7fe053675b1c7a08b633df49e7af5495cee0493c7dcf6697200b85b5b91"
+      "sha256": "5838f7fe053675b1c7a08b633df49e7af5495cee0493c7dcf6697200b85b5b91",
+      "state": "VERIFIED"
     },
     {
+      "attestations": [
+        {
+          "authority": "first_party_consumer_snapshot",
+          "detail": "lfs oid at 4e89e896ebd0, size 143607619",
+          "evidence": "PROVEN",
+          "note": "",
+          "path": "face_encoder/models/antelopev2/1k3d68.onnx",
+          "repo_id": "BestWishYsh/ConsisID-preview",
+          "resolved_sha256": "df5c06b8a0c12e422b2ed8947b8869faa4105387f199c477af038aa01f9a45cc",
+          "revision": "4e89e896ebd0105472dc89669bcf0eafc0fdf87f",
+          "source_class": "huggingface_snapshot"
+        }
+      ],
       "bytes": 143607619,
       "file": "1k3d68.onnx",
-      "matches_published": null,
       "pack": "antelopev2",
       "path": "C:\\ComfyUI\\output\\.AImodels\\insightface\\models\\antelopev2\\1k3d68.onnx",
       "present": true,
-      "published_by": "",
-      "published_sha256": null,
       "role": "landmark_3d_68, and pose is derived from its output rather than emitted separately",
-      "sha256": "df5c06b8a0c12e422b2ed8947b8869faa4105387f199c477af038aa01f9a45cc"
+      "sha256": "df5c06b8a0c12e422b2ed8947b8869faa4105387f199c477af038aa01f9a45cc",
+      "state": "VERIFIED"
     },
     {
+      "attestations": [
+        {
+          "authority": "first_party_consumer_snapshot",
+          "detail": "lfs oid at 4e89e896ebd0, size 5030888",
+          "evidence": "PROVEN",
+          "note": "",
+          "path": "face_encoder/models/antelopev2/2d106det.onnx",
+          "repo_id": "BestWishYsh/ConsisID-preview",
+          "resolved_sha256": "f001b856447c413801ef5c42091ed0cd516fcd21f2d6b79635b1e733a7109dbf",
+          "revision": "4e89e896ebd0105472dc89669bcf0eafc0fdf87f",
+          "source_class": "huggingface_snapshot"
+        }
+      ],
       "bytes": 5030888,
       "file": "2d106det.onnx",
-      "matches_published": null,
       "pack": "antelopev2",
       "path": "C:\\ComfyUI\\output\\.AImodels\\insightface\\models\\antelopev2\\2d106det.onnx",
       "present": true,
-      "published_by": "",
-      "published_sha256": null,
       "role": "landmark_2d_106 -- 848 bytes per face, the second-largest retained candidate",
-      "sha256": "f001b856447c413801ef5c42091ed0cd516fcd21f2d6b79635b1e733a7109dbf"
+      "sha256": "f001b856447c413801ef5c42091ed0cd516fcd21f2d6b79635b1e733a7109dbf",
+      "state": "VERIFIED"
     },
     {
+      "attestations": [
+        {
+          "authority": "first_party_consumer_snapshot",
+          "detail": "lfs oid at 4e89e896ebd0, size 1322532",
+          "evidence": "PROVEN",
+          "note": "",
+          "path": "face_encoder/models/antelopev2/genderage.onnx",
+          "repo_id": "BestWishYsh/ConsisID-preview",
+          "resolved_sha256": "4fde69b1c810857b88c64a335084f1c3fe8f01246c9a191b48c7bb756d6652fb",
+          "revision": "4e89e896ebd0105472dc89669bcf0eafc0fdf87f",
+          "source_class": "huggingface_snapshot"
+        }
+      ],
       "bytes": 1322532,
       "file": "genderage.onnx",
-      "matches_published": null,
       "pack": "antelopev2",
       "path": "C:\\ComfyUI\\output\\.AImodels\\insightface\\models\\antelopev2\\genderage.onnx",
       "present": true,
-      "published_by": "",
-      "published_sha256": null,
       "role": "gender and age; not derivable from anything else the pass returns",
-      "sha256": "4fde69b1c810857b88c64a335084f1c3fe8f01246c9a191b48c7bb756d6652fb"
+      "sha256": "4fde69b1c810857b88c64a335084f1c3fe8f01246c9a191b48c7bb756d6652fb",
+      "state": "VERIFIED"
     },
     {
+      "attestations": [
+        {
+          "authority": "corroborating_mirror",
+          "detail": "README.md:452 Models Hashsum is not a line in that blob",
+          "evidence": "UNRESOLVABLE",
+          "note": "README on a mutable default branch",
+          "path": "README.md:452 Models Hashsum",
+          "repo_id": "Gourieff/ComfyUI-ReActor",
+          "resolved_sha256": "",
+          "revision": "",
+          "source_class": "git_published_checksum"
+        },
+        {
+          "authority": "canonical_vendor",
+          "detail": "read from server/backend/insightface_server/models/packages.py:82",
+          "evidence": "PROVEN",
+          "note": "BUFFALO_L PackageFile",
+          "path": "server/backend/insightface_server/models/packages.py:82",
+          "repo_id": "deepinsight/insightface",
+          "resolved_sha256": "5838f7fe053675b1c7a08b633df49e7af5495cee0493c7dcf6697200b85b5b91",
+          "revision": "7fadd420c2351d0ffa8cac403421c1a3ed733365",
+          "source_class": "git_published_checksum"
+        }
+      ],
       "bytes": 16923827,
       "file": "det_10g.onnx",
-      "matches_published": true,
       "pack": "buffalo_l",
       "path": "C:\\ComfyUI\\output\\.AImodels\\insightface\\models\\buffalo_l\\det_10g.onnx",
       "present": true,
-      "published_by": "Gourieff/ComfyUI-ReActor README.md:452 Models Hashsum",
-      "published_sha256": "5838f7fe053675b1c7a08b633df49e7af5495cee0493c7dcf6697200b85b5b91",
       "role": "detection for UniPortrait; NOT the same detector as antelopev2",
-      "sha256": "5838f7fe053675b1c7a08b633df49e7af5495cee0493c7dcf6697200b85b5b91"
+      "sha256": "5838f7fe053675b1c7a08b633df49e7af5495cee0493c7dcf6697200b85b5b91",
+      "state": "VERIFIED"
     },
     {
+      "attestations": [
+        {
+          "authority": "canonical_vendor",
+          "detail": "read from server/backend/insightface_server/models/packages.py:93",
+          "evidence": "PROVEN",
+          "note": "BUFFALO_L PackageFile",
+          "path": "server/backend/insightface_server/models/packages.py:93",
+          "repo_id": "deepinsight/insightface",
+          "resolved_sha256": "4c06341c33c2ca1f86781dab0e829f88ad5b64be9fba56e56bc9ebdefc619e43",
+          "revision": "7fadd420c2351d0ffa8cac403421c1a3ed733365",
+          "source_class": "git_published_checksum"
+        }
+      ],
       "bytes": 174383860,
       "file": "w600k_r50.onnx",
-      "matches_published": true,
       "pack": "buffalo_l",
       "path": "C:\\ComfyUI\\output\\.AImodels\\insightface\\models\\buffalo_l\\w600k_r50.onnx",
       "present": true,
-      "published_by": "Gourieff/ComfyUI-ReActor README.md:466 Models Hashsum",
-      "published_sha256": "4c06341c33c2ca1f86781dab0e829f88ad5b64be9fba56e56bc9ebdefc619e43",
       "role": "buffalo_l recognition; a third embedding space alongside glintr100 and facexlib arcface",
-      "sha256": "4c06341c33c2ca1f86781dab0e829f88ad5b64be9fba56e56bc9ebdefc619e43"
+      "sha256": "4c06341c33c2ca1f86781dab0e829f88ad5b64be9fba56e56bc9ebdefc619e43",
+      "state": "VERIFIED"
     },
     {
+      "attestations": [
+        {
+          "authority": "first_party_consumer_snapshot",
+          "detail": "lfs oid at 4e89e896ebd0, size 143607619",
+          "evidence": "PROVEN",
+          "note": "",
+          "path": "face_encoder/models/buffalo_l/1k3d68.onnx",
+          "repo_id": "BestWishYsh/ConsisID-preview",
+          "resolved_sha256": "df5c06b8a0c12e422b2ed8947b8869faa4105387f199c477af038aa01f9a45cc",
+          "revision": "4e89e896ebd0105472dc89669bcf0eafc0fdf87f",
+          "source_class": "huggingface_snapshot"
+        }
+      ],
       "bytes": 143607619,
       "file": "1k3d68.onnx",
-      "matches_published": true,
       "pack": "buffalo_l",
       "path": "C:\\ComfyUI\\output\\.AImodels\\insightface\\models\\buffalo_l\\1k3d68.onnx",
       "present": true,
-      "published_by": "Gourieff/ComfyUI-ReActor README.md:438 Models Hashsum",
-      "published_sha256": "df5c06b8a0c12e422b2ed8947b8869faa4105387f199c477af038aa01f9a45cc",
       "role": "landmark_3d_68 for ReActor's face model; absent under PhotoMaker's allowed_modules",
-      "sha256": "df5c06b8a0c12e422b2ed8947b8869faa4105387f199c477af038aa01f9a45cc"
+      "sha256": "df5c06b8a0c12e422b2ed8947b8869faa4105387f199c477af038aa01f9a45cc",
+      "state": "VERIFIED"
     },
     {
+      "attestations": [
+        {
+          "authority": "first_party_consumer_snapshot",
+          "detail": "lfs oid at 4e89e896ebd0, size 5030888",
+          "evidence": "PROVEN",
+          "note": "",
+          "path": "face_encoder/models/buffalo_l/2d106det.onnx",
+          "repo_id": "BestWishYsh/ConsisID-preview",
+          "resolved_sha256": "f001b856447c413801ef5c42091ed0cd516fcd21f2d6b79635b1e733a7109dbf",
+          "revision": "4e89e896ebd0105472dc89669bcf0eafc0fdf87f",
+          "source_class": "huggingface_snapshot"
+        }
+      ],
       "bytes": 5030888,
       "file": "2d106det.onnx",
-      "matches_published": true,
       "pack": "buffalo_l",
       "path": "C:\\ComfyUI\\output\\.AImodels\\insightface\\models\\buffalo_l\\2d106det.onnx",
       "present": true,
-      "published_by": "Gourieff/ComfyUI-ReActor README.md:445 Models Hashsum",
-      "published_sha256": "f001b856447c413801ef5c42091ed0cd516fcd21f2d6b79635b1e733a7109dbf",
       "role": "landmark_2d_106 for ReActor's face model; absent under PhotoMaker's allowed_modules",
-      "sha256": "f001b856447c413801ef5c42091ed0cd516fcd21f2d6b79635b1e733a7109dbf"
+      "sha256": "f001b856447c413801ef5c42091ed0cd516fcd21f2d6b79635b1e733a7109dbf",
+      "state": "VERIFIED"
     },
     {
+      "attestations": [
+        {
+          "authority": "first_party_consumer_snapshot",
+          "detail": "lfs oid at 4e89e896ebd0, size 1322532",
+          "evidence": "PROVEN",
+          "note": "",
+          "path": "face_encoder/models/buffalo_l/genderage.onnx",
+          "repo_id": "BestWishYsh/ConsisID-preview",
+          "resolved_sha256": "4fde69b1c810857b88c64a335084f1c3fe8f01246c9a191b48c7bb756d6652fb",
+          "revision": "4e89e896ebd0105472dc89669bcf0eafc0fdf87f",
+          "source_class": "huggingface_snapshot"
+        }
+      ],
       "bytes": 1322532,
       "file": "genderage.onnx",
-      "matches_published": true,
       "pack": "buffalo_l",
       "path": "C:\\ComfyUI\\output\\.AImodels\\insightface\\models\\buffalo_l\\genderage.onnx",
       "present": true,
-      "published_by": "Gourieff/ComfyUI-ReActor README.md:459 Models Hashsum",
-      "published_sha256": "4fde69b1c810857b88c64a335084f1c3fe8f01246c9a191b48c7bb756d6652fb",
       "role": "gender and age for ReActor's face model; absent under PhotoMaker's allowed_modules",
-      "sha256": "4fde69b1c810857b88c64a335084f1c3fe8f01246c9a191b48c7bb756d6652fb"
+      "sha256": "4fde69b1c810857b88c64a335084f1c3fe8f01246c9a191b48c7bb756d6652fb",
+      "state": "VERIFIED"
     },
     {
+      "attestations": [
+        {
+          "authority": "first_party_consumer_snapshot",
+          "detail": "lfs oid at 4e89e896ebd0, size 109497761",
+          "evidence": "PROVEN",
+          "note": "consisid ships facexlib's own weights; upstream facexlib publishes no digest",
+          "path": "face_encoder/detection_Resnet50_Final.pth",
+          "repo_id": "BestWishYsh/ConsisID-preview",
+          "resolved_sha256": "6d1de9c2944f2ccddca5f5e010ea5ae64a39845a86311af6fdf30841b0a5a16d",
+          "revision": "4e89e896ebd0105472dc89669bcf0eafc0fdf87f",
+          "source_class": "huggingface_snapshot"
+        },
+        {
+          "authority": "canonical_vendor",
+          "detail": "vendor asset 38201344 at 2021-06-07T12:52:28Z, 109497761 bytes, hashed from the mirror",
+          "evidence": "PROVEN",
+          "note": "named at facexlib/detection/__init__.py:11; upstream publishes no digest",
+          "path": "releases/download/v0.1.0/detection_Resnet50_Final.pth",
+          "repo_id": "xinntao/facexlib",
+          "resolved_sha256": "6d1de9c2944f2ccddca5f5e010ea5ae64a39845a86311af6fdf30841b0a5a16d",
+          "revision": "38201344@2021-06-07T12:52:28Z",
+          "source_class": "github_release_asset"
+        }
+      ],
       "bytes": 109497761,
       "file": "detection_Resnet50_Final.pth",
-      "matches_published": null,
       "pack": "facexlib",
       "path": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv-compat\\Lib\\site-packages\\facexlib\\weights\\detection_Resnet50_Final.pth",
       "present": true,
-      "published_by": "",
-      "published_sha256": null,
-      "role": "retinaface_resnet50 -- the detector in the loop for PuLID/ConsisID/InfiniteYou",
-      "sha256": "6d1de9c2944f2ccddca5f5e010ea5ae64a39845a86311af6fdf30841b0a5a16d"
+      "role": "",
+      "sha256": "6d1de9c2944f2ccddca5f5e010ea5ae64a39845a86311af6fdf30841b0a5a16d",
+      "state": "VERIFIED"
     },
     {
+      "attestations": [
+        {
+          "authority": "corroborating_mirror",
+          "detail": "lfs oid at d3ad6bbf8333, size 175367323",
+          "evidence": "PROVEN",
+          "note": "third-party mirror; upstream facexlib publishes no digest (hash_prefix=None)",
+          "path": "recognition_arcface_ir_se50.pth",
+          "repo_id": "leonelhs/facexlib",
+          "resolved_sha256": "a035c768259b98ab1ce0e646312f48b9e1e218197a0f80ac6765e88f8b6ddf28",
+          "revision": "d3ad6bbf8333a8f4286c9cdd71b12dc7cd66fd8a",
+          "source_class": "huggingface_snapshot"
+        },
+        {
+          "authority": "canonical_vendor",
+          "detail": "vendor asset 38201356 at 2021-06-07T12:52:45Z, 175367323 bytes, hashed from the mirror",
+          "evidence": "PROVEN",
+          "note": "named at facexlib/recognition/__init__.py:10; upstream publishes no digest",
+          "path": "releases/download/v0.1.0/recognition_arcface_ir_se50.pth",
+          "repo_id": "xinntao/facexlib",
+          "resolved_sha256": "a035c768259b98ab1ce0e646312f48b9e1e218197a0f80ac6765e88f8b6ddf28",
+          "revision": "38201356@2021-06-07T12:52:45Z",
+          "source_class": "github_release_asset"
+        }
+      ],
       "bytes": 175367323,
       "file": "recognition_arcface_ir_se50.pth",
-      "matches_published": null,
       "pack": "facexlib",
       "path": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv-compat\\Lib\\site-packages\\facexlib\\weights\\recognition_arcface_ir_se50.pth",
       "present": true,
-      "published_by": "",
-      "published_sha256": null,
-      "role": "InfiniteYou's embedding model; a DIFFERENT 512-d space from glintr100",
-      "sha256": "a035c768259b98ab1ce0e646312f48b9e1e218197a0f80ac6765e88f8b6ddf28"
+      "role": "",
+      "sha256": "a035c768259b98ab1ce0e646312f48b9e1e218197a0f80ac6765e88f8b6ddf28",
+      "state": "VERIFIED"
     },
     {
+      "attestations": [
+        {
+          "authority": "first_party_consumer_snapshot",
+          "detail": "lfs oid at 4e89e896ebd0, size 53289463",
+          "evidence": "PROVEN",
+          "note": "consisid ships facexlib's own weights; upstream facexlib publishes no digest",
+          "path": "face_encoder/parsing_bisenet.pth",
+          "repo_id": "BestWishYsh/ConsisID-preview",
+          "resolved_sha256": "468e13ca13a9b43cc0881a9f99083a430e9c0a38abd935431d1c28ee94b26567",
+          "revision": "4e89e896ebd0105472dc89669bcf0eafc0fdf87f",
+          "source_class": "huggingface_snapshot"
+        },
+        {
+          "authority": "canonical_vendor",
+          "detail": "vendor asset 41869402 at 2021-08-06T06:53:14Z, 53289463 bytes, hashed from the mirror",
+          "evidence": "PROVEN",
+          "note": "named at facexlib/parsing/__init__.py:11; upstream publishes no digest",
+          "path": "releases/download/v0.2.0/parsing_bisenet.pth",
+          "repo_id": "xinntao/facexlib",
+          "resolved_sha256": "468e13ca13a9b43cc0881a9f99083a430e9c0a38abd935431d1c28ee94b26567",
+          "revision": "41869402@2021-08-06T06:53:14Z",
+          "source_class": "github_release_asset"
+        }
+      ],
       "bytes": 53289463,
       "file": "parsing_bisenet.pth",
-      "matches_published": null,
       "pack": "facexlib",
       "path": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv-compat\\Lib\\site-packages\\facexlib\\weights\\parsing_bisenet.pth",
       "present": true,
-      "published_by": "",
-      "published_sha256": null,
-      "role": "face parsing for PuLID/ConsisID masked crops",
-      "sha256": "468e13ca13a9b43cc0881a9f99083a430e9c0a38abd935431d1c28ee94b26567"
+      "role": "",
+      "sha256": "468e13ca13a9b43cc0881a9f99083a430e9c0a38abd935431d1c28ee94b26567",
+      "state": "VERIFIED"
     }
   ]
 }

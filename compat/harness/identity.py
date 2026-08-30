@@ -44,6 +44,11 @@ ROOT: Final[Path] = Path(__file__).resolve().parent.parent
 #: as any runner's. Application packages are hashed whole, not by entry point.
 APP_DIRS: Final[tuple[str, ...]] = ("vision", "db")
 
+#: Repository-root modules the suite executes. `proc.py` carries every lane's
+#: git reads, every shard launch and every timeout, and sits in no source
+#: directory, so nothing else here notices when it changes.
+ROOT_SOURCES: Final[tuple[str, ...]] = ("proc.py",)
+
 SOURCE_DIRS: Final[tuple[str, ...]] = (
     "assertions",
     "consumers",
@@ -119,6 +124,10 @@ def application_digests() -> dict[str, str]:
             if "__pycache__" in path.parts:
                 continue
             out[path.relative_to(repo).as_posix()] = sha256_of(path.read_bytes())
+    for name in ROOT_SOURCES:
+        one = repo / name
+        if one.is_file():
+            out[name] = sha256_of(one.read_bytes())
     return out
 
 
@@ -169,7 +178,9 @@ def pinned_repos() -> dict[str, str]:
 def weight_digests() -> dict[str, str]:
     """Every declared model file's sha256, as `provenance` computes it."""
     out: dict[str, str] = {}
-    for row in provenance.weight_identity(provenance.load_manifest()):
+    manifest = provenance.load_manifest()
+    refs_root = (ROOT.parent / manifest["refs_root"]).resolve()
+    for row in provenance.weight_identity(manifest, refs_root):
         key = f"{row.get('pack', '?')}/{row.get('file', '?')}"
         out[key] = str(row.get("sha256") or row.get("state") or "absent")
     return out

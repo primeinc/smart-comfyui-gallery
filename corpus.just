@@ -1,33 +1,26 @@
-# A sample library on disk: real media, and a generated shape around it.
-#
-# TWO HALVES, because neither does the other's job.
-#
-# FETCHED is real media from pinned public sources -- one file per format
-# and per camera maker, written by the bodies and tools that really write
-# them. It is what reaches the readers: a 2001 Nikon with no subsecond, a
-# Pixel 8 with a real OffsetTimeOriginal, a Pentax at Orientation=8, a
-# Canon CR3 that PyAV opens and cannot describe. A generator emits what
-# its own library emits, so it can only ever test one writer; these are
-# many. Measured: they take the readers from 24.2% to 31.3%.
-#
-# GENERATED is the shape a real library has in TIME -- decades, unevenly,
-# with holes. The fetched files carry whatever dates they carry and no
-# arrangement at all, so they cannot exercise a timeline. This half can,
-# and it is honest about being painted rectangles.
-#
-# The fetched half is NOT vendored: ExifTool is GPL-3, its images are
-# collected from mixed sources, and several carry real coordinates. They
-# are downloaded here, outside the repository, and never committed.
+# A sample library on disk, in two halves because neither does the other's
+# job.
+
+# FETCHED is real media from pinned public sources, one file per format and
+# camera maker, written by the bodies and tools that really write them. A
+# generator emits what its own library emits and can test one writer.
+
+# GENERATED is the shape a real library has in TIME: decades, unevenly, with
+# holes. The fetched files carry no arrangement at all, so they cannot
+# exercise a timeline. This half can, and it is painted rectangles.
+
+# The fetched half is NOT vendored: ExifTool is GPL-3, its images come from
+# mixed sources, and several carry real coordinates. Downloaded outside the
+# repository, never committed.
 
 set positional-arguments
 set script-interpreter := ['bash', '-euo', 'pipefail']
 
 python := if os_family() == 'windows' { './.venv/Scripts/python.exe' } else { './.venv/bin/python' }
 
-#: Where a corpus goes unless somebody says otherwise. Beside the repo
-#: rather than inside it: it is hundreds of files that must never be
-#: mistaken for the tree, and `.gitignore` is a weaker promise than a
-#: different parent. `SG_CORPUS` overrides it for the tests.
+#: Where a corpus goes unless somebody says otherwise. Beside the repo, not
+#: inside it: hundreds of files that must never be mistaken for the tree, and
+#: `.gitignore` is a weaker promise than a different parent.
 default_root := justfile_directory() / '..' / 'sg-corpus'
 
 # What each part holds, so a person can pick before waiting.
@@ -87,13 +80,18 @@ write SCALE='medium' DIR=default_root RAW='':
     {{ python }} -m tests.corpus "$dir/generated" --scale "$scale" --force
 
     echo
-    echo "add it:  POST /roots {\"path\": \"$(cd "$dir" && pwd -W 2>/dev/null || pwd)\"}"
+    # `cd` on its own line, where errexit sees it. Inside the substitution its
+    # failure fell through to the `|| pwd` fallback, which printed the CURRENT
+    # directory as the corpus root -- a wrong path, reported as the right one.
+    cd "$dir"
+    root=$(pwd -W 2>/dev/null || pwd)
+    cd - > /dev/null
+    echo "add it:  POST /roots {\"path\": \"$root\"}"
     echo "or open  /operations  and add the root there"
 
-# Fetched, written, scanned, and read back -- the only proof that a
-# corpus is a LIBRARY rather than a directory. Reports what the
-# application made of it: kinds, recipes, cameras, duplicate groups, and
-# how much of the timeline is empty enough to collapse.
+# Fetched, written, scanned and read back: the only proof that a corpus is a
+# LIBRARY rather than a directory. Reports kinds, recipes, cameras, duplicate
+# groups, and how much of the timeline is empty enough to collapse.
 [doc('Build a small corpus, scan it, and report what the library made of it')]
 [script]
 prove:
@@ -118,10 +116,9 @@ gather DIR=default_root:
     cd "$(git rev-parse --show-toplevel)"
     SG_CORPUS="$1" {{ python }} -m tests.gathered
 
-# One file per registered generator. Six of the eight have no obtainable
-# real specimen -- 925 candidate images across four upstream mirrors carry
-# no generator metadata at all -- so these are written from this repo's own
-# writer ports and labelled written. See tests/dialects.py.
+# One file per registered generator. Most have no obtainable real specimen,
+# so these are written from this repository's own writer ports and labelled
+# written. See tests/dialects.py.
 [doc('Write one file per generator adapter into DIR')]
 [script]
 dialects DIR=default_root:
@@ -159,23 +156,21 @@ needs DIR=default_root:
     cd "$(git rev-parse --show-toplevel)"
     SG_CORPUS="$1" {{ python }} -m tests.needs
 
-# The measurement above REPORTS. This one FAILS.
-#
-# A number written into a lockfile can be satisfied by writing a bigger
-# number. `tests/test_the_corpus_spans_the_shape.py` re-measures and asserts
-# every declared value is reached by a real file or BLOCKED_EXTERNALLY in
-# `tests/needs.py BLOCKED` with evidence -- and asserts the reverse too, so
-# an excuse cannot outlive the gap it was written for.
+# The measurement above REPORTS; this one FAILS. A number in a lockfile can
+# be satisfied by writing a bigger number.
+
+# `tests/test_the_corpus_spans_the_shape.py` re-measures, asserts every
+# declared value is reached by a real file or BLOCKED_EXTERNALLY with
+# evidence, and asserts the reverse so an excuse cannot outlive its gap.
 [doc('Fail if the corpus does not span the shape the application declares')]
 [script]
 spans DIR=default_root:
     cd "$(git rev-parse --show-toplevel)"
     SG_CORPUS="$1" {{ python }} -m pytest tests/test_the_corpus_spans_the_shape.py -m slow
 
-# The reach baseline is frozen on purpose; re-freezing it is a deliberate
-# act with a stated reason, never a side effect. The measurement re-reads
-# the baseline's own corpus block (generator, seed, scale), so the
-# procedure cannot drift from the record.
+# The reach baseline is frozen on purpose; re-freezing it is a deliberate act
+# with a stated reason. The measurement re-reads the baseline's own corpus
+# block, so the procedure cannot drift from the record.
 [doc('Re-measure tests/reach_baseline.json; NOTE says why the readers changed')]
 [script]
 refreeze-reach NOTE:

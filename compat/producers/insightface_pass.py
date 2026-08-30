@@ -35,6 +35,7 @@ import numpy as np
 import numpy.typing as npt
 
 from compat.assertions.arrays import digest
+from vision import faces as faces_module
 
 #: The provisioned pack root, the directory ABOVE `models/`, as
 #: `vision/weights.py` resolves it. Machine-local, so it takes an env var and
@@ -47,10 +48,10 @@ PACK: str = "antelopev2"
 #: this machine's driver.
 PROVIDERS: tuple[str, ...] = ("CPUExecutionProvider",)
 
-#: Detection input size upstream's own `FaceAnalysis.prepare` defaults to.
-#: Recorded rather than left implicit: it changes which faces are found, so it
-#: is part of the producer's identity.
-DET_SIZE: tuple[int, int] = (640, 640)
+#: The detection sizes THIS APPLICATION uses, in its order. Imported rather
+#: than retyped, so a ladder that moves in `vision/faces.py` moves the
+#: evidence with it.
+DET_SIZE: tuple[tuple[int, int], ...] = tuple((one, one) for one in faces_module.DET_SIZES)
 
 
 @dataclass
@@ -116,9 +117,24 @@ def analysis(root: Path = MODELS_ROOT, pack: str = PACK) -> Any:
     key = (str(root), pack)
     if key not in _prepared:
         app = FaceAnalysis(name=pack, root=str(root), providers=list(PROVIDERS))
-        app.prepare(ctx_id=-1, det_size=DET_SIZE)
+        app.prepare(ctx_id=-1, det_size=DET_SIZE[0])
         _prepared[key] = app
     return _prepared[key]
+
+
+def detect(bgr: npt.NDArray[np.uint8], root: Path = MODELS_ROOT, pack: str = PACK) -> list[Any]:
+    """Every face the application would find in this frame.
+
+    The one entry point for `our_face`: `analysis().get(frame)` detects at
+    whatever single size the pack was prepared with, and the application
+    descends `DET_SIZES` until one finds a face.
+    """
+    return list(faces_module.first_hit_descending(analysis(root, pack), bgr))
+
+
+def detect_padded(bgr: npt.NDArray[np.uint8], root: Path = MODELS_ROOT, pack: str = PACK) -> Any | None:
+    """The padded-recovery face the application stores beside the primary."""
+    return faces_module.padded_recovery(analysis(root, pack), bgr)
 
 
 def loaded_models(app: Any) -> dict[str, str]:
@@ -225,7 +241,9 @@ def run_image(app: Any, path: Path) -> ImageReport:
     """One image, decoded the way the consumers decode it, through the pass."""
     bgr, sha = decode(path)
     began = time.perf_counter()
-    faces = app.get(bgr)
+    # The application's own ladder, not one `app.get` picks: the record this
+    # producer inventories is the record `vision/faces.py` stores.
+    faces = faces_module.first_hit_descending(app, bgr)
     seconds = time.perf_counter() - began
 
     height, width = bgr.shape[:2]

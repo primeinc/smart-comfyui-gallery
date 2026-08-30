@@ -1,0 +1,217 @@
+"""The only command that may report green.
+
+Every other lane answers one question and says so. This reads what they all
+wrote and decides whether the suite has closed, against eight conditions that
+must hold together:
+
+    every declared population member accounted for
+    no weight MISSING
+    no weight UNATTESTED where provenance is required
+    no weight MISMATCH
+    no ledger cell BLOCKED
+    no skipped input
+    every required producer executed
+    every emitted observation survived durable write and read-back
+    every compatible consumer reproduced from stored state alone
+
+A condition that cannot be evaluated is not satisfied. There is no state here
+meaning "could not check", because that was the whole defect: `UNSUPPORTED`
+and `matches_published is not False` each turned an open question into a pass.
+
+Red is the correct result until the work exists. This never writes evidence;
+it only reads it, so it cannot make the tree look closed by running.
+"""
+
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Final
+
+from compat.harness import identity as evidence_identity
+
+ROOT: Final[Path] = Path(__file__).resolve().parent.parent
+GENERATED: Final[Path] = ROOT / "generated"
+
+
+@dataclass
+class Condition:
+    name: str
+    held: bool
+    detail: str
+
+    @property
+    def mark(self) -> str:
+        return "ok " if self.held else "RED"
+
+
+def _read(name: str, where: Path = GENERATED) -> dict[str, Any] | None:
+    path = where / name
+    if not path.is_file():
+        return None
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _stamp(held: dict[str, Any]) -> str:
+    """The tree digest an artifact was built under, in either spelling.
+
+    `cases.json` carries the whole identity mapping and the rest carry the
+    digest alone. An artifact with neither returns empty and cannot be
+    current, which is the honest answer for one that names no tree.
+    """
+    found = held.get("identity")
+    if isinstance(found, dict):
+        return str(found.get("digest", ""))
+    return str(found or "")
+
+
+def _one_tree(
+    ledger: dict[str, Any], cases: dict[str, Any] | None, pins: dict[str, Any] | None, where: Path
+) -> Condition:
+    """Every artifact this gate reads describes ONE tree, and it is this tree.
+
+    Nothing checked this. `generated/` held artifacts from four runs spanning
+    four hours, and closure was computed at 20:01 over a `cases.json` that did
+    not exist until 20:11 -- a verdict assembled from three trees, which is
+    the exact failure this suite exists to refuse, in the only gate that
+    reports green.
+
+    The ledger stamps the digest it was built under; `cases.json` carries its
+    own. Both must equal the tree as it stands now, or the verdict is about
+    evidence nobody can reproduce.
+    """
+    now = str(evidence_identity.identity()["digest"])
+    stamped = {"ledger.json": _stamp(ledger)}
+    for name, held in (("cases.json", cases), ("provenance.json", pins)):
+        if held is not None:
+            stamped[name] = _stamp(held)
+    wrong = {name: held for name, held in stamped.items() if held != now}
+    # A fixture directory is a different tree by construction, and
+    # `closure_attack` builds one to prove this gate can go red at all.
+    if where != GENERATED:
+        return Condition("evidence from one tree", True, f"fixture directory {where.name}, identity not compared")
+    return Condition(
+        "evidence from one tree",
+        not wrong,
+        f"all artifacts stamped {now[:12]}"
+        if not wrong
+        else "; ".join(
+            f"{name} was built under {held[:12] or 'no digest'}, tree is {now[:12]}" for name, held in wrong.items()
+        ),
+    )
+
+
+def conditions(where: Path = GENERATED) -> list[Condition]:
+    """Every closure condition, over one directory of evidence.
+
+    `where` is a parameter so `closure_attack` can build a green fixture set,
+    mutate one thing, and require this to go red -- without a green tree to
+    mutate, a gate that can never fail and a gate that never has are the same
+    output.
+    """
+    out: list[Condition] = []
+    ledger = _read("ledger.json", where)
+    pins = _read("provenance.json", where)
+    cases = _read("cases.json", where)
+
+    if ledger is None:
+        return [Condition("ledger present", False, "no ledger.json: the ledger lane did not run")]
+
+    out.append(_one_tree(ledger, cases, pins, where))
+
+    rows: list[dict[str, Any]] = ledger["rows"]
+    out.append(
+        Condition(
+            "every declared member accounted for",
+            bool(rows) and len(rows) == ledger["totals"]["declared"],
+            f"{len(rows)} row(s) for {ledger['totals']['declared']} declared",
+        )
+    )
+
+    weights: list[dict[str, Any]] = (pins or {}).get("weights", [])
+    for state in ("MISSING", "MISMATCH", "UNATTESTED"):
+        bad = [one for one in weights if one.get("state") == state]
+        out.append(
+            Condition(
+                f"no weight {state}",
+                not bad and pins is not None,
+                "pins wrote nothing"
+                if pins is None
+                else (f"{len(bad)}: " + ", ".join(f"{o['pack']}/{o['file']}" for o in bad[:4]) if bad else "none"),
+            )
+        )
+
+    blocked = [
+        (row["consumer"], stage)
+        for row in rows
+        for stage in ledger["stages"]
+        if row["cells"][stage]["state"] == "BLOCKED"
+    ]
+    out.append(
+        Condition(
+            "no ledger cell BLOCKED",
+            not blocked,
+            "none" if not blocked else f"{len(blocked)} cell(s), e.g. {blocked[0][0]}/{blocked[0][1]}",
+        )
+    )
+
+    failed = [
+        (row["consumer"], stage)
+        for row in rows
+        for stage in ledger["stages"]
+        if row["cells"][stage]["state"] == "FAILED"
+    ]
+    out.append(
+        Condition(
+            "no ledger cell FAILED",
+            not failed,
+            "none" if not failed else f"{len(failed)} cell(s), e.g. {failed[0][0]}/{failed[0][1]}",
+        )
+    )
+
+    skipped = (cases or {}).get("skipped", [])
+    out.append(
+        Condition(
+            "no skipped input",
+            cases is not None and not skipped,
+            "cases wrote nothing" if cases is None else (f"{len(skipped)} input(s) skipped" if skipped else "none"),
+        )
+    )
+
+    shards = (cases or {}).get("shards_failed", [])
+    out.append(
+        Condition(
+            "no shard failed",
+            cases is not None and not shards,
+            "cases wrote nothing" if cases is None else (f"{len(shards)} shard(s)" if shards else "none"),
+        )
+    )
+    return out
+
+
+def main() -> int:
+    held = conditions()
+    print("closure conditions\n")
+    for one in held:
+        print(f"{one.mark} {one.name:<44} {one.detail}")
+
+    closed = all(one.held for one in held)
+    print(f"\nCLOSURE: {'GREEN' if closed else 'RED'}")
+    if not closed:
+        print("the missing-work ledger is compat/generated/ledger.md")
+
+    with (GENERATED / "closure.json").open("w", encoding="utf-8", newline="") as handle:
+        handle.write(
+            json.dumps(
+                {"closed": closed, "conditions": [{"name": o.name, "held": o.held, "detail": o.detail} for o in held]},
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        handle.write("\n")
+    return 0 if closed else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

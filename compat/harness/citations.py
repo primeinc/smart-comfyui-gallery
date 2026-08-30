@@ -27,11 +27,11 @@ from __future__ import annotations
 
 import json
 import re
-import subprocess
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Final
 
+import proc
 from compat.harness import provenance
 
 ROOT: Final[Path] = Path(__file__).resolve().parent.parent
@@ -80,9 +80,10 @@ class Citation:
 
 
 def _blob(clone: Path, commit: str, path: str) -> bytes | None:
-    argv: list[str] = ["git", "-C", str(clone), "cat-file", "blob", f"{commit}:{path}"]
-    done = subprocess.run(argv, capture_output=True, check=False, timeout=60)
-    return done.stdout if done.returncode == 0 else None
+    code, out, _ = proc.run(
+        ["git", "-C", str(clone), "cat-file", "blob", f"{commit}:{path}"], timeout=proc.LOCAL_SECONDS
+    )
+    return out if code == 0 else None
 
 
 def anchors(description: str) -> list[str]:

@@ -914,3 +914,38 @@ def test_the_layer_boundary_holds_and_can_fail(tmp_path):
     # the linter's own tests are the one place handing a rule source IS
     # the point, and they are excused by name
     assert rules.rule_tests_run_things(here, excused=frozenset({"test_source.py"})) == []
+
+
+def test_the_comment_rule_reaches_justfiles(tmp_path):
+    """SG013 over a justfile, which `tokenize` cannot read.
+
+    `every_source` walks `.py` only, so the file that runs the whole
+    compatibility suite was the one place a comment could say anything at any
+    length. The scanner that closed that is proven here rather than by having
+    fired once: a regression returning [] would otherwise read as a clean tree.
+    """
+    inside = tmp_path / "nested" / "deep"
+    inside.mkdir(parents=True)
+    (inside / "thing.just").write_text(
+        "#!/usr/bin/env just\n"
+        "# one\n# two\n# three\n# four\n"
+        "\n"
+        "# under\n# the\n# limit\n"
+        "recipe:\n    echo hi  # trailing, one line by construction\n",
+        encoding="utf-8",
+    )
+    found = rules._just_comment_blocks(tmp_path)
+    assert [(f.code, f.line) for f in found] == [("SG013", 2)], (
+        f"expected the four-line block at line 2 and nothing else, got {[(f.code, f.line) for f in found]}"
+    )
+    assert "runs to 4 lines" in found[0].message
+
+
+def test_the_justfile_sweep_reaches_a_nested_file(tmp_path):
+    """`every_just` finds a justfile at any depth, and skips vendored trees."""
+    (tmp_path / "a" / "b" / "c").mkdir(parents=True)
+    (tmp_path / "a" / "b" / "c" / "deep.just").write_text("# ok\n", encoding="utf-8")
+    (tmp_path / "vendor").mkdir()
+    (tmp_path / "vendor" / "theirs.just").write_text("# ok\n", encoding="utf-8")
+    found = [one.name for one in rules.every_just(tmp_path)]
+    assert found == ["deep.just"], f"expected only the nested file, got {found}"

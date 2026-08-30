@@ -17,6 +17,8 @@ import tempfile
 import tomllib
 import typing
 
+import proc
+
 from . import policy
 from .rules import REPO_ROOT, Finding
 
@@ -31,17 +33,22 @@ BELLWETHER = "pyproject.toml"
 
 
 def real_git(*args: str, cwd: pathlib.Path | None = None) -> subprocess.CompletedProcess[str]:
+    """One git call, through the runner whose streams are files.
+
+    `capture_output=True` is what this used, and it is the shape SG004 exists
+    to forbid: on a timeout `subprocess.run` drains the pipes with an unbounded
+    second `communicate()`, which waits on handles a descendant inherited. The
+    rule did not fire here because `pipes_output` only looked at `Popen`.
+
+    Still returns a `CompletedProcess` so every caller and every test double
+    keeps its shape -- the change is which mechanism carries the bytes.
+    """
     git = shutil.which("git")
     if git is None:
         raise FileNotFoundError("git is not on PATH")
-    return subprocess.run(
-        [git, *args],
-        cwd=str(cwd or REPO_ROOT),
-        capture_output=True,
-        text=True,
-        timeout=policy.GIT_TIMEOUT_SECONDS,
-        check=False,
-    )
+    argv = [git, *args]
+    code, out, err = proc.text(argv, timeout=policy.GIT_TIMEOUT_SECONDS, cwd=cwd or REPO_ROOT)
+    return subprocess.CompletedProcess(argv, code, out, err)
 
 
 def _lines(done: subprocess.CompletedProcess[str]) -> list[str]:

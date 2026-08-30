@@ -33,11 +33,12 @@ import json
 import os
 import pathlib
 import statistics
-import subprocess
 import sys
 import tempfile
 import threading
 import time
+
+import proc
 
 # The repo root on sys.path, so the script runs from any cwd without
 # installation -- the same shape face_pipeline_validation.py uses (:31-34).
@@ -118,11 +119,10 @@ class Watching:
             "--id=0",
         ]
         while not self._stop.is_set():
-            try:
-                found = subprocess.run(query, capture_output=True, text=True, timeout=5, check=False)
-            except (OSError, subprocess.SubprocessError):
+            code, out, _ = proc.text(query, timeout=proc.LOCAL_SECONDS)
+            if code != 0:
                 return
-            line = found.stdout.strip().splitlines()
+            line = out.strip().splitlines()
             if line:
                 parts = [part.strip() for part in line[0].split(",")]
                 if len(parts) == 2 and all(part.isdigit() for part in parts):

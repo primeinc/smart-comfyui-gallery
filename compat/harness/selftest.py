@@ -65,6 +65,8 @@ import copy
 import dataclasses
 import hashlib
 import json
+import shutil
+import tempfile
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -73,6 +75,7 @@ from typing import Any, Final
 import numpy as np
 
 from compat.harness import identity as evidence
+from compat.harness import provenance
 
 ROOT: Final[Path] = Path(__file__).resolve().parent.parent
 
@@ -86,15 +89,20 @@ class Attack:
     detected: bool
     detail: str
     applicable: bool = True
-    """False when the attack cannot be mounted HERE -- the cache is off, a
-    corpus is absent -- as opposed to mounted and missed. `ok` passes an
-    inapplicable row, because a suite whose selftest reds when its own cache
-    is disabled cannot be run cache-free, and cache-free is the control
-    condition `attack.evidence_not_reproducible` now depends on."""
+    """False when the attack could not be mounted HERE -- the cache is off, a
+    corpus is absent -- as opposed to mounted and missed.
+
+    It does NOT excuse the row. An attack that did not run proved nothing, and
+    a lane that exits 0 over it reports coverage it does not have: six of the
+    twenty rows can set this, so a run with `COMPAT_CACHE=0` and no corpus
+    wrote `undetected: []` while a quarter of the suite never executed. That is
+    the same shape as a test lane selecting zero tests and reporting green.
+    """
 
     @property
     def ok(self) -> bool:
-        return self.detected or not self.applicable
+        """Detected, and nothing else. An unmounted attack is not a pass."""
+        return self.detected
 
 
 def _tampered(mutate: Callable[[dict[str, Any]], None]) -> tuple[bool, str]:
@@ -774,6 +782,109 @@ def retained_bytes_cannot_be_asserted() -> Attack:
     )
 
 
+def _facexlib_asset() -> dict[str, Any] | None:
+    """The first canonical release-asset locator the manifest carries."""
+    for row in provenance.load_manifest().get("weights", []):
+        for one in row.get("attestations", []):
+            if one.get("source_class") == "github_release_asset" and one.get("revision"):
+                return dict(one)
+    return None
+
+
+def vendor_asset_swap_detected() -> Attack:
+    """Re-upload the asset under the same name; the pin must stop being met.
+
+    A GitHub release asset is mutable where a Hugging Face revision is not, so
+    the whole reason this source class can reach PROVEN is that the locator
+    pins `<asset_id>@<updated_at>` and both are re-read every run. If a
+    mismatch there did not refuse, the resolver would hash whatever the vendor
+    is serving today and report it as the bytes the manifest cited.
+
+    Simulated by moving the PIN rather than the release: the comparison is the
+    same one, and it does not require an upstream re-upload to exercise.
+    """
+    located = _facexlib_asset()
+    if located is None:
+        return Attack("vendor_asset_swap", "no release-asset attestation declared", False, "nothing to attack")
+    refs = (ROOT.parent / provenance.load_manifest()["refs_root"]).resolve()
+
+    honest = provenance._resolve_github_release_asset(located, refs)
+    ident, _, stamp = located["revision"].partition("@")
+    caught: list[str] = []
+    for swapped in (f"{ident}@2099-01-01T00:00:00Z", f"{int(ident) + 1}@{stamp}", ident, f"@{stamp}"):
+        verdict = provenance._resolve_github_release_asset({**located, "revision": swapped}, refs)
+        if verdict["evidence"] != provenance.EVIDENCE_UNRESOLVABLE or verdict["resolved_sha256"]:
+            caught.append(f"{swapped} -> {verdict['evidence']}")
+    return Attack(
+        "vendor_asset_swap",
+        "a release asset re-uploaded under the same name, through the pinned id and mtime",
+        honest["evidence"] == provenance.EVIDENCE_PROVEN and not caught,
+        f"pinned locator -> {honest['evidence']}; four moved pins refused" if not caught else f"ACCEPTED {caught}",
+    )
+
+
+def vendor_asset_size_checked() -> Attack:
+    """A short mirror must not be hashed as if it were the whole asset.
+
+    An interrupted download leaves bytes that hash perfectly well to the wrong
+    answer, and the digest alone cannot tell that apart from the real file:
+    only the release's own byte count can.
+    """
+    located = _facexlib_asset()
+    if located is None:
+        return Attack("vendor_asset_size", "no release-asset attestation declared", False, "nothing to attack")
+    refs = (ROOT.parent / provenance.load_manifest()["refs_root"]).resolve()
+    ident = located["revision"].partition("@")[0]
+    real = provenance._release_asset_cache(refs) / located["repo_id"] / ident
+    name = located["path"].rsplit("/", 1)[-1]
+    if not (real / "asset.json").is_file():
+        return Attack("vendor_asset_size", "no mirrored asset", False, "run the pins lane first")
+
+    with tempfile.TemporaryDirectory() as where:
+        fake = Path(where) / "_release_assets" / located["repo_id"] / ident
+        fake.mkdir(parents=True)
+        shutil.copyfile(real / "asset.json", fake / "asset.json")
+        (fake / name).write_bytes(b"truncated")
+        verdict = provenance._resolve_github_release_asset(located, Path(where))
+    return Attack(
+        "vendor_asset_size",
+        "a truncated mirror of a release asset, through the release's own byte count",
+        verdict["evidence"] == provenance.EVIDENCE_UNRESOLVABLE and not verdict["resolved_sha256"],
+        f"9-byte mirror -> {verdict['evidence']}: {verdict['detail']}",
+    )
+
+
+def vendor_asset_host_checked() -> Attack:
+    """`browser_download_url` is a field in a response, so it is data.
+
+    An API that answered with `file:///` or a host of its choosing would
+    otherwise have its bytes fetched, hashed and reported as the vendor's.
+    """
+    refused: list[str] = []
+    for url in (
+        "file:///C:/Windows/System32/drivers/etc/hosts",
+        "http://github.com/x/y/releases/download/v1/w.pth",
+        "https://evil.example.com/w.pth",
+        "https://github.com.evil.example.com/w.pth",
+    ):
+        try:
+            provenance._checked(url)
+            refused.append(url)
+        except ValueError:
+            pass
+    allowed = True
+    try:
+        provenance._checked("https://objects.githubusercontent.com/x")
+    except ValueError:
+        allowed = False
+    return Attack(
+        "vendor_asset_host",
+        "a download url off https or off GitHub, through the fetcher's scheme and host check",
+        not refused and allowed,
+        "four refused, the real host allowed" if not refused and allowed else f"ACCEPTED {refused} allowed={allowed}",
+    )
+
+
 def every_attack() -> tuple[Attack, ...]:
     return (
         positive_control(),
@@ -796,6 +907,9 @@ def every_attack() -> tuple[Attack, ...]:
         cache_never_crosses_identity(),
         cache_preserves_every_value_type(),
         retained_bytes_cannot_be_asserted(),
+        vendor_asset_swap_detected(),
+        vendor_asset_size_checked(),
+        vendor_asset_host_checked(),
     )
 
 

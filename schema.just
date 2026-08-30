@@ -1,24 +1,14 @@
 # Historical schemas: the authentic db/schema.sql of an older version.
-#
-# A test that proves a migration works on a vN database has to HAVE a vN
-# database. There are three ways to get one and only one of them is
-# honest:
-#
-#   invert today's schema     what this repo did for 35 versions
-#   chain forward from v1     circular; a step is proved by its own peers
+
+# A test that proves a migration works on a vN database has to HAVE one.
+# Inverting today's schema builds a fixture no real vN database matches, and
+# chaining forward from v1 is circular: a step proved by its own peers.
+
 #   the schema that shipped   `git show <sha>:db/schema.sql`
-#
-# The first is why `test_the_shipped_steps_take_a_v1_database_to_the_
-# current_build` was green over a path no real v1 database can walk: the
-# fixture was today's `folder` with the stamp lowered, so it carried
-# `missing_since`, which a real v1 folder does not have and no step adds.
-# Measured 2026-08-25: an authentic v1 dies at step 4 with `no such
-# column: missing_since`; an authentic v30 migrates to v36 with drift [].
-#
-# So a fixture seeds from the file that shipped. Vendored rather than
-# read from git at test time: the suite must run from a checkout with no
-# git, and these are immutable records -- a vendored one is never edited,
-# only added.
+
+# So a fixture seeds from the file that shipped. Vendored rather than read
+# from git at test time: the suite must run from a checkout with no git, and
+# a vendored record is never edited, only added.
 
 set positional-arguments
 set script-interpreter := ['bash', '-euo', 'pipefail']

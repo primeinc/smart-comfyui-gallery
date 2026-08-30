@@ -98,19 +98,18 @@ class Verdict(StrEnum):
     primitive it removed is NOT necessary and must not be stored as durable
     truth. A passing ablation is a failing necessity claim."""
 
-    UNSUPPORTED = "UNSUPPORTED"
-    """The case could not run here -- absent weights, absent runtime, absent
-    device. Never silently folded into PASS, and never dropped from the
-    population: a consumer that disappears when it cannot run is how a suite
-    reports success it did not earn."""
-
     VENDOR_BASELINE_UNAVAILABLE = "VENDOR_BASELINE_UNAVAILABLE"
     """Upstream supplies no runnable first-party example, or no first-party
     sample input for one, at the pinned commit.
 
-    Distinct from UNSUPPORTED, which is a fact about THIS machine. This is a
-    fact about the upstream: there is nothing to calibrate against, so no
-    amount of local execution can establish that our adapter reproduces the
+    There is no verdict for "could not run here". An absent weight, an absent
+    runtime, an unimplemented derivation and a detector that found no face are
+    all a proof that did not happen, and `run_case` lets every one of them
+    escape. The verdict that used to absorb them held 16 results, nine of which
+    were a boundary nobody had written; naming them made the lane exit 0 over
+    work that does not exist. This is a fact about the upstream: there is
+    nothing to calibrate against, so no amount of local execution can
+    establish that our adapter reproduces the
     vendor's path. The consumer stays visibly unresolved, and what upstream
     does and does not provide is recorded rather than worked around."""
 
@@ -125,17 +124,42 @@ class Skipped:
 
 
 _skipped: list[Skipped] = []
+_considered: list[Skipped] = []
 
 
 def note_skip(consumer_id: str, what: str, why: str) -> None:
-    """Record an input that produced no case.
+    """Record a REQUIRED input that produced no case.
 
     A bare `continue` is how a population shrinks without anyone deciding to
     shrink it. The evidence then reports a pass rate over whatever survived,
     which is the one property this suite says it must never have -- and it had
     it at six sites, silently, each for a different reason.
+
+    NOT for a candidate a search looked at and passed over: see
+    `note_considered`. Recording both here made `face_selection` report a
+    skipped input while its population was complete -- 33 cases, all
+    reproduced, over the three discriminating photographs it set out to find.
     """
     _skipped.append(Skipped(consumer_id=consumer_id, what=what, why=why))
+
+
+def note_considered(consumer_id: str, what: str, why: str) -> None:
+    """Record a candidate a search evaluated and did not use.
+
+    Audit evidence, not a population hole. `face_selection` scans group
+    photographs for ones where `first` and `largest_bbox_area` reach different
+    faces; a photograph the detector sees one face in cannot separate the two
+    rules, so it is not a member of the population that lane is proving.
+
+    Recorded rather than dropped, because a search that silently discards its
+    rejects cannot be reviewed for having rejected the wrong ones.
+    """
+    _considered.append(Skipped(consumer_id=consumer_id, what=what, why=why))
+
+
+def considered() -> tuple[Skipped, ...]:
+    """Every DISTINCT candidate a search evaluated and passed over."""
+    return tuple(sorted(set(_considered), key=lambda one: (one.consumer_id, one.what, one.why)))
 
 
 def skipped() -> tuple[Skipped, ...]:
@@ -419,12 +443,19 @@ class RetainedState:
 def settled_by_measurement(method: str) -> bool:
     """Whether a comparison weighed the consumer's OUTPUT.
 
-    `shape` and `dtype` return before any value is compared
-    (compat/assertions/arrays.py), and an ablation that raised records "".
-    None of the three observes what the consumer produced. `exact_bytes` and
-    `allclose` both do, and either can come out the other way.
+    `exact_bytes` and `allclose` weigh values, and either can come out the
+    other way. `shape` weighs the output too: the replay ran and produced an
+    artifact, and an artifact of a different shape is a different output. Some
+    primitives DETERMINE that shape -- `frame_dimensions` is the canvas
+    `draw_kps` renders onto, `audio_sample_rate` decides how many samples the
+    resampler emits -- so for those no wrong value can leave the shape intact,
+    and refusing shape made them unprovable by construction.
+
+    What still does not count: `dtype`, a storage-type mismatch rather than a
+    different answer, and "", which an ablation records when the replay RAISED
+    and there was no output to weigh at all.
     """
-    return method == "exact_bytes" or method.startswith("allclose")
+    return method in {"exact_bytes", "shape"} or method.startswith("allclose")
 
 
 @dataclass(frozen=True)
@@ -564,7 +595,6 @@ class CaseResult:
     `answer.json` can price a name no producer emits -- the picture, the
     aligned crop, the patch origin -- which `producer_union.json` cannot."""
 
-    unsupported_reason: str = ""
     seconds: float = 0.0
 
     __test__: bool = False

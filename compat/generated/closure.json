@@ -1,0 +1,50 @@
+{
+  "closed": false,
+  "conditions": [
+    {
+      "detail": "cases.json was built under 9d2de5ec739d, tree is 4a39d667391f",
+      "held": false,
+      "name": "evidence from one tree"
+    },
+    {
+      "detail": "22 row(s) for 22 declared",
+      "held": true,
+      "name": "every declared member accounted for"
+    },
+    {
+      "detail": "none",
+      "held": true,
+      "name": "no weight MISSING"
+    },
+    {
+      "detail": "none",
+      "held": true,
+      "name": "no weight MISMATCH"
+    },
+    {
+      "detail": "none",
+      "held": true,
+      "name": "no weight UNATTESTED"
+    },
+    {
+      "detail": "154 cell(s), e.g. anystory/producer_execution",
+      "held": false,
+      "name": "no ledger cell BLOCKED"
+    },
+    {
+      "detail": "none",
+      "held": true,
+      "name": "no ledger cell FAILED"
+    },
+    {
+      "detail": "none",
+      "held": true,
+      "name": "no skipped input"
+    },
+    {
+      "detail": "none",
+      "held": true,
+      "name": "no shard failed"
+    }
+  ]
+}

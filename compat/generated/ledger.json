@@ -1,0 +1,950 @@
+{
+  "identity": "4a39d667391f596ba6d52971b43dff1fdc6bba00655b9d9db8c60fd731c6bb11",
+  "lanes": {
+    "acceptance": 0,
+    "answer": 0,
+    "attack": 1,
+    "cases": 1,
+    "check": 0,
+    "citations": 0,
+    "closure-attack": 0,
+    "hf": 0,
+    "matrices": 1,
+    "missing": 1,
+    "observe-attack": 0,
+    "pins": 0,
+    "population": 1,
+    "population-attack": 0,
+    "proc-attack": 0,
+    "producer": 0,
+    "reconcile": 1,
+    "reconcile-attack": 0,
+    "selftest": 0,
+    "staleness": 1,
+    "union": 0,
+    "vendor": 0,
+    "weights": 0,
+    "weights-attack": 0
+  },
+  "rows": [
+    {
+      "cells": {
+        "comparison_verdict": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "consumer_replay": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "durable_read_back": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "durable_write": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "emitted_observation": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "native_reconstruction": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "producer_execution": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "source_provenance": {
+          "reason": "1 path(s) resolved at the pin",
+          "state": "VERIFIED"
+        },
+        "weight_provenance": {
+          "reason": "13 weights VERIFIED",
+          "state": "VERIFIED"
+        }
+      },
+      "consumer": "anystory"
+    },
+    {
+      "cells": {
+        "comparison_verdict": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "consumer_replay": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "durable_read_back": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "durable_write": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "emitted_observation": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "native_reconstruction": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "producer_execution": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "source_provenance": {
+          "reason": "1 path(s) resolved at the pin",
+          "state": "VERIFIED"
+        },
+        "weight_provenance": {
+          "reason": "13 weights VERIFIED",
+          "state": "VERIFIED"
+        }
+      },
+      "consumer": "consisid"
+    },
+    {
+      "cells": {
+        "comparison_verdict": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "consumer_replay": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "durable_read_back": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "durable_write": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "emitted_observation": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "native_reconstruction": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "producer_execution": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "source_provenance": {
+          "reason": "1 path(s) resolved at the pin",
+          "state": "VERIFIED"
+        },
+        "weight_provenance": {
+          "reason": "13 weights VERIFIED",
+          "state": "VERIFIED"
+        }
+      },
+      "consumer": "id_lora"
+    },
+    {
+      "cells": {
+        "comparison_verdict": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "consumer_replay": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "durable_read_back": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "durable_write": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "emitted_observation": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "native_reconstruction": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "producer_execution": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "source_provenance": {
+          "reason": "3 path(s) resolved at the pin",
+          "state": "VERIFIED"
+        },
+        "weight_provenance": {
+          "reason": "13 weights VERIFIED",
+          "state": "VERIFIED"
+        }
+      },
+      "consumer": "id_v2v"
+    },
+    {
+      "cells": {
+        "comparison_verdict": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "consumer_replay": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "durable_read_back": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "durable_write": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "emitted_observation": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "native_reconstruction": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "producer_execution": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "source_provenance": {
+          "reason": "3 path(s) resolved at the pin",
+          "state": "VERIFIED"
+        },
+        "weight_provenance": {
+          "reason": "13 weights VERIFIED",
+          "state": "VERIFIED"
+        }
+      },
+      "consumer": "infiniteyou"
+    },
+    {
+      "cells": {
+        "comparison_verdict": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "consumer_replay": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "durable_read_back": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "durable_write": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "emitted_observation": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "native_reconstruction": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "producer_execution": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "source_provenance": {
+          "reason": "1 path(s) resolved at the pin",
+          "state": "VERIFIED"
+        },
+        "weight_provenance": {
+          "reason": "13 weights VERIFIED",
+          "state": "VERIFIED"
+        }
+      },
+      "consumer": "instantcharacter"
+    },
+    {
+      "cells": {
+        "comparison_verdict": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "consumer_replay": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "durable_read_back": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "durable_write": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "emitted_observation": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "native_reconstruction": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "producer_execution": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "source_provenance": {
+          "reason": "2 path(s) resolved at the pin",
+          "state": "VERIFIED"
+        },
+        "weight_provenance": {
+          "reason": "13 weights VERIFIED",
+          "state": "VERIFIED"
+        }
+      },
+      "consumer": "instantid"
+    },
+    {
+      "cells": {
+        "comparison_verdict": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "consumer_replay": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "durable_read_back": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "durable_write": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "emitted_observation": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "native_reconstruction": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "producer_execution": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "source_provenance": {
+          "reason": "2 path(s) resolved at the pin",
+          "state": "VERIFIED"
+        },
+        "weight_provenance": {
+          "reason": "13 weights VERIFIED",
+          "state": "VERIFIED"
+        }
+      },
+      "consumer": "instantid_upstream"
+    },
+    {
+      "cells": {
+        "comparison_verdict": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "consumer_replay": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "durable_read_back": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "durable_write": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "emitted_observation": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "native_reconstruction": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "producer_execution": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "source_provenance": {
+          "reason": "1 path(s) resolved at the pin",
+          "state": "VERIFIED"
+        },
+        "weight_provenance": {
+          "reason": "13 weights VERIFIED",
+          "state": "VERIFIED"
+        }
+      },
+      "consumer": "ipadapter_faceid"
+    },
+    {
+      "cells": {
+        "comparison_verdict": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "consumer_replay": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "durable_read_back": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "durable_write": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "emitted_observation": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "native_reconstruction": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "producer_execution": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "source_provenance": {
+          "reason": "1 path(s) resolved at the pin",
+          "state": "VERIFIED"
+        },
+        "weight_provenance": {
+          "reason": "13 weights VERIFIED",
+          "state": "VERIFIED"
+        }
+      },
+      "consumer": "ipadapter_faceid_plus"
+    },
+    {
+      "cells": {
+        "comparison_verdict": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "consumer_replay": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "durable_read_back": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "durable_write": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "emitted_observation": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "native_reconstruction": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "producer_execution": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "source_provenance": {
+          "reason": "1 path(s) resolved at the pin",
+          "state": "VERIFIED"
+        },
+        "weight_provenance": {
+          "reason": "13 weights VERIFIED",
+          "state": "VERIFIED"
+        }
+      },
+      "consumer": "ipadapter_upstream"
+    },
+    {
+      "cells": {
+        "comparison_verdict": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "consumer_replay": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "durable_read_back": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "durable_write": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "emitted_observation": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "native_reconstruction": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "producer_execution": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "source_provenance": {
+          "reason": "1 path(s) resolved at the pin",
+          "state": "VERIFIED"
+        },
+        "weight_provenance": {
+          "reason": "13 weights VERIFIED",
+          "state": "VERIFIED"
+        }
+      },
+      "consumer": "omnigen2"
+    },
+    {
+      "cells": {
+        "comparison_verdict": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "consumer_replay": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "durable_read_back": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "durable_write": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "emitted_observation": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "native_reconstruction": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "producer_execution": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "source_provenance": {
+          "reason": "1 path(s) resolved at the pin",
+          "state": "VERIFIED"
+        },
+        "weight_provenance": {
+          "reason": "13 weights VERIFIED",
+          "state": "VERIFIED"
+        }
+      },
+      "consumer": "photomaker_v2"
+    },
+    {
+      "cells": {
+        "comparison_verdict": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "consumer_replay": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "durable_read_back": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "durable_write": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "emitted_observation": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "native_reconstruction": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "producer_execution": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "source_provenance": {
+          "reason": "1 path(s) resolved at the pin",
+          "state": "VERIFIED"
+        },
+        "weight_provenance": {
+          "reason": "13 weights VERIFIED",
+          "state": "VERIFIED"
+        }
+      },
+      "consumer": "pulid_comfyui"
+    },
+    {
+      "cells": {
+        "comparison_verdict": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "consumer_replay": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "durable_read_back": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "durable_write": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "emitted_observation": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "native_reconstruction": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "producer_execution": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "source_provenance": {
+          "reason": "1 path(s) resolved at the pin",
+          "state": "VERIFIED"
+        },
+        "weight_provenance": {
+          "reason": "13 weights VERIFIED",
+          "state": "VERIFIED"
+        }
+      },
+      "consumer": "pulid_upstream"
+    },
+    {
+      "cells": {
+        "comparison_verdict": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "consumer_replay": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "durable_read_back": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "durable_write": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "emitted_observation": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "native_reconstruction": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "producer_execution": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "source_provenance": {
+          "reason": "1 path(s) resolved at the pin",
+          "state": "VERIFIED"
+        },
+        "weight_provenance": {
+          "reason": "13 weights VERIFIED",
+          "state": "VERIFIED"
+        }
+      },
+      "consumer": "qwen_image_edit_2509"
+    },
+    {
+      "cells": {
+        "comparison_verdict": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "consumer_replay": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "durable_read_back": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "durable_write": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "emitted_observation": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "native_reconstruction": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "producer_execution": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "source_provenance": {
+          "reason": "1 path(s) resolved at the pin",
+          "state": "VERIFIED"
+        },
+        "weight_provenance": {
+          "reason": "13 weights VERIFIED",
+          "state": "VERIFIED"
+        }
+      },
+      "consumer": "reactor"
+    },
+    {
+      "cells": {
+        "comparison_verdict": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "consumer_replay": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "durable_read_back": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "durable_write": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "emitted_observation": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "native_reconstruction": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "producer_execution": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "source_provenance": {
+          "reason": "1 path(s) resolved at the pin",
+          "state": "VERIFIED"
+        },
+        "weight_provenance": {
+          "reason": "13 weights VERIFIED",
+          "state": "VERIFIED"
+        }
+      },
+      "consumer": "umo"
+    },
+    {
+      "cells": {
+        "comparison_verdict": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "consumer_replay": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "durable_read_back": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "durable_write": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "emitted_observation": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "native_reconstruction": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "producer_execution": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "source_provenance": {
+          "reason": "2 path(s) resolved at the pin",
+          "state": "VERIFIED"
+        },
+        "weight_provenance": {
+          "reason": "13 weights VERIFIED",
+          "state": "VERIFIED"
+        }
+      },
+      "consumer": "uniportrait"
+    },
+    {
+      "cells": {
+        "comparison_verdict": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "consumer_replay": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "durable_read_back": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "durable_write": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "emitted_observation": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "native_reconstruction": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "producer_execution": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "source_provenance": {
+          "reason": "1 path(s) resolved at the pin",
+          "state": "VERIFIED"
+        },
+        "weight_provenance": {
+          "reason": "13 weights VERIFIED",
+          "state": "VERIFIED"
+        }
+      },
+      "consumer": "uno"
+    },
+    {
+      "cells": {
+        "comparison_verdict": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "consumer_replay": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "durable_read_back": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "durable_write": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "emitted_observation": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "native_reconstruction": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "producer_execution": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "source_provenance": {
+          "reason": "1 path(s) resolved at the pin",
+          "state": "VERIFIED"
+        },
+        "weight_provenance": {
+          "reason": "13 weights VERIFIED",
+          "state": "VERIFIED"
+        }
+      },
+      "consumer": "uso"
+    },
+    {
+      "cells": {
+        "comparison_verdict": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "consumer_replay": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "durable_read_back": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "durable_write": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "emitted_observation": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "native_reconstruction": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "producer_execution": {
+          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "state": "BLOCKED"
+        },
+        "source_provenance": {
+          "reason": "1 path(s) resolved at the pin",
+          "state": "VERIFIED"
+        },
+        "weight_provenance": {
+          "reason": "13 weights VERIFIED",
+          "state": "VERIFIED"
+        }
+      },
+      "consumer": "xverse"
+    }
+  ],
+  "stages": [
+    "source_provenance",
+    "weight_provenance",
+    "producer_execution",
+    "emitted_observation",
+    "durable_write",
+    "durable_read_back",
+    "native_reconstruction",
+    "consumer_replay",
+    "comparison_verdict"
+  ],
+  "totals": {
+    "declared": 22,
+    "green": 0,
+    "with_blocked": 22,
+    "with_failed": 0
+  }
+}

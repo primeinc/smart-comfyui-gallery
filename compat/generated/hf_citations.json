@@ -1,0 +1,480 @@
+{
+  "clean": true,
+  "counts": {
+    "RESOLVED": 43
+  },
+  "digests_indexed": 10434,
+  "pointers_indexed": 10469,
+  "refs_root": "C:\\Users\\will\\dev\\refs",
+  "repos_indexed": [
+    "BestWishYsh/ConsisID-preview",
+    "ByteDance/InfiniteYou",
+    "Gourieff/ComfyUI-ReActor",
+    "Gourieff/ReActor",
+    "InstantX/InstantID",
+    "Junjie96/AnyStory",
+    "Junjie96/UniPortrait",
+    "TencentARC/PhotoMaker",
+    "TencentARC/PhotoMaker-V2",
+    "deepinsight/insightface",
+    "guozinan/PuLID",
+    "h94/IP-Adapter",
+    "h94/IP-Adapter-FaceID",
+    "leonelhs/facexlib",
+    "xinntao/facexlib"
+  ],
+  "resolutions": [
+    {
+      "cites": [
+        "BestWishYsh/ConsisID-preview@950bc3f0902db44799e223a12ad972f9c52b341d:face_encoder/models/antelopev2/glintr100.onnx",
+        "ByteDance/InfiniteYou@8cb2ef6a573b70595de9e7c127de0c01e8833f61:supports/insightface/models/antelopev2/glintr100.onnx"
+      ],
+      "detail": "published at 2 path(s); 260,665,334 B",
+      "kind": "weight",
+      "sha256": "4ab1d6435d639628a6f3e5008dd4f929edf4c4124b1a7169e1048f9fef534cdf",
+      "subject": "antelopev2/glintr100.onnx",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cites": [
+        "BestWishYsh/ConsisID-preview@950bc3f0902db44799e223a12ad972f9c52b341d:face_encoder/models/antelopev2/scrfd_10g_bnkps.onnx",
+        "ByteDance/InfiniteYou@8cb2ef6a573b70595de9e7c127de0c01e8833f61:supports/insightface/models/antelopev2/scrfd_10g_bnkps.onnx"
+      ],
+      "detail": "published at 2 path(s); 16,923,827 B",
+      "kind": "weight",
+      "sha256": "5838f7fe053675b1c7a08b633df49e7af5495cee0493c7dcf6697200b85b5b91",
+      "subject": "antelopev2/scrfd_10g_bnkps.onnx",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cites": [
+        "BestWishYsh/ConsisID-preview@950bc3f0902db44799e223a12ad972f9c52b341d:face_encoder/models/antelopev2/1k3d68.onnx",
+        "ByteDance/InfiniteYou@8cb2ef6a573b70595de9e7c127de0c01e8833f61:supports/insightface/models/antelopev2/1k3d68.onnx"
+      ],
+      "detail": "published at 2 path(s); 143,607,619 B",
+      "kind": "weight",
+      "sha256": "df5c06b8a0c12e422b2ed8947b8869faa4105387f199c477af038aa01f9a45cc",
+      "subject": "antelopev2/1k3d68.onnx",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cites": [
+        "BestWishYsh/ConsisID-preview@950bc3f0902db44799e223a12ad972f9c52b341d:face_encoder/models/antelopev2/2d106det.onnx",
+        "ByteDance/InfiniteYou@8cb2ef6a573b70595de9e7c127de0c01e8833f61:supports/insightface/models/antelopev2/2d106det.onnx"
+      ],
+      "detail": "published at 2 path(s); 5,030,888 B",
+      "kind": "weight",
+      "sha256": "f001b856447c413801ef5c42091ed0cd516fcd21f2d6b79635b1e733a7109dbf",
+      "subject": "antelopev2/2d106det.onnx",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cites": [
+        "BestWishYsh/ConsisID-preview@950bc3f0902db44799e223a12ad972f9c52b341d:face_encoder/models/antelopev2/genderage.onnx",
+        "ByteDance/InfiniteYou@8cb2ef6a573b70595de9e7c127de0c01e8833f61:supports/insightface/models/antelopev2/genderage.onnx"
+      ],
+      "detail": "published at 2 path(s); 1,322,532 B",
+      "kind": "weight",
+      "sha256": "4fde69b1c810857b88c64a335084f1c3fe8f01246c9a191b48c7bb756d6652fb",
+      "subject": "antelopev2/genderage.onnx",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cites": [
+        "BestWishYsh/ConsisID-preview@950bc3f0902db44799e223a12ad972f9c52b341d:face_encoder/models/antelopev2/scrfd_10g_bnkps.onnx",
+        "ByteDance/InfiniteYou@8cb2ef6a573b70595de9e7c127de0c01e8833f61:supports/insightface/models/antelopev2/scrfd_10g_bnkps.onnx"
+      ],
+      "detail": "published at 2 path(s); 16,923,827 B",
+      "kind": "weight",
+      "sha256": "5838f7fe053675b1c7a08b633df49e7af5495cee0493c7dcf6697200b85b5b91",
+      "subject": "buffalo_l/det_10g.onnx",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cites": [
+        "BestWishYsh/ConsisID-preview@950bc3f0902db44799e223a12ad972f9c52b341d:face_encoder/models/buffalo_l/w600k_r50.onnx"
+      ],
+      "detail": "published at 1 path(s); 174,383,860 B",
+      "kind": "weight",
+      "sha256": "4c06341c33c2ca1f86781dab0e829f88ad5b64be9fba56e56bc9ebdefc619e43",
+      "subject": "buffalo_l/w600k_r50.onnx",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cites": [
+        "BestWishYsh/ConsisID-preview@950bc3f0902db44799e223a12ad972f9c52b341d:face_encoder/models/antelopev2/1k3d68.onnx",
+        "ByteDance/InfiniteYou@8cb2ef6a573b70595de9e7c127de0c01e8833f61:supports/insightface/models/antelopev2/1k3d68.onnx"
+      ],
+      "detail": "published at 2 path(s); 143,607,619 B",
+      "kind": "weight",
+      "sha256": "df5c06b8a0c12e422b2ed8947b8869faa4105387f199c477af038aa01f9a45cc",
+      "subject": "buffalo_l/1k3d68.onnx",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cites": [
+        "BestWishYsh/ConsisID-preview@950bc3f0902db44799e223a12ad972f9c52b341d:face_encoder/models/antelopev2/2d106det.onnx",
+        "ByteDance/InfiniteYou@8cb2ef6a573b70595de9e7c127de0c01e8833f61:supports/insightface/models/antelopev2/2d106det.onnx"
+      ],
+      "detail": "published at 2 path(s); 5,030,888 B",
+      "kind": "weight",
+      "sha256": "f001b856447c413801ef5c42091ed0cd516fcd21f2d6b79635b1e733a7109dbf",
+      "subject": "buffalo_l/2d106det.onnx",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cites": [
+        "BestWishYsh/ConsisID-preview@950bc3f0902db44799e223a12ad972f9c52b341d:face_encoder/models/antelopev2/genderage.onnx",
+        "ByteDance/InfiniteYou@8cb2ef6a573b70595de9e7c127de0c01e8833f61:supports/insightface/models/antelopev2/genderage.onnx"
+      ],
+      "detail": "published at 2 path(s); 1,322,532 B",
+      "kind": "weight",
+      "sha256": "4fde69b1c810857b88c64a335084f1c3fe8f01246c9a191b48c7bb756d6652fb",
+      "subject": "buffalo_l/genderage.onnx",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cites": [
+        "BestWishYsh/ConsisID-preview@950bc3f0902db44799e223a12ad972f9c52b341d:face_encoder/detection_Resnet50_Final.pth",
+        "leonelhs/facexlib@d3ad6bbf8333a8f4286c9cdd71b12dc7cd66fd8a:detection_Resnet50_Final.pth"
+      ],
+      "detail": "published at 2 path(s); 109,497,761 B",
+      "kind": "weight",
+      "sha256": "6d1de9c2944f2ccddca5f5e010ea5ae64a39845a86311af6fdf30841b0a5a16d",
+      "subject": "facexlib/detection_Resnet50_Final.pth",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cites": [
+        "leonelhs/facexlib@d3ad6bbf8333a8f4286c9cdd71b12dc7cd66fd8a:recognition_arcface_ir_se50.pth"
+      ],
+      "detail": "published at 1 path(s); 175,367,323 B",
+      "kind": "weight",
+      "sha256": "a035c768259b98ab1ce0e646312f48b9e1e218197a0f80ac6765e88f8b6ddf28",
+      "subject": "facexlib/recognition_arcface_ir_se50.pth",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cites": [
+        "BestWishYsh/ConsisID-preview@950bc3f0902db44799e223a12ad972f9c52b341d:face_encoder/parsing_bisenet.pth",
+        "leonelhs/facexlib@d3ad6bbf8333a8f4286c9cdd71b12dc7cd66fd8a:parsing_bisenet.pth"
+      ],
+      "detail": "published at 2 path(s); 53,289,463 B",
+      "kind": "weight",
+      "sha256": "468e13ca13a9b43cc0881a9f99083a430e9c0a38abd935431d1c28ee94b26567",
+      "subject": "facexlib/parsing_bisenet.pth",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cites": [
+        "Junjie96/AnyStory@4869c1d2d71e9b81b129c16312db1868cf4293cf:anystory_flux.bin"
+      ],
+      "detail": "published at 1 path(s); 1,398,992,729 B",
+      "kind": "vendor_weight",
+      "sha256": "c4814b0f82ac58f5b9729676c3f7eaedec0eccf98c00b02637f155716140a835",
+      "subject": "anystory: anystory/anystory_flux.bin",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cites": [
+        "BestWishYsh/ConsisID-preview@950bc3f0902db44799e223a12ad972f9c52b341d:face_encoder/detection_Resnet50_Final.pth",
+        "leonelhs/facexlib@d3ad6bbf8333a8f4286c9cdd71b12dc7cd66fd8a:detection_Resnet50_Final.pth"
+      ],
+      "detail": "published at 2 path(s); 109,497,761 B",
+      "kind": "vendor_weight",
+      "sha256": "6d1de9c2944f2ccddca5f5e010ea5ae64a39845a86311af6fdf30841b0a5a16d",
+      "subject": "consisid: consisid/face_encoder/detection_Resnet50_Final.pth",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cites": [
+        "BestWishYsh/ConsisID-preview@950bc3f0902db44799e223a12ad972f9c52b341d:face_encoder/EVA02_CLIP_L_336_psz14_s6B.pt"
+      ],
+      "detail": "published at 1 path(s); 856,461,210 B",
+      "kind": "vendor_weight",
+      "sha256": "84c3a17a228c567a155259b2245b0b59072bf7da510260a0a02ec54de6d50b05",
+      "subject": "consisid: consisid/face_encoder/EVA02_CLIP_L_336_psz14_s6B.pt",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cites": [
+        "BestWishYsh/ConsisID-preview@950bc3f0902db44799e223a12ad972f9c52b341d:face_encoder/models/antelopev2/1k3d68.onnx",
+        "ByteDance/InfiniteYou@8cb2ef6a573b70595de9e7c127de0c01e8833f61:supports/insightface/models/antelopev2/1k3d68.onnx"
+      ],
+      "detail": "published at 2 path(s); 143,607,619 B",
+      "kind": "vendor_weight",
+      "sha256": "df5c06b8a0c12e422b2ed8947b8869faa4105387f199c477af038aa01f9a45cc",
+      "subject": "consisid: consisid/face_encoder/models/antelopev2/1k3d68.onnx",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cites": [
+        "BestWishYsh/ConsisID-preview@950bc3f0902db44799e223a12ad972f9c52b341d:face_encoder/models/antelopev2/2d106det.onnx",
+        "ByteDance/InfiniteYou@8cb2ef6a573b70595de9e7c127de0c01e8833f61:supports/insightface/models/antelopev2/2d106det.onnx"
+      ],
+      "detail": "published at 2 path(s); 5,030,888 B",
+      "kind": "vendor_weight",
+      "sha256": "f001b856447c413801ef5c42091ed0cd516fcd21f2d6b79635b1e733a7109dbf",
+      "subject": "consisid: consisid/face_encoder/models/antelopev2/2d106det.onnx",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cites": [
+        "BestWishYsh/ConsisID-preview@950bc3f0902db44799e223a12ad972f9c52b341d:face_encoder/models/antelopev2/genderage.onnx",
+        "ByteDance/InfiniteYou@8cb2ef6a573b70595de9e7c127de0c01e8833f61:supports/insightface/models/antelopev2/genderage.onnx"
+      ],
+      "detail": "published at 2 path(s); 1,322,532 B",
+      "kind": "vendor_weight",
+      "sha256": "4fde69b1c810857b88c64a335084f1c3fe8f01246c9a191b48c7bb756d6652fb",
+      "subject": "consisid: consisid/face_encoder/models/antelopev2/genderage.onnx",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cites": [
+        "BestWishYsh/ConsisID-preview@950bc3f0902db44799e223a12ad972f9c52b341d:face_encoder/models/antelopev2/glintr100.onnx",
+        "ByteDance/InfiniteYou@8cb2ef6a573b70595de9e7c127de0c01e8833f61:supports/insightface/models/antelopev2/glintr100.onnx"
+      ],
+      "detail": "published at 2 path(s); 260,665,334 B",
+      "kind": "vendor_weight",
+      "sha256": "4ab1d6435d639628a6f3e5008dd4f929edf4c4124b1a7169e1048f9fef534cdf",
+      "subject": "consisid: consisid/face_encoder/models/antelopev2/glintr100.onnx",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cites": [
+        "BestWishYsh/ConsisID-preview@950bc3f0902db44799e223a12ad972f9c52b341d:face_encoder/models/antelopev2/scrfd_10g_bnkps.onnx",
+        "ByteDance/InfiniteYou@8cb2ef6a573b70595de9e7c127de0c01e8833f61:supports/insightface/models/antelopev2/scrfd_10g_bnkps.onnx"
+      ],
+      "detail": "published at 2 path(s); 16,923,827 B",
+      "kind": "vendor_weight",
+      "sha256": "5838f7fe053675b1c7a08b633df49e7af5495cee0493c7dcf6697200b85b5b91",
+      "subject": "consisid: consisid/face_encoder/models/antelopev2/scrfd_10g_bnkps.onnx",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cites": [
+        "BestWishYsh/ConsisID-preview@950bc3f0902db44799e223a12ad972f9c52b341d:face_encoder/parsing_bisenet.pth",
+        "leonelhs/facexlib@d3ad6bbf8333a8f4286c9cdd71b12dc7cd66fd8a:parsing_bisenet.pth"
+      ],
+      "detail": "published at 2 path(s); 53,289,463 B",
+      "kind": "vendor_weight",
+      "sha256": "468e13ca13a9b43cc0881a9f99083a430e9c0a38abd935431d1c28ee94b26567",
+      "subject": "consisid: consisid/face_encoder/parsing_bisenet.pth",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cites": [
+        "BestWishYsh/ConsisID-preview@950bc3f0902db44799e223a12ad972f9c52b341d:face_encoder/parsing_parsenet.pth",
+        "leonelhs/facexlib@d3ad6bbf8333a8f4286c9cdd71b12dc7cd66fd8a:parsing_parsenet.pth"
+      ],
+      "detail": "published at 2 path(s); 85,331,193 B",
+      "kind": "vendor_weight",
+      "sha256": "3d558d8d0e42c20224f13cf5a29c79eba2d59913419f945545d8cf7b72920de2",
+      "subject": "consisid: consisid/face_encoder/parsing_parsenet.pth",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cites": [
+        "ByteDance/InfiniteYou@8cb2ef6a573b70595de9e7c127de0c01e8833f61:infu_flux_v1.0/aes_stage2/image_proj_model.bin"
+      ],
+      "detail": "published at 1 path(s); 338,413,026 B",
+      "kind": "vendor_weight",
+      "sha256": "f85518431d7367de30b9558a939c003462a7e331e8c8b929146916dc27e471d6",
+      "subject": "infiniteyou: infiniteyou/infu_flux_v1.0/aes_stage2/image_proj_model.bin",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cites": [
+        "InstantX/InstantID@57b32dfee076092ad2930c71fd6d439c2c3b1820:ip-adapter.bin"
+      ],
+      "detail": "published at 1 path(s); 1,691,134,141 B",
+      "kind": "vendor_weight",
+      "sha256": "02b3618e36d803784166660520098089a81388e61a93ef8002aa79a5b1c546e1",
+      "subject": "instantid: instantid/ip-adapter.bin",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cites": [
+        "h94/IP-Adapter-FaceID@43907e6f44d079bf1a9102d9a6e56aef7a219bae:ip-adapter-faceid-plusv2_sd15.bin"
+      ],
+      "detail": "published at 1 path(s); 156,558,509 B",
+      "kind": "vendor_weight",
+      "sha256": "26d0d86a1d60d6cc811d3b8862178b461e1eeb651e6fe2b72ba17aa95411e313",
+      "subject": "ipadapter: ipadapter/ip-adapter-faceid-plusv2_sd15.bin",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cites": [
+        "h94/IP-Adapter-FaceID@43907e6f44d079bf1a9102d9a6e56aef7a219bae:ip-adapter-faceid-portrait-v11_sd15.bin"
+      ],
+      "detail": "published at 1 path(s); 64,586,623 B",
+      "kind": "vendor_weight",
+      "sha256": "a48cb4f89ed18e02c6000f65aa9efec452e87eaed4a1bc9fcf4a460c8d0e3bc6",
+      "subject": "ipadapter: ipadapter/ip-adapter-faceid-portrait-v11_sd15.bin",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cites": [
+        "h94/IP-Adapter-FaceID@43907e6f44d079bf1a9102d9a6e56aef7a219bae:ip-adapter-faceid_sd15.bin"
+      ],
+      "detail": "published at 1 path(s); 96,740,574 B",
+      "kind": "vendor_weight",
+      "sha256": "201344e22e6f55849cf07ca7a6e53d8c3b001327c66cb9710d69fd5da48a8da7",
+      "subject": "ipadapter: ipadapter/ip-adapter-faceid_sd15.bin",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cites": [
+        "h94/IP-Adapter@018e402774aeeddd60609b4ecdb7e298259dc729:models/image_encoder/model.safetensors"
+      ],
+      "detail": "published at 1 path(s); 2,528,373,448 B",
+      "kind": "vendor_weight",
+      "sha256": "6ca9667da1ca9e0b0f75e46bb030f7e011f44f86cbfb8d5a36590fcd7507b030",
+      "subject": "ipadapter: ipadapter/models/image_encoder/model.safetensors",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cites": [
+        "storage.googleapis.com/mediapipe-models@published:https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task"
+      ],
+      "detail": "published at 1 path(s); 3,758,596 B",
+      "kind": "vendor_weight",
+      "sha256": "64184e229b263107bc2b804c6625db1341ff2bb731874b0bcc2fe6544e0bc9ff",
+      "subject": "mediapipe: mediapipe/face_landmarker.task",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cites": [
+        "TencentARC/PhotoMaker@f68f8e6309bf213d28d68230abff0ccc92de9f30:photomaker-v1.bin"
+      ],
+      "detail": "published at 1 path(s); 934,103,417 B",
+      "kind": "vendor_weight",
+      "sha256": "529d503fa378bfb3a74e3384ab2064d7269d59f0638324555d22067c31e275bc",
+      "subject": "photomaker: photomaker/photomaker-v1.bin",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cites": [
+        "TencentARC/PhotoMaker@f68f8e6309bf213d28d68230abff0ccc92de9f30:photomaker-v2.bin",
+        "TencentARC/PhotoMaker-V2@f5a1e5155dc02166253fa7e29d13519f5ba22eac:photomaker-v2.bin"
+      ],
+      "detail": "published at 2 path(s); 1,799,993,138 B",
+      "kind": "vendor_weight",
+      "sha256": "0eeac57d7e09b95cee670a18e0d939ff303dd6f76d317c950bf584c6c9bdb8f5",
+      "subject": "photomaker: photomaker/photomaker-v2.bin",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cites": [
+        "guozinan/PuLID@492b1451255dc9d9bc3c857259690b5f8b998d4a:pulid_v1.1.safetensors"
+      ],
+      "detail": "published at 1 path(s); 984,405,232 B",
+      "kind": "vendor_weight",
+      "sha256": "4cb8ceec1078e0165399b88332ab3c5971619111b8e1730e6bae64144aabae41",
+      "subject": "pulid: pulid/pulid_v1.1.safetensors",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cites": [
+        "guozinan/PuLID@492b1451255dc9d9bc3c857259690b5f8b998d4a:pulid_v1.bin"
+      ],
+      "detail": "published at 1 path(s); 1,582,858,505 B",
+      "kind": "vendor_weight",
+      "sha256": "245d05d8f11cd030d52562282332f912a2d5001b111873a40214163f33ab3f5d",
+      "subject": "pulid: pulid/pulid_v1.bin",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cites": [
+        "Gourieff/ReActor@218401e38fb00476b38f319c043b2f85d4db5b87:models/buffalo_l.zip"
+      ],
+      "detail": "published at 1 path(s); 288,621,354 B",
+      "kind": "vendor_weight",
+      "sha256": "80ffe37d8a5940d59a7384c201a2a38d4741f2f3c51eef46ebb28218a7b0ca2f",
+      "subject": "reactor: reactor/models/buffalo_l.zip",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cites": [
+        "Gourieff/ReActor@218401e38fb00476b38f319c043b2f85d4db5b87:models/inswapper_128.onnx"
+      ],
+      "detail": "published at 1 path(s); 554,253,681 B",
+      "kind": "vendor_weight",
+      "sha256": "e4a3f08c753cb72d04e10aa0f7dbe3deebbf39567d4ead6dce08e98aa49e16af",
+      "subject": "reactor: reactor/models/inswapper_128.onnx",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cites": [
+        "BestWishYsh/ConsisID-preview@950bc3f0902db44799e223a12ad972f9c52b341d:face_encoder/glint360k_curricular_face_r101_backbone.bin",
+        "Junjie96/UniPortrait@82ba3c1019ee6cb04c026b1d2969463f1b236c75:glint360k_curricular_face_r101_backbone.bin"
+      ],
+      "detail": "published at 2 path(s); 261,202,954 B",
+      "kind": "vendor_weight",
+      "sha256": "aa54ae6dc9f7ac6e262809f1a81d6108e221952bf836aee4cb677ef19246c6ec",
+      "subject": "uniportrait: uniportrait/glint360k_curricular_face_r101_backbone.bin",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cites": [
+        "h94/IP-Adapter@018e402774aeeddd60609b4ecdb7e298259dc729:models/image_encoder/model.safetensors"
+      ],
+      "detail": "published at 1 path(s); 2,528,373,448 B",
+      "kind": "vendor_weight",
+      "sha256": "6ca9667da1ca9e0b0f75e46bb030f7e011f44f86cbfb8d5a36590fcd7507b030",
+      "subject": "uniportrait: uniportrait/models/image_encoder/model.safetensors",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cites": [
+        "h94/IP-Adapter@018e402774aeeddd60609b4ecdb7e298259dc729:models/ip-adapter_sd15.bin"
+      ],
+      "detail": "published at 1 path(s); 44,642,825 B",
+      "kind": "vendor_weight",
+      "sha256": "68e1df30d760f280e578c302f1e73b37ea08654eff16a31153588047affe0058",
+      "subject": "uniportrait: uniportrait/models/ip-adapter_sd15.bin",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cites": [
+        "Junjie96/UniPortrait@82ba3c1019ee6cb04c026b1d2969463f1b236c75:uniportrait-faceid_sd15.bin"
+      ],
+      "detail": "published at 1 path(s); 223,921,488 B",
+      "kind": "vendor_weight",
+      "sha256": "8b79a4f39b37bc59cbc4e5d90681a33394965b3dc3ecfb0195cfe095b2bf61e4",
+      "subject": "uniportrait: uniportrait/uniportrait-faceid_sd15.bin",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cites": [
+        "Junjie96/UniPortrait@82ba3c1019ee6cb04c026b1d2969463f1b236c75:uniportrait-router_sd15.bin"
+      ],
+      "detail": "published at 1 path(s); 226,451,570 B",
+      "kind": "vendor_weight",
+      "sha256": "99f502791c138d90cde6512ba8cea994a4aa3244c9e5c4703bd8a6e6ab449908",
+      "subject": "uniportrait: uniportrait/uniportrait-router_sd15.bin",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cites": [
+        "h94/IP-Adapter@018e402774aeeddd60609b4ecdb7e298259dc729:models/image_encoder/config.json"
+      ],
+      "detail": "published at 1 path(s); 560 B",
+      "kind": "vendor_weight",
+      "sha256": "625d37b31afbf2f0792a87846b3654ee23f20568409e35b78a1f795b04e1a7a1",
+      "subject": "ipadapter: ipadapter/models/image_encoder/config.json",
+      "verdict": "RESOLVED"
+    },
+    {
+      "cites": [
+        "h94/IP-Adapter@018e402774aeeddd60609b4ecdb7e298259dc729:models/image_encoder/config.json"
+      ],
+      "detail": "published at 1 path(s); 560 B",
+      "kind": "vendor_weight",
+      "sha256": "625d37b31afbf2f0792a87846b3654ee23f20568409e35b78a1f795b04e1a7a1",
+      "subject": "uniportrait: uniportrait/models/image_encoder/config.json",
+      "verdict": "RESOLVED"
+    }
+  ],
+  "unreadable_repos": []
+}

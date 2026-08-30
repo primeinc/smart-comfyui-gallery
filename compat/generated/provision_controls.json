@@ -1,0 +1,30 @@
+{
+  "controls": [
+    {
+      "detail": "reported 'downloaded bytes hash 464c828c58d319c2, not the declared 0000000000000000; remov'; file left on disk=False",
+      "held": true,
+      "name": "A wrong_digest_is_removed"
+    },
+    {
+      "detail": "reported ''; file kept=True",
+      "held": true,
+      "name": "B matching_digest_is_kept"
+    },
+    {
+      "detail": "UNDECLARED: https://evil.example.com/face_landmarker.task is not under https://storage.googleapis.com/",
+      "held": true,
+      "name": "C url_must_sit_under_source"
+    },
+    {
+      "detail": "UNDECLARED: no downloader for kind 'carrier_pigeon'",
+      "held": true,
+      "name": "D unknown_kind_is_undeclared"
+    },
+    {
+      "detail": "a zero-byte file reported UNDECLARED",
+      "held": true,
+      "name": "E empty_download_fails"
+    }
+  ],
+  "failing": []
+}

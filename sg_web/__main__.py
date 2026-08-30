@@ -36,8 +36,9 @@ import ipaddress
 import os
 import pathlib
 import re
-import subprocess
 import sys
+
+import proc
 
 HERE = pathlib.Path(__file__).resolve().parent
 
@@ -128,28 +129,30 @@ def handover() -> None:
     line was written: `python -m sg_web --port 8791` returned 0 and
     silent, and PID 26348 was still LISTENING on 8791 afterwards.
 
-    `Popen` and not `run` because a server has no timeout to give -- it
-    runs until told to stop, which is the case `run` has no spelling for
-    and sglint SG003 correctly refuses. Streams are inherited rather than
-    piped, so the child's log is this command's log (SG004: a pipe here
-    would be one nobody drains, and uvicorn would block on a full one).
+    `proc.background` and not `proc.run` because a server has no timeout to
+    give -- it runs until told to stop, which `run` has no spelling for and
+    sglint SG003 correctly refuses. `inherit_streams` hands the child this
+    command's own console, so its log is this command's log and the terminal's
+    ^C reaches it; a pipe here would be one nobody drains and uvicorn would
+    block on a full one (SG004).
     """
     if missing() is None or os.environ.get(_HANDED_OVER):
         return
     python = interpreter()
     if python is None:
         return
-    serving = subprocess.Popen(
+    with proc.background(
         [str(python), "-m", "sg_web", *sys.argv[1:]],
         env={**os.environ, _HANDED_OVER: "1"},
-    )
-    try:
-        ended = serving.wait()
-    except KeyboardInterrupt:
-        # The console delivered that ^C to the child too, and wait() has already
-        # given it a moment to act on it (cpython Lib/subprocess.py:1444-1461).
-        # This second wait is for its real exit status.
-        ended = serving.wait()
+        inherit_streams=True,
+    ) as serving:
+        try:
+            ended = serving.wait()
+        except KeyboardInterrupt:
+            # The console delivered that ^C to the child too, and wait() has already
+            # given it a moment to act on it (cpython Lib/subprocess.py:1444-1461).
+            # This second wait is for its real exit status.
+            ended = serving.wait()
     raise SystemExit(ended)
 
 

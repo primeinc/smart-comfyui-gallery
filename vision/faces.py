@@ -401,9 +401,93 @@ def sex_word(code) -> str:
     return _SEX_WORDS.get(code, "unknown")
 
 
+#: Detection sizes, descending, first hit wins -- the rule every declared
+#: consumer of a stored face follows, and the sizes their own ladders sweep.
+#: `first_hit_descending` says why 640 alone is not enough.
+DET_SIZES: tuple[int, ...] = tuple(range(640, 128, -64))
+
+#: The OTHER recovery a consumer may use when the first size finds nothing:
+#: pad the frame and retry at the same size. Stored beside the descending
+#: hit, because the two land 8.86 px apart and one record cannot be both.
+PAD_RECOVERY_SCALE: float = 1.25
+
+
+def first_hit_descending(app, bgr):
+    """Detect down DET_SIZES, returning the first size that finds anything.
+
+    640 alone is not enough: IP-Adapter's own `ai_face.png` holds a face
+    this detector finds at 448 and not at 640, and every consumer that
+    misses at 640 descends the same way (`range(640, 256, -64)` for
+    IP-Adapter, InstantID and PuLID; 640/320/160 for InfiniteYou).
+
+    The detector is re-prepared per size rather than merged across sizes.
+    insightface 1.0.1's auto det-size runs 128 and 640 and NMS-merges them,
+    which moved keypoints up to 8.06 px away from the 640-only ones on the
+    same weights -- enough, through `norm_crop`'s similarity warp, to change
+    almost every pixel of the aligned crop and the embedding taken from it.
+    """
+    detector = getattr(app, "det_model", None)
+    if detector is None:
+        # A replay double supplies `get` and nothing else, returning a fixed
+        # detection. There is no size to sweep, and demanding a detector here
+        # would make the storage lane depend on one it deliberately has not got.
+        return app.get(bgr)
+
+    for size in DET_SIZES:
+        # `SCRFD._resolve_input_sizes` reads `input_sizes`, the list `prepare`
+        # fills; assigning the singular `input_size` moves nothing and every
+        # size would silently run the same detection.
+        detector.prepare(-1, input_size=(size, size))
+        if tuple(detector.input_sizes) != ((size, size),):
+            raise BackendUnavailable(f"asked the detector for {size} and it holds {detector.input_sizes}")
+        found = app.get(bgr)
+        if found:
+            return found
+    return []
+
+
+def padded_recovery(app, bgr):
+    """The face found by padding and retrying at the first size, or None.
+
+    UniPortrait recovers from an empty detection this way while IP-Adapter,
+    InstantID and PuLID descend the det-size, and on the same photograph the
+    two rules land 8.86 px apart -- far enough through `norm_crop` to change
+    every pixel of the aligned crop. Neither is wrong, so the record keeps
+    both and a consumer is served the one its own code would have computed.
+
+    None when the first size already found a face: no recovery ran, so there
+    is no second detection to store.
+    """
+    import cv2
+
+    detector = getattr(app, "det_model", None)
+    if detector is None:
+        return None
+    size = DET_SIZES[0]
+    detector.prepare(-1, input_size=(size, size))
+    if app.get(bgr):
+        return None
+
+    pad = PAD_RECOVERY_SCALE - 1.0
+    height, width = bgr.shape[:2]
+    top, left = int(height * pad), int(width * pad)
+    padded = cv2.copyMakeBorder(bgr, top, top, left, left, cv2.BORDER_CONSTANT, value=(128, 128, 128))
+    detector.prepare(-1, input_size=(size, size))
+    found = app.get(padded)
+    if not found:
+        return None
+
+    # Back into the original frame's coordinates, the way upstream moves them.
+    best = max(found, key=lambda one: (one.bbox[2] - one.bbox[0]) * (one.bbox[3] - one.bbox[1]))
+    offset = np.array([left, top], dtype=np.float32)
+    best.kps = np.asarray(best.kps, dtype=np.float32) - offset
+    best.bbox = np.asarray(best.bbox, dtype=np.float32) - np.array([left, top, left, top], dtype=np.float32)
+    return best
+
+
 class InsightFaceBackend(FaceBackend):
     """insightface's own pipeline (FaceAnalysis over the provisioned
-    antelopev2 pack): SCRFD-10GF joint 128+640 detection, upstream
+    antelopev2 pack): SCRFD-10GF detection at 640x640, upstream
     5-landmark alignment, glintr100 (ResNet100@Glint360K, 512-d)
     embedding. On the labeled A/B this is near-perfect
     (pairwise F1 0.999, P 1.000/R 0.998 at threshold 0.35-0.40 —
@@ -445,7 +529,7 @@ class InsightFaceBackend(FaceBackend):
         if h == 0 or w == 0:
             return []
         detections = []
-        for face in self._app.get(bgr):
+        for face in first_hit_descending(self._app, bgr):
             # insightface leaves both optional on its Face record. A detection
             # without a box or a confidence cannot be placed or ranked, so it is
             # dropped here rather than raising four frames later.
@@ -591,7 +675,10 @@ def get_insightface_app(models_dir: str, providers: str = "auto", *, provision: 
             allowed_modules=["detection", "recognition", "genderage", "landmark_2d_106", "landmark_3d_68"],
             providers=["CPUExecutionProvider"],
         )
-        app.prepare(ctx_id=0)  # Auto det-size: joint 128x128 + 640x640
+        # DET_SIZES, not insightface 1.0.1's auto default: that one detects
+        # at 128 as well and NMS-merges, and no consumer of a stored face
+        # computes the merged keypoints. `detect` walks the ladder itself.
+        app.prepare(ctx_id=0, det_size=(DET_SIZES[0], DET_SIZES[0]))
         rec_providers = _ort_providers(providers)
         if rec_providers != ["CPUExecutionProvider"]:
             app.models["recognition"] = _prepared_recognition(root, rec_providers)

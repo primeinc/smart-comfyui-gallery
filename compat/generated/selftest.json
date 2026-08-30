@@ -139,6 +139,27 @@
       "detected": true,
       "mechanism": "a durable size that is not the array's encoded length, through RetainedState.priced",
       "name": "retained_bytes_cannot_be_asserted"
+    },
+    {
+      "applicable": true,
+      "detail": "pinned locator -> PROVEN; four moved pins refused",
+      "detected": true,
+      "mechanism": "a release asset re-uploaded under the same name, through the pinned id and mtime",
+      "name": "vendor_asset_swap"
+    },
+    {
+      "applicable": true,
+      "detail": "9-byte mirror -> UNRESOLVABLE: mirrored detection_Resnet50_Final.pth is 9 bytes; the release says 109497761",
+      "detected": true,
+      "mechanism": "a truncated mirror of a release asset, through the release's own byte count",
+      "name": "vendor_asset_size"
+    },
+    {
+      "applicable": true,
+      "detail": "four refused, the real host allowed",
+      "detected": true,
+      "mechanism": "a download url off https or off GitHub, through the fetcher's scheme and host check",
+      "name": "vendor_asset_host"
     }
   ],
   "undetected": []

@@ -1,0 +1,161 @@
+{
+  "declared": [
+    "anystory",
+    "consisid",
+    "id_lora",
+    "id_v2v",
+    "infiniteyou",
+    "instantcharacter",
+    "instantid",
+    "instantid_upstream",
+    "ipadapter_faceid",
+    "ipadapter_faceid_plus",
+    "ipadapter_upstream",
+    "omnigen2",
+    "photomaker_v2",
+    "pulid_comfyui",
+    "pulid_upstream",
+    "qwen_image_edit_2509",
+    "reactor",
+    "umo",
+    "uniportrait",
+    "uno",
+    "uso",
+    "xverse"
+  ],
+  "identity": "4a39d667391f596ba6d52971b43dff1fdc6bba00655b9d9db8c60fd731c6bb11",
+  "unresolved": [
+    {
+      "kind": "consumer",
+      "reason": "cases.json records a different tree; it is not evidence for this one",
+      "stage": "cases",
+      "subject": "anystory"
+    },
+    {
+      "kind": "consumer",
+      "reason": "cases.json records a different tree; it is not evidence for this one",
+      "stage": "cases",
+      "subject": "consisid"
+    },
+    {
+      "kind": "consumer",
+      "reason": "cases.json records a different tree; it is not evidence for this one",
+      "stage": "cases",
+      "subject": "id_lora"
+    },
+    {
+      "kind": "consumer",
+      "reason": "cases.json records a different tree; it is not evidence for this one",
+      "stage": "cases",
+      "subject": "id_v2v"
+    },
+    {
+      "kind": "consumer",
+      "reason": "cases.json records a different tree; it is not evidence for this one",
+      "stage": "cases",
+      "subject": "infiniteyou"
+    },
+    {
+      "kind": "consumer",
+      "reason": "cases.json records a different tree; it is not evidence for this one",
+      "stage": "cases",
+      "subject": "instantcharacter"
+    },
+    {
+      "kind": "consumer",
+      "reason": "cases.json records a different tree; it is not evidence for this one",
+      "stage": "cases",
+      "subject": "instantid"
+    },
+    {
+      "kind": "consumer",
+      "reason": "cases.json records a different tree; it is not evidence for this one",
+      "stage": "cases",
+      "subject": "instantid_upstream"
+    },
+    {
+      "kind": "consumer",
+      "reason": "cases.json records a different tree; it is not evidence for this one",
+      "stage": "cases",
+      "subject": "ipadapter_faceid"
+    },
+    {
+      "kind": "consumer",
+      "reason": "cases.json records a different tree; it is not evidence for this one",
+      "stage": "cases",
+      "subject": "ipadapter_faceid_plus"
+    },
+    {
+      "kind": "consumer",
+      "reason": "cases.json records a different tree; it is not evidence for this one",
+      "stage": "cases",
+      "subject": "ipadapter_upstream"
+    },
+    {
+      "kind": "consumer",
+      "reason": "cases.json records a different tree; it is not evidence for this one",
+      "stage": "cases",
+      "subject": "omnigen2"
+    },
+    {
+      "kind": "consumer",
+      "reason": "cases.json records a different tree; it is not evidence for this one",
+      "stage": "cases",
+      "subject": "photomaker_v2"
+    },
+    {
+      "kind": "consumer",
+      "reason": "cases.json records a different tree; it is not evidence for this one",
+      "stage": "cases",
+      "subject": "pulid_comfyui"
+    },
+    {
+      "kind": "consumer",
+      "reason": "cases.json records a different tree; it is not evidence for this one",
+      "stage": "cases",
+      "subject": "pulid_upstream"
+    },
+    {
+      "kind": "consumer",
+      "reason": "cases.json records a different tree; it is not evidence for this one",
+      "stage": "cases",
+      "subject": "qwen_image_edit_2509"
+    },
+    {
+      "kind": "consumer",
+      "reason": "cases.json records a different tree; it is not evidence for this one",
+      "stage": "cases",
+      "subject": "reactor"
+    },
+    {
+      "kind": "consumer",
+      "reason": "cases.json records a different tree; it is not evidence for this one",
+      "stage": "cases",
+      "subject": "umo"
+    },
+    {
+      "kind": "consumer",
+      "reason": "cases.json records a different tree; it is not evidence for this one",
+      "stage": "cases",
+      "subject": "uniportrait"
+    },
+    {
+      "kind": "consumer",
+      "reason": "cases.json records a different tree; it is not evidence for this one",
+      "stage": "cases",
+      "subject": "uno"
+    },
+    {
+      "kind": "consumer",
+      "reason": "cases.json records a different tree; it is not evidence for this one",
+      "stage": "cases",
+      "subject": "uso"
+    },
+    {
+      "kind": "consumer",
+      "reason": "cases.json records a different tree; it is not evidence for this one",
+      "stage": "cases",
+      "subject": "xverse"
+    }
+  ]
+}

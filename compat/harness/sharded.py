@@ -24,12 +24,15 @@ solves.
 
 from __future__ import annotations
 
+import contextlib
 import json
-import subprocess
+import os
 import sys
+from collections.abc import Generator
 from pathlib import Path
 from typing import Any, Final
 
+import proc
 from compat.contracts.case import Tier, Verdict
 from compat.harness import identity as evidence_identity
 from compat.harness import provenance
@@ -37,6 +40,10 @@ from compat.harness import run as case_runner
 from compat.harness.run import blocking_failures
 
 ROOT: Final[Path] = Path(__file__).resolve().parent.parent
+
+#: How long one shard may take. Real model work over the whole corpus, so it is
+#: measured in half-hours rather than in the seconds a local command takes.
+SHARD_SECONDS: Final[float] = 1800.0
 
 #: One shard per group of lanes that share the model packs they load, grouped
 #: by what they LOAD rather than what they mean: pairing `embedding_spaces`
@@ -73,22 +80,20 @@ def shard_names() -> tuple[str, ...]:
 def run_shard(name: str, lanes: tuple[str, ...], where: Path) -> dict[str, Any]:
     """One shard, in its own interpreter, returning its partial evidence."""
     argv = [sys.executable, "-m", "compat.harness.run", "--json", str(where), ",".join(lanes)]
-    try:
-        done = subprocess.run(argv, capture_output=True, text=True, check=False, cwd=str(ROOT.parent), timeout=1800)
-    except subprocess.TimeoutExpired:
+    code, out, err = proc.text(argv, timeout=SHARD_SECONDS, cwd=ROOT.parent)
+    if code == proc.TIMED_OUT:
         # A red row, not a traceback out of the lane. The timeout existed and
         # nothing caught it, so one hung shard aborted the merge and the other
         # five shards' work was discarded with it.
-        return {"shard": name, "results": [], "failed": f"shard {name} timed out after 1800s"}
+        return {"shard": name, "results": [], "failed": f"shard {name} timed out after {SHARD_SECONDS}s"}
     if not where.is_file():
         return {
             "shard": name,
             "results": [],
-            "failed": f"shard {name} wrote no partial, exit {done.returncode}: "
-            f"{(done.stderr or done.stdout).strip()[-400:]}",
+            "failed": f"shard {name} wrote no partial, exit {code}: {(err or out).strip()[-400:]}",
         }
     held: dict[str, Any] = json.loads(where.read_text(encoding="utf-8"))
-    held["exit"] = done.returncode
+    held["exit"] = code
     held["shard"] = name
     return held
 
@@ -99,6 +104,8 @@ def merge(partials: list[dict[str, Any]]) -> dict[str, Any]:
     broken: list[str] = []
     exited: list[str] = []
     skipped: list[dict[str, Any]] = []
+    considered: list[dict[str, Any]] = []
+    observed: list[dict[str, Any]] = []
     seen: set[str] = set()
     duplicated: list[str] = []
     for one in partials:
@@ -115,6 +122,10 @@ def merge(partials: list[dict[str, Any]]) -> dict[str, Any]:
         # Each shard skips in its own process, so its ledger comes back in its
         # partial. Dropping them here would put the record back where it was.
         skipped.extend(one.get("skipped", []))
+        considered.extend(one.get("considered", []))
+        # Each shard resolves its own artifacts in its own process, so what it
+        # opened comes back in its partial or not at all.
+        observed.extend(one.get("observed", []))
         if one.get("failed"):
             broken.append(one["failed"])
         elif one.get("exit"):
@@ -153,6 +164,22 @@ def merge(partials: list[dict[str, Any]]) -> dict[str, Any]:
                 key=lambda row: tuple(str(value) for _, value in row),
             )
         ],
+        "considered": [
+            dict(one)
+            for one in sorted(
+                {tuple(sorted(row.items())) for row in considered},
+                key=lambda row: tuple(str(value) for _, value in row),
+            )
+        ],
+        # UNIONED by (loader, identity): six shards each load antelopev2, and
+        # counting that six times would make a number about sharding.
+        "observed": [
+            dict(one)
+            for one in sorted(
+                {tuple(sorted(row.items())) for row in observed},
+                key=lambda row: tuple(str(value) for _, value in row),
+            )
+        ],
         "duplicated_cases": sorted(set(duplicated)),
         "shards_failed": broken,
         # Recorded, never blocking: a shard that exited over the very
@@ -169,9 +196,98 @@ def merge(partials: list[dict[str, Any]]) -> dict[str, Any]:
     return case_runner.evidence_shape(out, "sharded.merge")
 
 
+def _alive(pid: int) -> bool:
+    """Whether that process still exists.
+
+    A pid can be reused, so this can say "alive" of a stranger. It cannot say
+    "alive" of nothing, which is the direction that matters here: the lock is
+    only ever reclaimed on a definite no.
+    """
+    if pid <= 0:
+        return False
+    if sys.platform != "win32":
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return True
+        return True
+
+    import ctypes
+
+    query_limited_information, still_active = 0x1000, 259
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    handle = kernel32.OpenProcess(query_limited_information, False, pid)
+    if not handle:
+        return False
+    try:
+        code = ctypes.c_ulong()
+        if not kernel32.GetExitCodeProcess(handle, ctypes.byref(code)):
+            return False
+        return code.value == still_active
+    finally:
+        kernel32.CloseHandle(handle)
+
+
+def _owner(lock: Path) -> int:
+    """The pid the lock names, or 0 when it names none."""
+    held = ""
+    with contextlib.suppress(OSError):
+        held = lock.read_text(encoding="utf-8").strip()
+    _, _, digits = held.partition("pid ")
+    return int(digits) if digits.isdigit() else 0
+
+
+@contextlib.contextmanager
+def only_one_run(generated: Path) -> Generator[None]:
+    """Refuse to start while another LIVE run owns the shard directory.
+
+    Every shard writes to `generated/shards/<name>.json` under a fixed name,
+    and `run_shard` unlinks that name before it starts. Two runs therefore
+    interleave into one set of files and the merge reads a mixture of
+    generations -- observed, not hypothesised: a second run deleted a partial
+    the first had already written, and the first merged 22 consumers while the
+    directory on disk held shards from both.
+
+    `O_EXCL` is the whole mechanism: the create either wins or raises, with no
+    window between the check and the claim.
+
+    The owner's liveness is CHECKED rather than assumed. `finally` does not run
+    in a killed process, so an interrupted run left a lock nothing could clear,
+    and the next run skipped `cases` entirely and let every later lane read the
+    previous run's evidence -- a stale-lock failure that reported itself as 154
+    blocked ledger cells and a tree mismatch.
+    """
+    lock = generated / "shards.lock"
+    while True:
+        try:
+            handle = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            break
+        except FileExistsError:
+            owner = _owner(lock)
+            if owner and _alive(owner):
+                raise SystemExit(f"another case run holds {lock} (pid {owner}); wait for it to finish.") from None
+            print(f"reclaiming {lock}: pid {owner or 'unrecorded'} is not running")
+            # A losing racer finds the lock already gone or already retaken,
+            # and comes back through `O_EXCL` either way.
+            lock.unlink(missing_ok=True)
+    try:
+        os.write(handle, f"pid {os.getpid()}".encode())
+        os.close(handle)
+        yield
+    finally:
+        lock.unlink(missing_ok=True)
+
+
 def main() -> int:
     generated = ROOT / "generated"
     generated.mkdir(parents=True, exist_ok=True)
+    with only_one_run(generated):
+        return _run_every_shard(generated)
+
+
+def _run_every_shard(generated: Path) -> int:
     shards = generated / "shards"
     shards.mkdir(exist_ok=True)
 

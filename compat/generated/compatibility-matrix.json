@@ -98,12 +98,12 @@
       "at_pin": true,
       "commit": "33dd047835cf03a41d7ca6f3a93508946ad6b4d9",
       "consumer": "id_v2v",
-      "consumer_cases": 12,
+      "consumer_cases": 16,
       "derivable_or_unused": [],
       "necessary": [],
       "primitive_cases": 0,
       "repo": "https://github.com/Eyeline-Labs/ID-V2V.git",
-      "status": "PARTIAL",
+      "status": "REPRODUCED",
       "substitutions": [
         {
           "primitive": "source_video_bytes",
@@ -112,11 +112,13 @@
         }
       ],
       "untested": [
+        "david_normal_mp4",
+        "depth_mp4",
+        "orig_pixel_mp4",
         "source_video_bytes"
       ],
       "verdicts": {
-        "PASS": 3,
-        "UNSUPPORTED": 9
+        "PASS": 16
       }
     },
     {
@@ -298,7 +300,7 @@
       "necessary": [],
       "primitive_cases": 0,
       "repo": "https://github.com/cubiq/ComfyUI_IPAdapter_plus.git",
-      "status": "PARTIAL",
+      "status": "REPRODUCED",
       "substitutions": [
         {
           "primitive": "embedding_raw",
@@ -315,8 +317,7 @@
         "embedding_raw"
       ],
       "verdicts": {
-        "PASS": 5,
-        "UNSUPPORTED": 1
+        "PASS": 6
       }
     },
     {
@@ -328,7 +329,7 @@
       "necessary": [],
       "primitive_cases": 0,
       "repo": "https://github.com/cubiq/ComfyUI_IPAdapter_plus.git",
-      "status": "PARTIAL",
+      "status": "REPRODUCED",
       "substitutions": [
         {
           "primitive": "embedding_raw",
@@ -363,20 +364,19 @@
         "source_region_pixels"
       ],
       "verdicts": {
-        "PASS": 20,
-        "UNSUPPORTED": 4
+        "PASS": 24
       }
     },
     {
       "at_pin": true,
       "commit": "62e4af9d0c1ac7d5f8dd386a0ccf2211346af1a2",
       "consumer": "ipadapter_upstream",
-      "consumer_cases": 6,
+      "consumer_cases": 5,
       "derivable_or_unused": [],
       "necessary": [],
       "primitive_cases": 0,
       "repo": "https://github.com/tencent-ailab/IP-Adapter.git",
-      "status": "PARTIAL",
+      "status": "REPRODUCED",
       "substitutions": [
         {
           "primitive": "embedding_raw",
@@ -393,8 +393,7 @@
         "embedding_raw"
       ],
       "verdicts": {
-        "PASS": 5,
-        "UNSUPPORTED": 1
+        "PASS": 5
       }
     },
     {
@@ -667,7 +666,7 @@
       "necessary": [],
       "primitive_cases": 0,
       "repo": "https://github.com/junjiehe96/UniPortrait.git",
-      "status": "PARTIAL",
+      "status": "REPRODUCED",
       "substitutions": [
         {
           "primitive": "kps_source_px",
@@ -691,8 +690,7 @@
         "source_region_pixels"
       ],
       "verdicts": {
-        "PASS": 5,
-        "UNSUPPORTED": 1
+        "PASS": 6
       }
     },
     {
@@ -784,7 +782,7 @@
     }
   ],
   "generated_from": {
-    "cases": 299,
+    "cases": 302,
     "producer_heads": {
       "detection": "SCRFD",
       "genderage": "Attribute",
@@ -948,10 +946,10 @@
       "inconclusive": 1,
       "primitive": "audio_sample_rate",
       "substitute_fails": 1,
-      "substitute_fails_measured": 0,
+      "substitute_fails_measured": 1,
       "substitute_serves": 0,
       "survives": 0,
-      "verdict": "UNPROVEN"
+      "verdict": "NECESSARY AT THIS WIDTH"
     },
     {
       "breaks": 0,
@@ -980,6 +978,34 @@
       "substitute_serves": 0,
       "survives": 0,
       "verdict": "NECESSARY AT THIS WIDTH"
+    },
+    {
+      "breaks": 0,
+      "cases": 4,
+      "consumers": [
+        "id_v2v"
+      ],
+      "inconclusive": 4,
+      "primitive": "david_normal_mp4",
+      "substitute_fails": 0,
+      "substitute_fails_measured": 0,
+      "substitute_serves": 0,
+      "survives": 0,
+      "verdict": "UNPROVEN"
+    },
+    {
+      "breaks": 0,
+      "cases": 4,
+      "consumers": [
+        "id_v2v"
+      ],
+      "inconclusive": 4,
+      "primitive": "depth_mp4",
+      "substitute_fails": 0,
+      "substitute_fails_measured": 0,
+      "substitute_serves": 0,
+      "survives": 0,
+      "verdict": "UNPROVEN"
     },
     {
       "breaks": 0,
@@ -1012,7 +1038,7 @@
     },
     {
       "breaks": 0,
-      "cases": 162,
+      "cases": 168,
       "consumers": [
         "infiniteyou",
         "instantid",
@@ -1025,10 +1051,10 @@
         "pulid_upstream",
         "reactor"
       ],
-      "inconclusive": 54,
+      "inconclusive": 56,
       "primitive": "embedding_raw",
-      "substitute_fails": 85,
-      "substitute_fails_measured": 85,
+      "substitute_fails": 89,
+      "substitute_fails_measured": 89,
       "substitute_serves": 0,
       "survives": 0,
       "verdict": "NECESSARY AT THIS WIDTH"
@@ -1058,10 +1084,10 @@
       "inconclusive": 17,
       "primitive": "frame_dimensions",
       "substitute_fails": 14,
-      "substitute_fails_measured": 0,
+      "substitute_fails_measured": 14,
       "substitute_serves": 0,
       "survives": 0,
-      "verdict": "UNPROVEN"
+      "verdict": "NECESSARY AT THIS WIDTH"
     },
     {
       "breaks": 0,
@@ -1093,7 +1119,7 @@
     },
     {
       "breaks": 0,
-      "cases": 126,
+      "cases": 134,
       "consumers": [
         "aligned_crop",
         "infiniteyou",
@@ -1102,10 +1128,10 @@
         "ipadapter_faceid_plus",
         "uniportrait"
       ],
-      "inconclusive": 63,
+      "inconclusive": 67,
       "primitive": "kps_source_px",
-      "substitute_fails": 59,
-      "substitute_fails_measured": 59,
+      "substitute_fails": 63,
+      "substitute_fails_measured": 63,
       "substitute_serves": 0,
       "survives": 0,
       "verdict": "NECESSARY AT THIS WIDTH"
@@ -1141,17 +1167,31 @@
     },
     {
       "breaks": 0,
-      "cases": 92,
+      "cases": 4,
+      "consumers": [
+        "id_v2v"
+      ],
+      "inconclusive": 4,
+      "primitive": "orig_pixel_mp4",
+      "substitute_fails": 0,
+      "substitute_fails_measured": 0,
+      "substitute_serves": 0,
+      "survives": 0,
+      "verdict": "UNPROVEN"
+    },
+    {
+      "breaks": 0,
+      "cases": 100,
       "consumers": [
         "aligned_crop",
         "infiniteyou",
         "ipadapter_faceid_plus",
         "uniportrait"
       ],
-      "inconclusive": 46,
+      "inconclusive": 50,
       "primitive": "patch_origin",
-      "substitute_fails": 46,
-      "substitute_fails_measured": 46,
+      "substitute_fails": 47,
+      "substitute_fails_measured": 47,
       "substitute_serves": 0,
       "survives": 0,
       "verdict": "NECESSARY AT THIS WIDTH"
@@ -1202,30 +1242,30 @@
     },
     {
       "breaks": 0,
-      "cases": 97,
+      "cases": 105,
       "consumers": [
         "aligned_crop",
         "infiniteyou",
         "ipadapter_faceid_plus",
         "uniportrait"
       ],
-      "inconclusive": 46,
+      "inconclusive": 50,
       "primitive": "source_region_pixels",
-      "substitute_fails": 51,
-      "substitute_fails_measured": 51,
+      "substitute_fails": 55,
+      "substitute_fails_measured": 55,
       "substitute_serves": 0,
       "survives": 0,
       "verdict": "NECESSARY AT THIS WIDTH"
     },
     {
       "breaks": 0,
-      "cases": 6,
+      "cases": 8,
       "consumers": [
         "id_v2v"
       ],
-      "inconclusive": 3,
+      "inconclusive": 4,
       "primitive": "source_video_bytes",
-      "substitute_fails": 3,
+      "substitute_fails": 4,
       "substitute_fails_measured": 0,
       "substitute_serves": 0,
       "survives": 0,
@@ -1261,20 +1301,14 @@
       ],
       "inconclusive": 53,
       "primitive": "whole_reference_image",
-      "substitute_fails": 95,
-      "substitute_fails_measured": 31,
+      "substitute_fails": 96,
+      "substitute_fails_measured": 96,
       "substitute_serves": 0,
       "survives": 0,
       "verdict": "NECESSARY AT THIS WIDTH"
     }
   ],
-  "skipped": [
-    {
-      "consumer_id": "face_selection",
-      "what": "Group(asset_id='1854865030', path='C:\\\\ComfyUI\\\\output\\\\sample-datasets\\\\people_detection\\\\files\\\\medium\\\\1854865030.jpg', sha256='02a5a86a7f6a61dfbb02f1ed956ada43fe7144194210755116047635c186932f', bytes=509635, released_people=2, age_ranges=('60s', '60s'), description='Senior couple hikers talking in snow-covered winter nature.')",
-      "why": "could not be detected on: 1854865030: the detector found 1 face(s); the dataset releases 2 people. A photograph the detector does not see two faces in cannot separate `first` from `largest_bbox_area`"
-    }
-  ],
+  "skipped": [],
   "storage": [
     {
       "at_1000": 2048000,
@@ -1382,17 +1416,16 @@
     "declared": 22,
     "diverged": 0,
     "not_exercised": 0,
-    "partial": 5,
-    "primitives_unproven": 3,
+    "primitives_unproven": 4,
     "primitives_unproven_names": [
-      "audio_sample_rate",
-      "frame_dimensions",
+      "david_normal_mp4",
+      "depth_mp4",
+      "orig_pixel_mp4",
       "source_video_bytes"
     ],
-    "reproduced": 17,
-    "skipped_inputs": 1,
-    "unrepresented_failures": 0,
-    "unsupported": 0
+    "reproduced": 22,
+    "skipped_inputs": 0,
+    "unrepresented_failures": 0
   },
   "unrepresented": []
 }

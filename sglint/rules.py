@@ -359,9 +359,28 @@ def is_pipe(given) -> bool:
 
 
 def pipes_output(call: ast.Call) -> bool:
-    """Popen handed a PIPE this repo has nobody reading."""
-    if not isinstance(call.func, ast.Attribute) or call.func.attr != "Popen":
+    """A child handed a pipe, by any of the spellings that hand one.
+
+    `capture_output=True` IS two pipes: it is documented as shorthand for
+    `stdout=PIPE, stderr=PIPE`. `check_output` pipes stdout by construction.
+    A rule reading only `Popen` passes both, and 22 call sites carrying the
+    exact defect it describes went through the gate.
+
+    The cost was not theoretical. `subprocess.run(argv, capture_output=True,
+    timeout=N)` kills the child when the timeout fires and then calls
+    `communicate()` a SECOND time with no timeout to drain those pipes; that
+    call waits for every handle on the write end to close, and a grandchild
+    inherited them. `just compat hf` stalled over forty minutes with its own
+    timeout already fired.
+    """
+    if not isinstance(call.func, ast.Attribute):
         return False
+    if call.func.attr == "check_output":
+        # Pipes stdout by construction: there is no spelling of it that does not.
+        return True
+    captured = keyword(call, "capture_output")
+    if isinstance(captured, ast.Constant) and captured.value is True:
+        return True
     return any(is_pipe(keyword(call, stream)) for stream in ("stdout", "stderr"))
 
 
@@ -1702,14 +1721,333 @@ def rule_comment_blocks(root: pathlib.Path = REPO_ROOT) -> list[Finding]:
                 run = []
             if tok is not None:
                 run.append(tok)
+    found += _just_comment_blocks(root)
+    return found
+
+
+def every_just(root: pathlib.Path = REPO_ROOT) -> list[pathlib.Path]:
+    """Every justfile this repository owns."""
+    found = [*root.rglob("*.just"), *root.rglob("justfile")]
+    return sorted(
+        one
+        for one in found
+        if one.is_file() and not {"vendor", "node_modules", ".git"} & set(one.relative_to(root).parts)
+    )
+
+
+def _just_comment_blocks(root: pathlib.Path) -> list[Finding]:
+    """SG013 over justfiles, which tokenize cannot read.
+
+    The standard is about COMMENTS, not about Python: CONTRIBUTING.md says a
+    comment block outside a docstring holds to two sentences or three physical
+    lines, and names no language. `every_source` walks `.py` only, so
+    `compat.just` -- the file that runs the whole compatibility suite -- was
+    the one place in the repository where a comment could say anything at any
+    length, and it accumulated twenty blocks over the limit.
+    """
+    found: list[Finding] = []
+    for source in every_just(root):
+        try:
+            lines = source.read_text(encoding="utf-8").splitlines()
+        except (OSError, UnicodeDecodeError):
+            continue
+        run: list[int] = []
+        for number, line in enumerate([*lines, ""], start=1):
+            # A standalone comment only. A trailing `#` is one line by
+            # construction, and a shebang is not a comment.
+            standalone = line.lstrip().startswith("#") and not line.lstrip().startswith("#!")
+            if run and not (standalone and number == run[-1] + 1):
+                if len(run) > 3:
+                    found.append(
+                        Finding(
+                            source, run[0], 0, "SG013", f"comment block runs to {len(run)} lines; the limit is three"
+                        )
+                    )
+                run = []
+            if standalone:
+                run.append(number)
+    return found
+
+
+#: The one module allowed to reach `subprocess`. Everything else goes through
+#: it, so a timeout kills the whole process tree and no stream is ever a pipe.
+THE_RUNNER = "proc.py"
+
+#: Names that spawn a process without going through the runner.
+_DIRECT_SPAWN = frozenset({"run", "Popen", "call", "check_call", "check_output", "getoutput", "getstatusoutput"})
+_SHELL_OUT = frozenset({"system", "popen"})
+
+
+def rule_one_runner(root: pathlib.Path = REPO_ROOT) -> list[Finding]:
+    """SG005: a module reaches for `subprocess` instead of `proc`.
+
+    SG003 and SG004 catch a spawn that is unbounded or piped, one call site at
+    a time. This makes the boundary structural: `proc.py` owns every spawn, so
+    the timeout semantics are decided once and cannot be re-derived wrongly at
+    the next call site.
+
+    `vendor/` is excluded because this repository does not own that code.
+
+    The SPAWNERS are named, not the module: `subprocess.CompletedProcess` is a
+    return type and `subprocess.PIPE` a constant, and a module that only reads
+    those is not spawning anything. Reaching a spawner means naming it, as an
+    attribute or an import, and either spelling is caught -- including a bound
+    alias, because `held = subprocess.run` is that attribute.
+    """
+    found: list[Finding] = []
+    runner = (root / THE_RUNNER).resolve()
+    for source in every_source():
+        if not source.is_relative_to(root) or source.resolve() == runner:
+            continue
+        if "vendor" in source.relative_to(root).parts:
+            continue
+        try:
+            tree = parsed(source)
+        except (OSError, SyntaxError, UnicodeDecodeError):
+            continue
+        for node in ast.walk(tree):
+            # `ast.walk` is typed as yielding bare AST, which carries no
+            # position. Every node matched below is an ImportFrom or an
+            # Attribute, and both do.
+            if not isinstance(node, ast.ImportFrom | ast.Attribute):
+                continue
+            named = ""
+            if isinstance(node, ast.ImportFrom) and (node.module or "").split(".")[0] == "subprocess":
+                named = next((f"subprocess.{one.name}" for one in node.names if one.name in _DIRECT_SPAWN), "")
+            elif isinstance(node, ast.ImportFrom) and (node.module or "") == "os":
+                named = next((f"os.{one.name}" for one in node.names if one.name in _SHELL_OUT), "")
+            elif isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
+                if node.value.id == "subprocess" and node.attr in _DIRECT_SPAWN:
+                    named = f"subprocess.{node.attr}"
+                elif node.value.id == "os" and node.attr in _SHELL_OUT:
+                    named = f"os.{node.attr}"
+            if named:
+                found.append(
+                    Finding(
+                        source,
+                        node.lineno,
+                        node.col_offset,
+                        "SG005",
+                        f"{named} spawns outside {THE_RUNNER}; call proc.run/proc.text instead",
+                    )
+                )
+    return found
+
+
+#: A verdict for a case that did not run, in any spelling. A proof that did not
+#: happen fails; it does not get a word of its own.
+_DID_NOT_RUN = "UNSUPPORTED"
+
+
+def rule_no_case_skips(root: pathlib.Path = REPO_ROOT) -> list[Finding]:
+    """SG014: compat names a did-not-run verdict, or declares a boundary underivable.
+
+    An absent weight, an unwritten derivation and a detector that missed are
+    each a proof that did not happen, and each one fails. A runner raising
+    `NotImplementedError` on a case path says the same thing in another word.
+
+    Read from the AST, so prose describing the ban does not trip it.
+    """
+    found: list[Finding] = []
+    compat = root / "compat"
+    for source in every_source():
+        if not source.is_relative_to(compat):
+            continue
+        try:
+            tree = parsed(source)
+        except (OSError, SyntaxError, UnicodeDecodeError):
+            continue
+        consumer = source.parent.name == "consumers"
+        for node in ast.walk(tree):
+            # `ast.walk` yields the Module too, and it carries no position.
+            if not isinstance(node, (ast.Attribute, ast.Constant, ast.Raise)):
+                continue
+            at = (source, node.lineno, node.col_offset)
+            if isinstance(node, ast.Attribute) and node.attr == _DID_NOT_RUN:
+                found.append(Finding(*at, "SG014", f"names Verdict.{_DID_NOT_RUN}; a case that did not run fails"))
+            elif isinstance(node, ast.Constant) and node.value == _DID_NOT_RUN:
+                found.append(Finding(*at, "SG014", f"carries the string {_DID_NOT_RUN!r}"))
+            elif consumer and isinstance(node, ast.Raise) and node.exc is not None:
+                called = node.exc.func if isinstance(node.exc, ast.Call) else node.exc
+                if isinstance(called, ast.Name) and called.id == "NotImplementedError":
+                    found.append(Finding(*at, "SG014", "raises NotImplementedError; derive the boundary or drop it"))
     return found
 
 
 # --- all of it ----------------------------------------------------------------------------------
 
+#: `$?` inside a negated `if`. The status belongs to the negation, so it is
+#: always 0 and the real code is lost.
+_NEGATED_IF = re.compile(r"^\s*if\s+!\s")
+_CAPTURE = re.compile(r"=\s*\$\?")
+
+#: A recipe running a Python file by PATH. `sys.path[0]` becomes the script's
+#: own directory, so a repo-root import fails.
+_BY_PATH = re.compile(r"(?:python(?:\.exe)?|\{\{ *python *\}\})\s+(?!-)(\S+\.py)\b")
+
+
+#: `cmd || true` discards a failure outright, in a trap as much as anywhere:
+#: cleanup that fails leaks a worktree or a process and says nothing. A step
+#: that may fail says so on stderr instead.
+_OR_TRUE = re.compile(r"\|\|\s*(?:true|:)\s*(?:;|'|$)")
+
+
+#: Turning errexit off. Everything after it in that recipe can fail silently.
+_UNSET_ERREXIT = re.compile(r"^\s*set\s+\+(?:e\b|o\s+errexit\b)")
+
+#: `export x=$(cmd)` and friends: the status is the declaring builtin's, so a
+#: failing command is assigned and forgotten. Measured under `sh`:
+#: `x=$(false)` fires errexit at rc=1, `export x=$(false)` exits 0.
+_DECLARED_SUBSTITUTION = re.compile(r"^\s*(export|local|declare|readonly|typeset)\s+[A-Za-z_]\w*=(?:\$\(|`)")
+
+#: `cmd && other`. Measured under `sh`: `set -eu; false && echo right` runs
+#: on and exits 0, losing the left operand exactly as `|| true` does. A `[`
+#: or `test` on the left is a condition, and has no status to lose.
+_AND_CHAIN = re.compile(r"^\s*(?!(?:\[|!|test\b|if\b|while\b|until\b))\S.*?(?<![&|])&&(?!&)")
+
+
+def rule_recipe_exit_codes(root: pathlib.Path = REPO_ROOT) -> list[Finding]:
+    """SG015: a recipe throws away an exit code.
+
+    The ways a command's failure is LOST under errexit are enumerable, and
+    this covers the set rather than chasing spellings:
+
+        cmd || true         the status is forced to 0
+        cmd && other        the left operand's failure is exempt from errexit
+        if ! cmd; then $?   `$?` there belongs to the negation, always 0
+        a | b               a's status is dropped -- SG017, a shell option
+        set +e              everything after it can fail silently
+        export x=$(cmd)     the status is the builtin's, never the command's
+
+    `if cmd`, `while cmd` and `until cmd` are NOT in the set: measured under
+    `sh`, all three are exempt, and a condition's failure is the point of a
+    condition. Their BODIES are checked, which is where a lost status matters.
+
+    `if ! cmd; then code=$?; fi` captures the status of the NEGATION, which is
+    always 0 when the branch is taken. A runner recording lane results that
+    way writes every failure down as a pass. `cmd || code=$?` keeps the real
+    code and is equally exempt from errexit.
+
+    `cmd || true` discards it outright, and a trap is no exception: cleanup
+    that fails leaks a worktree or a process and reports nothing. A step
+    allowed to fail says so on stderr.
+    """
+    found: list[Finding] = []
+    for source in every_just(root):
+        try:
+            lines = source.read_text(encoding="utf-8").splitlines()
+        except (OSError, UnicodeDecodeError):
+            continue
+        guarded = 0
+        for number, line in enumerate(lines, start=1):
+            stripped = line.strip()
+            if stripped.startswith("#"):
+                continue
+            if _OR_TRUE.search(line):
+                found.append(Finding(source, number, 0, "SG015", "discards an exit code with `|| true`"))
+            if _AND_CHAIN.match(line):
+                found.append(
+                    Finding(source, number, 0, "SG015", "`cmd && other` loses the left operand's failure under errexit")
+                )
+            if _UNSET_ERREXIT.match(line):
+                found.append(Finding(source, number, 0, "SG015", "turns errexit off; later steps fail silently"))
+            declaring = _DECLARED_SUBSTITUTION.match(line)
+            if declaring:
+                found.append(
+                    Finding(
+                        source,
+                        number,
+                        0,
+                        "SG015",
+                        f"`{declaring.group(1)} x=$(cmd)` takes its status from the builtin; declare, then assign",
+                    )
+                )
+            if _NEGATED_IF.match(line):
+                guarded = number
+            elif stripped in {"fi", "done"} or (stripped and not line.startswith((" ", "\t"))):
+                guarded = 0
+            elif guarded and _CAPTURE.search(line):
+                found.append(
+                    Finding(source, number, 0, "SG015", "reads `$?` inside a negated `if`; it is always 0 there")
+                )
+                guarded = 0
+    return found
+
+
+def rule_script_recipes_fail_loudly(root: pathlib.Path = REPO_ROOT) -> list[Finding]:
+    """SG017: a `[script]` recipe runs under a shell that hides failures.
+
+    Enumerating spellings does not close this: a step escapes `errexit`
+    through `||`, through a negated `if`, and through any pipeline whose last
+    command succeeds. The last one is not a spelling to ban, it is a shell
+    option, and without `pipefail` `a | b` reports only b.
+
+    just defaults a `[script]` recipe to `sh -eu` -- no pipefail, not bash --
+    so a file with script recipes states its own interpreter or inherits a
+    shell that reports the wrong status for every pipeline in it.
+    """
+    found: list[Finding] = []
+    for source in every_just(root):
+        try:
+            text = source.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        if "[script]" not in text:
+            continue
+        declared = [one for one in text.splitlines() if one.startswith("set script-interpreter")]
+        if not declared:
+            found.append(
+                Finding(source, 1, 0, "SG017", "[script] recipes and no interpreter set; sh -eu has no pipefail")
+            )
+            continue
+        if "pipefail" not in declared[0] or "-e" not in declared[0]:
+            found.append(Finding(source, 1, 0, "SG017", f"script interpreter lacks -e or pipefail: {declared[0]}"))
+    return found
+
+
+def rule_recipe_module_imports(root: pathlib.Path = REPO_ROOT) -> list[Finding]:
+    """SG016: a recipe runs a Python file by path, losing the repo root.
+
+    `python pkg/mod/thing.py` puts `pkg/mod` on `sys.path` and NOT the
+    repository root, so an import of a root-level module raises
+    ModuleNotFoundError. `python -m pkg.mod.thing` puts the root there.
+
+    A file that already sits at the root is exempt: for it the two are the
+    same path.
+    """
+    found: list[Finding] = []
+    for source in every_just(root):
+        try:
+            lines = source.read_text(encoding="utf-8").splitlines()
+        except (OSError, UnicodeDecodeError):
+            continue
+        for number, line in enumerate(lines, start=1):
+            if line.strip().startswith("#"):
+                continue
+            for match in _BY_PATH.finditer(line):
+                named = match.group(1)
+                if "/" not in named and "\\" not in named:
+                    continue
+                found.append(
+                    Finding(
+                        source,
+                        number,
+                        0,
+                        "SG016",
+                        f"runs {named} by path, so the repository root is not on sys.path; use `-m`",
+                    )
+                )
+    return found
+
+
 RULES = (
     rule_sources_parse,
     rule_spawns,
+    rule_recipe_exit_codes,
+    rule_recipe_module_imports,
+    rule_script_recipes_fail_loudly,
+    rule_one_runner,
+    rule_no_case_skips,
     rule_templates_parse,
     rule_one_owner,
     rule_capability_has_a_way_in,

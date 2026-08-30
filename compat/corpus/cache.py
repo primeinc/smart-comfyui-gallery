@@ -10,11 +10,11 @@ process. Six shards decode the same four corpus photographs, one of them
 This gives that memo a floor it survives on. It is not a general cache, and it
 is built so that serving a wrong answer is not a thing it can do:
 
-    namespace  compat.harness.identity.identity()["digest"] -- the manifest,
-               every pinned commit, every weight sha256, the runtime, and the
-               sha256 of EVERY compat source file. Anything that can change an
-               answer changes the directory the answer is looked up in, so a
-               stale entry is never found rather than found and trusted.
+    namespace  PER KIND, over the files that actually compute that kind of
+               value plus the runtime, and the weight digests for a kind that
+               comes out of a model. Anything that can change an answer
+               changes the directory the answer is looked up in, so a stale
+               entry is never found rather than found and trusted.
     key        the sha256 of the input bytes, inside that namespace.
     guard      every entry is read back and compared to the value in hand
                before it is kept. An entry that does not reconstruct exactly
@@ -47,6 +47,20 @@ Upstream read for this file:
   and `sex` are properties over `embedding`/`gender`, so they are derived on
   access and never stored.
 
+WHY THE NAMESPACE IS NOT THE TREE IDENTITY
+------------------------------------------
+It was, and that made the cache almost unable to hit. `identity()` covers the
+manifest, every pinned commit, every weight, the runtime and the sha256 of
+every compat source file, so editing a linter rule threw away four decoded
+photographs -- one of them 4896x6528 -- and every detection over them. A cache
+whose namespace changes on any edit anywhere is a directory of write-only
+files.
+
+`CONTRIBUTORS` names, per kind, the chain that computes that kind. A decoded
+frame turns on `frame_of` and the runtime; nothing about a weight or a
+manifest row can move one. A missing contributor raises rather than dropping
+out of the digest, so a renamed file cannot take an entry's staleness with it.
+
 Set COMPAT_CACHE=0 to disable.
 """
 
@@ -60,6 +74,8 @@ from typing import Any, Final
 
 import numpy as np
 import numpy.typing as npt
+
+from compat.harness import provenance
 
 ROOT: Final[Path] = Path(__file__).resolve().parent.parent
 
@@ -76,9 +92,9 @@ _BUILTIN: Final[dict[str, Any]] = {"int": int, "float": float, "bool": bool, "st
 #: avoids characters that are illegal in a filename on either platform.
 _SCALAR: Final[str] = "s__"
 
-#: Memoised per process. `identity()` hashes 13 weight files and every compat
-#: source; the inputs it covers are files this suite never writes, so the
-#: answer cannot change while a process runs.
+#: One namespace digest per kind, memoised per process: the files it hashes
+#: are ones this suite never writes, so no answer can change while a process
+#: runs.
 _held: dict[str, str] = {}
 
 
@@ -87,18 +103,54 @@ def enabled() -> bool:
     return os.environ.get("COMPAT_CACHE", "1") != "0"
 
 
-def namespace() -> str:
-    """The identity digest this process may read and write under."""
-    if "digest" not in _held:
+#: What determines each kind of entry, by repo-relative path: every file in
+#: the chain that computes the value, and nothing else. A `frame` is bytes
+#: through `frame_of`; an `ours` face is that frame through the producer.
+CONTRIBUTORS: Final[dict[str, tuple[str, ...]]] = {
+    "frame": ("compat/corpus/loaded.py",),
+    "ours": (
+        "compat/corpus/loaded.py",
+        "compat/producers/insightface_pass.py",
+        "vision/faces.py",
+    ),
+}
+
+#: Kinds whose value comes out of a model, and so turns on the weight digests
+#: as well as on the code.
+WEIGHTED: Final[frozenset[str]] = frozenset({"ours"})
+
+
+def namespace(kind: str) -> str:
+    """The digest THIS KIND of entry may be read and written under.
+
+    Not the tree identity. That covered every compat source, every pinned
+    commit and every weight, so editing a linter rule discarded every decoded
+    frame and every detection -- a cache that cannot serve a stale value
+    because it can hardly serve one at all.
+
+    A missing contributor is an error rather than an omission: a renamed file
+    would otherwise drop out of the digest silently and take its entries'
+    staleness with it.
+    """
+    if kind not in _held:
         from compat.harness import identity as evidence_identity
 
-        _held["digest"] = str(evidence_identity.identity()["digest"])
-    return _held["digest"]
+        parts: dict[str, Any] = {"runtime": provenance.runtime_identity(), "code": {}}
+        for relative in CONTRIBUTORS[kind]:
+            where = ROOT.parent / relative
+            if not where.is_file():
+                raise FileNotFoundError(f"{relative} determines the {kind!r} cache and is not on disk")
+            parts["code"][relative] = evidence_identity.sha256_of(where.read_bytes())
+        if kind in WEIGHTED:
+            parts["weights"] = evidence_identity.weight_digests()
+        canonical = json.dumps(parts, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+        _held[kind] = evidence_identity.sha256_of(canonical)
+    return _held[kind]
 
 
 def slot(kind: str, name: str) -> Path:
-    """Where one entry lives: <cache>/<identity digest>/<kind>/<name>."""
-    return CACHE_ROOT / namespace() / kind / name
+    """Where one entry lives: <cache>/<kind>/<that kind's digest>/<name>."""
+    return CACHE_ROOT / kind / namespace(kind) / name
 
 
 def _temp(final: Path, suffix: str) -> Path:
@@ -278,5 +330,10 @@ def note(kind: str, hit: bool) -> None:
 
 
 def statistics() -> dict[str, Any]:
-    """Hits and misses per kind, and which namespace they were served from."""
-    return {"enabled": enabled(), "namespace": namespace()[:16] if enabled() else "", **_counts}
+    """Hits and misses per kind, and which namespace each was served from.
+
+    One namespace per kind, so a report naming a single digest could not say
+    which of them a `frame` hit and an `ours` miss were looked up under.
+    """
+    namespaces = {kind: namespace(kind)[:16] for kind in CONTRIBUTORS} if enabled() else {}
+    return {"enabled": enabled(), "namespaces": namespaces, **_counts}

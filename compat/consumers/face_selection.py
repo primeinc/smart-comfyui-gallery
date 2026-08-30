@@ -35,7 +35,7 @@ from compat.contracts.case import (
     Measurement,
     RetainedState,
     Tier,
-    note_skip,
+    note_considered,
 )
 from compat.corpus import groups
 from compat.producers import insightface_pass as producer
@@ -136,10 +136,9 @@ class FaceSelectionRunner:
             try:
                 faces = self.detections(candidate)
             except (ValueError, OSError) as problem:
-                # Distinct from the photograph below that simply does not
-                # discriminate: this one could not be read at all, and the two
-                # were the same event as far as the evidence was concerned.
-                note_skip(CONSUMER_ID, str(candidate), f"could not be detected on: {problem}")
+                # A candidate this scan passed over, not a required input
+                # dropped. Recorded so the rejects stay reviewable.
+                note_considered(CONSUMER_ID, str(candidate), f"not usable: {problem}")
                 continue
             if not np.array_equal(select(faces, "first").bbox, select(faces, "largest_bbox_area").bbox):
                 found.append(candidate)

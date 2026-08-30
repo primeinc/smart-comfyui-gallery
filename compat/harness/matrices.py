@@ -171,11 +171,11 @@ def consumer_rows(evidence: Evidence) -> list[dict[str, Any]]:
 def _status(results: list[dict[str, Any]], verdicts: Counter[str]) -> str:
     """One consumer's standing, and never better than its worst case.
 
-    PARTIAL exists because `id_v2v` ran 3 of its 12 cases and published as
-    REPRODUCED: the old rule only said UNSUPPORTED when there was no PASS at
-    all, so a single passing case promoted a consumer over nine that could not
-    run. "Reproduced" has to mean every case reproduced, or the word is doing
-    no work in the one table a person reads.
+    There is no UNSUPPORTED and no PARTIAL. Both named a case that did not run
+    -- an absent weight, an unwritten derivation, a detector that found no face
+    -- and a consumer carrying them still reached the table. A case that cannot
+    run now raises out of `run_case` and fails the lane, so the only standings
+    left are ones every case answered.
     """
     if not results:
         return "NOT EXERCISED"
@@ -183,8 +183,6 @@ def _status(results: list[dict[str, Any]], verdicts: Counter[str]) -> str:
         return "DIVERGED"
     if verdicts.get("CONTRADICTED"):
         return "CONTRADICTED"
-    if verdicts.get("UNSUPPORTED"):
-        return "UNSUPPORTED" if not verdicts.get("PASS") else "PARTIAL"
     return "REPRODUCED"
 
 
@@ -372,8 +370,6 @@ def build(evidence: Evidence) -> dict[str, Any]:
             "not_exercised": sum(1 for one in consumers if one["status"] == "NOT EXERCISED"),
             "diverged": sum(1 for one in consumers if one["status"] == "DIVERGED"),
             "contradicted": sum(1 for one in consumers if one["status"] == "CONTRADICTED"),
-            "partial": sum(1 for one in consumers if one["status"] == "PARTIAL"),
-            "unsupported": sum(1 for one in consumers if one["status"] == "UNSUPPORTED"),
             "unrepresented_failures": sum(one["cases"] for one in unrepresented(evidence)),
             "primitives_unproven": len(unproven_primitives(evidence)),
             "primitives_unproven_names": unproven_primitives(evidence),
@@ -394,12 +390,7 @@ def as_markdown(out: dict[str, Any]) -> str:
         f"- cases executed: **{out['generated_from']['cases']}**",
         f"- provenance: **{'PASS' if out['generated_from']['provenance_ok'] else 'FAIL'}**",
         f"- consumers reproduced: **{out['totals']['reproduced']} of {out['totals']['declared']}**",
-        (
-            f"- diverged: **{out['totals']['diverged']}**"
-            f" / partial: **{out['totals']['partial']}**"
-            f" / unsupported: **{out['totals']['unsupported']}**"
-            f" / not exercised: **{out['totals']['not_exercised']}**"
-        ),
+        (f"- diverged: **{out['totals']['diverged']}** / not exercised: **{out['totals']['not_exercised']}**"),
         f"- failing cases with no row below: **{out['totals']['unrepresented_failures']}**",
         f"- inputs skipped before a case was built: **{out['totals']['skipped_inputs']}**",
         "",
@@ -525,6 +516,10 @@ BLOCKING: tuple[str, ...] = (
     # A primitive whose every ablation was INCONCLUSIVE is published in
     # `answer.json` as durable state on no evidence at all.
     "primitives_unproven",
+    # An input no case was built from. A skip is how a population shrinks
+    # without anyone deciding to shrink it, and recording the reason beside it
+    # does not stop the totals being computed over whatever survived.
+    "skipped_inputs",
 )
 
 

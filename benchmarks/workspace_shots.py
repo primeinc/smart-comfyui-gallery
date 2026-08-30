@@ -25,16 +25,16 @@ from __future__ import annotations
 
 import argparse
 import base64
-import contextlib
 import html
 import json
 import pathlib
 import shutil
 import socket
-import subprocess
 import sys
 import tempfile
 import time
+
+import proc
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
 if str(REPO) not in sys.path:
@@ -92,8 +92,9 @@ def _wait_healthy(web, server) -> None:
     the crash it is, never as forty quiet seconds of 'never answered'."""
     deadline = time.time() + 40
     while not _answers(web):
-        if server.poll() is not None:
-            raise RuntimeError(f"the server exited with {server.returncode} before answering")
+        ended = server.exited()
+        if ended is not None:
+            raise RuntimeError(f"the server exited with {ended} before answering")
         if time.time() > deadline:
             raise RuntimeError("the server never answered /health")
         time.sleep(0.2)
@@ -275,13 +276,11 @@ def _capture(scratch: pathlib.Path, staging: pathlib.Path) -> list[dict]:
 
     port = _free_port()
     home = scratch / "run"
-    with (staging / "server.log").open("wb") as server_log:
-        server = subprocess.Popen(
-            [sys.executable, "-m", "sg_web", "--home", str(home), "--port", str(port)],
-            stdout=server_log,
-            stderr=subprocess.STDOUT,
-            cwd=REPO,
-        )
+    with proc.background(
+        [sys.executable, "-m", "sg_web", "--home", str(home), "--port", str(port)],
+        log=staging / "server.log",
+        cwd=REPO,
+    ) as server:
         base = f"http://127.0.0.1:{port}"
         try:
             with httpx.Client(base_url=base, timeout=30.0) as web, sync_playwright() as play:
@@ -337,9 +336,8 @@ def _capture(scratch: pathlib.Path, staging: pathlib.Path) -> list[dict]:
                     context.close()
                 browser.close()
         finally:
-            server.terminate()
-            with contextlib.suppress(Exception):
-                server.wait(timeout=15)
+            # The whole tree, so a worker the server spawned cannot keep the port.
+            server.stop()
     return taken
 
 

@@ -1,12 +1,10 @@
-# The contract between the application and the browser.
-#
-# Python states each JSON shape once, as a pydantic model beside the route it
-# belongs to. Litestar renders those into OpenAPI 3.1. openapi-typescript
-# turns that document into the browser's types. Nothing on the TypeScript
-# side of this seam is written by hand, so the two halves cannot drift into
-# describing different things while both type checking.
+# The contract between the application and the browser:
 #
 #   sg_web/*.py  ->  openapi.json  ->  frontend/src/generated/api.d.ts
+
+# Python states each JSON shape once beside its route, litestar renders
+# OpenAPI 3.1, openapi-typescript generates the browser's types. Nothing on
+# the TypeScript side is hand-written, so the halves cannot drift.
 
 set script-interpreter := ['bash', '-euo', 'pipefail']
 
@@ -14,15 +12,12 @@ set script-interpreter := ['bash', '-euo', 'pipefail']
 # Exported rather than interpolated so the body reads it as a value.
 export PYTHON := if os_family() == 'windows' { './.venv/Scripts/python.exe' } else { './.venv/bin/python' }
 
-# The application's OpenAPI document, written the way litestar's own
-# `schema openapi` command writes it (litestar/cli/commands/schema.py
-# _generate_openapi_schema): its serializer, its formatting. Built over a
-# throwaway home, so the document describes the application and never what
-# happens to be in ~/.smartgallery.
-#
-# The destination is an environment variable rather than a hard-coded
-# path, because the gate needs the same document written somewhere it can
-# compare WITHOUT overwriting the committed one.
+# The application's OpenAPI document, written the way litestar's own command
+# writes it (litestar/cli/commands/schema.py _generate_openapi_schema). Built
+# over a throwaway home, so it describes the application and not one machine.
+
+# The destination is an environment variable: the gate writes the same
+# document somewhere it can compare without overwriting the committed one.
 [private]
 [script]
 write-schema:
@@ -53,20 +48,13 @@ schema:
 types: schema
     npm run --silent api-types
 
-# The gate, in two halves that together pin the whole chain, and they run
-# TOGETHER.
-#
-# The document is regenerated from the running application and compared
-# with the committed one, so a handler whose model changed without this
-# being run fails here. The types are checked with openapi-typescript's
-# own `--check`, which compares without rewriting: the browser cannot be
-# typed against a contract the server stopped honouring, and a passing
-# check leaves the tree exactly as it found it.
-#
-# The halves were serial for one reason: the first REWROTE the file the
-# second reads, so running them together raced on a truncated document.
-# Writing to a temporary file removes the reason, halves the wall clock,
-# and means the gate no longer edits the tree it is judging.
+# Two halves that together pin the whole chain. The document is regenerated
+# from the running application and compared with the committed one, so a
+# handler whose model changed without this being run fails here.
+
+# The types are checked with openapi-typescript's own `--check`, which
+# compares without rewriting. Both write to a temporary file, so the gate
+# never edits the tree it is judging.
 [parallel]
 check: schema-fresh types-fresh
 
@@ -78,7 +66,7 @@ schema-fresh:
     SCHEMA_OUT="$scratch/openapi.json" just api write-schema
     if ! cmp -s "$scratch/openapi.json" frontend/openapi.json; then
       echo 'the OpenAPI document is stale: run `just api types` and commit the result' >&2
-      diff --unified=2 frontend/openapi.json "$scratch/openapi.json" >&2 || true
+      diff --unified=2 frontend/openapi.json "$scratch/openapi.json" >&2 \n        || echo "and diff could not describe the difference" >&2
       exit 1
     fi
 

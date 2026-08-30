@@ -1,5 +1,12 @@
 {
   "cases": 48,
+  "considered": [
+    {
+      "consumer_id": "face_selection",
+      "what": "Group(asset_id='1854865030', path='C:\\\\ComfyUI\\\\output\\\\sample-datasets\\\\people_detection\\\\files\\\\medium\\\\1854865030.jpg', sha256='02a5a86a7f6a61dfbb02f1ed956ada43fe7144194210755116047635c186932f', bytes=509635, released_people=2, age_ranges=('60s', '60s'), description='Senior couple hikers talking in snow-covered winter nature.')",
+      "why": "not usable: 1854865030: the detector found 1 face(s); the dataset releases 2 people. A photograph the detector does not see two faces in cannot separate `first` from `largest_bbox_area`"
+    }
+  ],
   "duplicated_cases": [],
   "identity": {
     "application": {
@@ -51,12 +58,13 @@
       "db/views.py": "380af36f3b8651cce9dfe66dc06f70c1aa64b671d49fa99fd9a53ad0f1662151",
       "db/vocabulary.py": "5293ea961d6bb5478691a1d66eaa9396ff0d5cf9cb25e2bc6d0a0b7a4908c877",
       "db/when.py": "9a93924ba95886f0afef480845b956e6505c9074a56b520063feb7a6d0438a42",
+      "proc.py": "6195479115ec37e6f1d0454bc037b08d11aabbdba56b58472788e2ed01edfc33",
       "vision/__init__.py": "e15d5ffa596a2a41d9765e795ef603b2801e1170caa9cb87e66320079ca3d406",
       "vision/captions.py": "51843bfce211a5ad7d90adb3befea02d560ac72c557e1bf318a139a542733ded",
       "vision/decode.py": "4dc4cda8b791a2409a6540d050b729be4408d12bf962dfb87cde0e82fb6a8ba7",
       "vision/derive.py": "0401da6fdd2e1414427a13d2379e68efd63cca8444633783567f3adc92554a59",
       "vision/dupes.py": "a04f0a548dabc8c66022dcf593518bdb73b660ec47ec923120decfac3bc9b6c5",
-      "vision/faces.py": "9c72bb3617c0bff49c1ff4c8e992a0bc1851bef91e4b37e0de9c1db874f6e3cf",
+      "vision/faces.py": "6a64c848992afbe2bdca919d8f02413a4207b044a17c18d4dfb52812d4c7c6ab",
       "vision/faiss_index.py": "58a086427b3f26319ae3cf21d05707ea5d9246002b47e5b9a5e1265ad77a884c",
       "vision/faiss_runtime.py": "871a22567b3e7f6a137783580a746b2562db5043bb507e996c658ec0cf15f0cd",
       "vision/semantic/__init__.py": "226e6fff3f135866f10c66c43429875fc9e807c0a9ddaedeb39913603a3eafad",
@@ -173,8 +181,8 @@
       "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\7\\Selfie_8.jpg": "52cec87f14e7aeaf0eeacc52f25e3a8a42260291a233bed3d188491e5213e169",
       "C:\\ComfyUI\\output\\sample-datasets\\caucasian-people-kyc-photo-dataset\\files\\7\\Selfie_9.jpg": "7c36358199af2f2994ccdb763dde64ebad361327920544d48d7fff3f92e13bc7"
     },
-    "digest": "b118c73fcb40c254887ed9815f8d3dc1a48221c0e3cf5484d0c4c0e950278448",
-    "manifest": "977b49fa39008d14208af2ad4ca525579fb22cf28ba0ee3454e2ff9de1aeeb58",
+    "digest": "56871897e3bf59f40511fbf4dc89fb1f698180d5ff05c40ba03754845e6e923a",
+    "manifest": "87f4549c220e05ebffe7eb20c97ac123c0d2c3f62c6e25736b4ba027074feecd",
     "repos": {
       "consumer:anystory": "c38fef83a35512b2a00c072a95bc0ff56b003f93",
       "consumer:consisid": "60429e4b0d24d36ce8df7fb58f7ab42b86e2b70e",
@@ -291,41 +299,55 @@
       "consumers/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
       "consumers/aligned_crop.py": "c0b61798e5218faa7eb6ff3c0296ee07dad6fdfe084f987411685b86aea85c20",
       "consumers/consisid_facexlib.py": "18f6f8739f8f8addc55faac33e44225eea0c94965b746374ca20120942133213",
-      "consumers/control_stream.py": "8cff9c19c0acd0d6f10900ff2ee6b88eb408a547f0eea3d97588063c8738f366",
+      "consumers/control_stream.py": "fb9a0b11761d8a620fba2db1547bb672612822a1dbe30bfb93c116e85bd514a4",
       "consumers/embedding_spaces.py": "a30d0241aee5d05ad7262ff4d4e3fb12b65933ba098aa5f968920bab5199a149",
-      "consumers/face_family.py": "1b498ee3aa34a6b418f6dcd95d0bd8f19f1c927c4316201c0a3bd9af949b9def",
-      "consumers/face_selection.py": "49eb48cddff73677d922bac51cc30cc0518c1e7a8378fde975a177dcb62577e5",
+      "consumers/face_family.py": "b28df0ed9c900c517849a5e967073b9a9e6c385ecaca282d4607fad8a971d997",
+      "consumers/face_selection.py": "a23ce1d0cb1a56a3fe411fe114f5724776858a48d186fbcbb50c3f3c4aca9bcd",
       "consumers/gallery_storage.py": "f871d087f1d95a75bba8390a6d60bca1245d4081c16624744cc0317c7d94d0da",
-      "consumers/masked_reference.py": "a0649466fad92472da8025e54ab33b85fd1a3a6dd4f93d96b5aae495daf78b86",
+      "consumers/masked_reference.py": "6349758e59ad085817f3b8f2a9af05c723bed37220322c9948fa4c2ecb8f1892",
       "consumers/other_media.py": "3ee6eaf8081c9b2483145f47cd08cdb68bbe6ed7b9be4a1146f6fb2f281771ce",
       "consumers/producer_derivations.py": "d4d1710d5dd3d5b268296734e2039239b230939b21d42e6c64a89984ede34071",
       "consumers/reactor_face_model.py": "e493621d0b30730d6984a5d44eb324bd3782ef81eaaeebcd4b509da4bb58cb3a",
-      "consumers/reference_sets.py": "633fc4d5481e581531d74f87b3faf4ece5602a8427ed5efde850852081ce2bd2",
+      "consumers/reference_sets.py": "fbfb016fb4c23bc13a09fcbe08775235b34e0e6343fa99c9c8f37524911a3511",
       "consumers/whole_reference.py": "7c58bfb227c1458718c71b83e18f51e2162c42c85068ce5e1c06dc56abaeccef",
       "contracts/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "contracts/case.py": "68957a8a0ae76e65b441d872c1a21342d54b9d00e7094d4dc7b2c81179a2ca98",
+      "contracts/case.py": "60ae9b48301bfa9262f047eda1e70b926152e0ecd1148952ae3e8cff8deb74cd",
       "corpus/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
       "corpus/cache.py": "2746b2d95debf033630be4da3dac85bac1651a1b5bc98033a2d2ce65569cfcd6",
       "corpus/groups.py": "6830804559c7959c0bbd11e0fe1078362a8ca7bbc70ff2d658ae6df2d0919f15",
       "corpus/index.py": "ebcfc5e6315cb99518a9890a5db9125fb0d9d20d7e0df59a21cf65a8d3c7d53b",
       "corpus/kyc.json": "2ab07f40d84c55e9b93273810b6f7e28aaf55c965f82705e396195cd1847cc19",
-      "corpus/loaded.py": "899b42e1b120c4bb44aa76e186afc3e0c4f73e6bd886566bd831f3d25384b6df",
+      "corpus/loaded.py": "c65bbf1649b265f3887cc361c0ecdab4bd7075188831a963dcc1d81d0131bc80",
       "harness/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
       "harness/answer.py": "88ef3a3594065290723c95c9bc78aba3f80d716c334fbf6295a085c8986877aa",
       "harness/attack.py": "3b62844c1424bf6a515ad43d0c657d0531230c93c0b991e0edbd5e184049382e",
-      "harness/citations.py": "5812e3dfb8ad76f532c117c6bbe9e521a2e0f6e92662d7e301eeedcd189dc9d0",
-      "harness/identity.py": "30f786b143132120dcfea971030a044c20465bcc3d3bb97847a85c935e593fb0",
-      "harness/matrices.py": "fb209db0bfdfa4d6e4b58009975ab5d5b04f5c5c9a83bc17d0c457ed9ecde787",
-      "harness/pinned_source.py": "00c9279f4b601dba6f044b7f4047e56e5a11c605945cccfe87c0e58d1ea5788c",
-      "harness/provenance.py": "a329b2ce9b487d3a384d803339f2eb984eed99be24b4e06e5c0ccd568b3d6e83",
-      "harness/run.py": "a20eba48cd3084f64d4199f077dab43b8b8deaa905ac0103bf79a8f62cd6960c",
-      "harness/selftest.py": "5b0fd24100e1c4c054ee05dc79177602782d1930f6b8efbe96f5ef369e2a1d0f",
-      "harness/sharded.py": "42759594f00fd76e958ee055a0bfe75099c17844138f003dc5688b4ee1dd1249",
+      "harness/childobserve/sitecustomize.py": "f3b3b7cef40d0a81a6487eb9da999e327e6189b09b7d539d4696936c91709c4c",
+      "harness/citations.py": "ec9605518bb4f99454530a025d1867a962b514bd22dc35dfd0a96e7717b85cbe",
+      "harness/closure.py": "0b70d20371ca295b4166c32b72805ae0f5950c0d435b3298519c1b4087e7710a",
+      "harness/closure_attack.py": "0ac6f082ed01a2194e9f080f3596412d73d48006d512386c1428e8372fd52b19",
+      "harness/hf_check.py": "240e7ce8e298b4a817dcf5ddca9b973a9494bbed4e154fddf9abab682be17840",
+      "harness/identity.py": "486d5f44ed495ef243f65d428e0a8850c76d5f28d5899b3f7a35dc3030b34cee",
+      "harness/ledger.py": "8564218b049451e746e4731d87be263a884a633b5400d43f136fada06333c76f",
+      "harness/matrices.py": "ade2b533cf4900b049e1ee12cdea8dc9f9555976dc793e09df292f0a2eb4e528",
+      "harness/missing.py": "a9b32fca9a5590514825b361e7f19444e5bde21375053707d5bcd112f1cd43e1",
+      "harness/observe.py": "909f94c6cde886aa3ae4ffc4effddf743e55527c459d96412a3b3b53eddac8df",
+      "harness/observe_attack.py": "7ef2f26ea2c090e70e5fab1cf46efd3160e57050cd7e85d489f294d330eb9d12",
+      "harness/pinned_source.py": "88e8ac7b4a6e38837485f9aa10199117196760a27d6c0bab36b5195b2a72848f",
+      "harness/population.py": "75116ab221c4a133987f80520add7ce8313ea1ae0dca8642020350adc516d570",
+      "harness/population_attack.py": "125cf7a84381c7b0227c535aa5626f03fc85f5eb79237a6b28b6ba56ef38ed95",
+      "harness/provenance.py": "6622e4f6b8a145684da6848132b2e64f8ed58d5973ffb5aa62dacc4c2b78c92d",
+      "harness/provision.py": "6ae9e910a64d08821e60370596a3c74014354222c49b0ce53e8acbfec4ba4cf8",
+      "harness/provision_attack.py": "4a31c8504b97a41c26ac4a67e52f126d4f8fa66b25df2767275c5ed512b4c166",
+      "harness/reconcile.py": "158473b5ad344bfec99590a109c4df26b3e9f8e961d55b8941a03fa2128e0dff",
+      "harness/reconcile_attack.py": "fc760766df33c1c33f951c55b2ee20a7d2cd654dbda5f7f29a0cf01e0d681692",
+      "harness/run.py": "82cfdc02e6305fe81717feba4bf291bb36051876f6362869faa17b78c20f45f6",
+      "harness/selftest.py": "4398549c03fb1317a2a04109ac02670d5e8cc7d651833c893ef062417d715e4e",
+      "harness/sharded.py": "8757a6f62267a16eeb3769f6bc9d6ff58e72933afae6ac583896da7eae8bcf54",
       "primitives/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
       "primitives/build.py": "41d163546e4201679b477507cb404af0b62fc4b6a2901b2157c0d0a32b0f6ce7",
       "primitives/fixtures.json": "1444067a86b2595fb3dadf3b7823187b7f3a3877f27fdeaf91b71b372fa7a43c",
       "producers/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "producers/insightface_pass.py": "b3ebbd7853cfb2550dad0586fd67faa54de7c3ed1a089c957b0c453adc557b2c",
+      "producers/insightface_pass.py": "fbf9d681d4b15e5832a636bbec33f21da5d08d760f91f598ade010a110e6cf68",
       "producers/inventory.py": "1df71199b92814c0998986f84671127befbe8a35b05112a6f396af8670080422",
       "producers/registry.py": "188298332318b253ff90c6eaf4cf362f489de91c3acdef70b9e951431f56441d",
       "producers/union.py": "a0419fe960b807d2aa68d25f562a8c208949813890296163f7274e6368d44959",
@@ -335,9 +357,9 @@
       "storage/gallery_v45.py": "56acf1d59537fccfc723c499dcf6cecd16eed00cf8529fa4ebaa022ac0cc93e3",
       "storage/precision.py": "8205921c83d0d0dd0dc50e7fa806ac61c592e278f37e4e4eee2c4a87e046d7c1",
       "vendor/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "vendor/acceptance.py": "f596fffe528b091f3f0b2ab25806e612ea215d99301784719e73bdf390f34d72",
-      "vendor/conformance.py": "a5fde3fbd11117d1f16f0e3c63e20a3f6928435197b5340794c3b91838314425",
-      "vendor/fixtures.py": "5fb1625c84205bfc7b7e57d051d7e269daf5f0b460c7e14ab69dc894c90ab195"
+      "vendor/acceptance.py": "effa610f05f54638a979541f563620213c19ee16abfa6f8a2b858cd43e27014d",
+      "vendor/conformance.py": "720268313a64ddf80217de27bfc7bed5586bba01405bfa0fc477731ed3fedaf1",
+      "vendor/fixtures.py": "a7f0edf86531748650e10ee0db4ae824ec79a09368de3eedf5d5b5f5f8336506"
     },
     "weights": {
       "antelopev2/1k3d68.onnx": "df5c06b8a0c12e422b2ed8947b8869faa4105387f199c477af038aa01f9a45cc",
@@ -355,6 +377,110 @@
       "facexlib/recognition_arcface_ir_se50.pth": "a035c768259b98ab1ce0e646312f48b9e1e218197a0f80ac6765e88f8b6ddf28"
     }
   },
+  "observed": [
+    {
+      "identity": "antelopev2",
+      "loader": "FaceAnalysis",
+      "path": "",
+      "revision": ""
+    },
+    {
+      "identity": "1k3d68.onnx",
+      "loader": "onnxruntime.InferenceSession",
+      "path": "C:\\ComfyUI\\output\\.AImodels\\insightface\\models\\antelopev2\\1k3d68.onnx",
+      "revision": ""
+    },
+    {
+      "identity": "2d106det.onnx",
+      "loader": "onnxruntime.InferenceSession",
+      "path": "C:\\ComfyUI\\output\\.AImodels\\insightface\\models\\antelopev2\\2d106det.onnx",
+      "revision": ""
+    },
+    {
+      "identity": "genderage.onnx",
+      "loader": "onnxruntime.InferenceSession",
+      "path": "C:\\ComfyUI\\output\\.AImodels\\insightface\\models\\antelopev2\\genderage.onnx",
+      "revision": ""
+    },
+    {
+      "identity": "glintr100.onnx",
+      "loader": "onnxruntime.InferenceSession",
+      "path": "C:\\ComfyUI\\output\\.AImodels\\insightface\\models\\antelopev2\\glintr100.onnx",
+      "revision": ""
+    },
+    {
+      "identity": "scrfd_10g_bnkps.onnx",
+      "loader": "onnxruntime.InferenceSession",
+      "path": "C:\\ComfyUI\\output\\.AImodels\\insightface\\models\\antelopev2\\scrfd_10g_bnkps.onnx",
+      "revision": ""
+    },
+    {
+      "identity": "w600k_r50.onnx",
+      "loader": "onnxruntime.InferenceSession",
+      "path": "C:\\ComfyUI\\output\\.AImodels\\insightface\\models\\buffalo_l\\w600k_r50.onnx",
+      "revision": ""
+    },
+    {
+      "identity": "1k3d68.onnx",
+      "loader": "open",
+      "path": "C:\\ComfyUI\\output\\.AImodels\\insightface\\models\\antelopev2\\1k3d68.onnx",
+      "revision": ""
+    },
+    {
+      "identity": "2d106det.onnx",
+      "loader": "open",
+      "path": "C:\\ComfyUI\\output\\.AImodels\\insightface\\models\\antelopev2\\2d106det.onnx",
+      "revision": ""
+    },
+    {
+      "identity": "det_10g.onnx",
+      "loader": "open",
+      "path": "C:\\ComfyUI\\output\\.AImodels\\insightface\\models\\buffalo_l\\det_10g.onnx",
+      "revision": ""
+    },
+    {
+      "identity": "detection_Resnet50_Final.pth",
+      "loader": "open",
+      "path": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv-compat\\Lib\\site-packages\\facexlib\\weights\\detection_Resnet50_Final.pth",
+      "revision": ""
+    },
+    {
+      "identity": "genderage.onnx",
+      "loader": "open",
+      "path": "C:\\ComfyUI\\output\\.AImodels\\insightface\\models\\antelopev2\\genderage.onnx",
+      "revision": ""
+    },
+    {
+      "identity": "glintr100.onnx",
+      "loader": "open",
+      "path": "C:\\ComfyUI\\output\\.AImodels\\insightface\\models\\antelopev2\\glintr100.onnx",
+      "revision": ""
+    },
+    {
+      "identity": "parsing_bisenet.pth",
+      "loader": "open",
+      "path": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv-compat\\Lib\\site-packages\\facexlib\\weights\\parsing_bisenet.pth",
+      "revision": ""
+    },
+    {
+      "identity": "recognition_arcface_ir_se50.pth",
+      "loader": "open",
+      "path": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv-compat\\Lib\\site-packages\\facexlib\\weights\\recognition_arcface_ir_se50.pth",
+      "revision": ""
+    },
+    {
+      "identity": "scrfd_10g_bnkps.onnx",
+      "loader": "open",
+      "path": "C:\\ComfyUI\\output\\.AImodels\\insightface\\models\\antelopev2\\scrfd_10g_bnkps.onnx",
+      "revision": ""
+    },
+    {
+      "identity": "w600k_r50.onnx",
+      "loader": "open",
+      "path": "C:\\ComfyUI\\output\\.AImodels\\insightface\\models\\buffalo_l\\w600k_r50.onnx",
+      "revision": ""
+    }
+  ],
   "population": {
     "consumer_tier_covered": [],
     "declared": [
@@ -481,7 +607,6 @@
         "aligned_crop_112": 37632
       },
       "tier": "primitive",
-      "unsupported_reason": "",
       "verdict": "PASS"
     },
     {
@@ -554,7 +679,6 @@
         "aligned_crop_112": 37632
       },
       "tier": "primitive",
-      "unsupported_reason": "",
       "verdict": "PASS"
     },
     {
@@ -627,7 +751,6 @@
         "aligned_crop_112": 37632
       },
       "tier": "primitive",
-      "unsupported_reason": "",
       "verdict": "PASS"
     },
     {
@@ -700,7 +823,6 @@
         "aligned_crop_112": 37632
       },
       "tier": "primitive",
-      "unsupported_reason": "",
       "verdict": "PASS"
     },
     {
@@ -763,7 +885,6 @@
         "aligned_crop_112": 37632
       },
       "tier": "primitive",
-      "unsupported_reason": "",
       "verdict": "PASS"
     },
     {
@@ -826,7 +947,6 @@
         "aligned_crop_112": 37632
       },
       "tier": "primitive",
-      "unsupported_reason": "",
       "verdict": "PASS"
     },
     {
@@ -889,7 +1009,6 @@
         "aligned_crop_112": 37632
       },
       "tier": "primitive",
-      "unsupported_reason": "",
       "verdict": "PASS"
     },
     {
@@ -952,7 +1071,6 @@
         "aligned_crop_112": 37632
       },
       "tier": "primitive",
-      "unsupported_reason": "",
       "verdict": "PASS"
     },
     {
@@ -1025,7 +1143,6 @@
         "aligned_crop_112": 37632
       },
       "tier": "primitive",
-      "unsupported_reason": "",
       "verdict": "PASS"
     },
     {
@@ -1098,7 +1215,6 @@
         "aligned_crop_112": 37632
       },
       "tier": "primitive",
-      "unsupported_reason": "",
       "verdict": "PASS"
     },
     {
@@ -1171,7 +1287,6 @@
         "aligned_crop_112": 37632
       },
       "tier": "primitive",
-      "unsupported_reason": "",
       "verdict": "PASS"
     },
     {
@@ -1244,7 +1359,6 @@
         "aligned_crop_112": 37632
       },
       "tier": "primitive",
-      "unsupported_reason": "",
       "verdict": "PASS"
     },
     {
@@ -1282,7 +1396,6 @@
         "age": 8
       },
       "tier": "primitive",
-      "unsupported_reason": "",
       "verdict": "PASS"
     },
     {
@@ -1320,7 +1433,6 @@
         "age": 8
       },
       "tier": "primitive",
-      "unsupported_reason": "",
       "verdict": "PASS"
     },
     {
@@ -1358,7 +1470,6 @@
         "age": 8
       },
       "tier": "primitive",
-      "unsupported_reason": "",
       "verdict": "PASS"
     },
     {
@@ -1396,7 +1507,6 @@
         "age": 8
       },
       "tier": "primitive",
-      "unsupported_reason": "",
       "verdict": "PASS"
     },
     {
@@ -1438,7 +1548,6 @@
         "bbox": 16
       },
       "tier": "primitive",
-      "unsupported_reason": "",
       "verdict": "PASS"
     },
     {
@@ -1480,7 +1589,6 @@
         "bbox": 16
       },
       "tier": "primitive",
-      "unsupported_reason": "",
       "verdict": "PASS"
     },
     {
@@ -1522,7 +1630,6 @@
         "bbox": 16
       },
       "tier": "primitive",
-      "unsupported_reason": "",
       "verdict": "PASS"
     },
     {
@@ -1564,7 +1671,6 @@
         "bbox": 16
       },
       "tier": "primitive",
-      "unsupported_reason": "",
       "verdict": "PASS"
     },
     {
@@ -1602,7 +1708,6 @@
         "det_score": 4
       },
       "tier": "primitive",
-      "unsupported_reason": "",
       "verdict": "PASS"
     },
     {
@@ -1640,7 +1745,6 @@
         "det_score": 4
       },
       "tier": "primitive",
-      "unsupported_reason": "",
       "verdict": "PASS"
     },
     {
@@ -1678,7 +1782,6 @@
         "det_score": 4
       },
       "tier": "primitive",
-      "unsupported_reason": "",
       "verdict": "PASS"
     },
     {
@@ -1716,7 +1819,6 @@
         "det_score": 4
       },
       "tier": "primitive",
-      "unsupported_reason": "",
       "verdict": "PASS"
     },
     {
@@ -1758,7 +1860,6 @@
         "embedding": 2048
       },
       "tier": "primitive",
-      "unsupported_reason": "",
       "verdict": "PASS"
     },
     {
@@ -1800,7 +1901,6 @@
         "embedding": 2048
       },
       "tier": "primitive",
-      "unsupported_reason": "",
       "verdict": "PASS"
     },
     {
@@ -1842,7 +1942,6 @@
         "embedding": 2048
       },
       "tier": "primitive",
-      "unsupported_reason": "",
       "verdict": "PASS"
     },
     {
@@ -1884,7 +1983,6 @@
         "embedding": 2048
       },
       "tier": "primitive",
-      "unsupported_reason": "",
       "verdict": "PASS"
     },
     {
@@ -1922,7 +2020,6 @@
         "gender": 8
       },
       "tier": "primitive",
-      "unsupported_reason": "",
       "verdict": "PASS"
     },
     {
@@ -1960,7 +2057,6 @@
         "gender": 8
       },
       "tier": "primitive",
-      "unsupported_reason": "",
       "verdict": "PASS"
     },
     {
@@ -1998,7 +2094,6 @@
         "gender": 8
       },
       "tier": "primitive",
-      "unsupported_reason": "",
       "verdict": "PASS"
     },
     {
@@ -2036,7 +2131,6 @@
         "gender": 8
       },
       "tier": "primitive",
-      "unsupported_reason": "",
       "verdict": "PASS"
     },
     {
@@ -2080,7 +2174,6 @@
         "kps": 40
       },
       "tier": "primitive",
-      "unsupported_reason": "",
       "verdict": "PASS"
     },
     {
@@ -2124,7 +2217,6 @@
         "kps": 40
       },
       "tier": "primitive",
-      "unsupported_reason": "",
       "verdict": "PASS"
     },
     {
@@ -2168,7 +2260,6 @@
         "kps": 40
       },
       "tier": "primitive",
-      "unsupported_reason": "",
       "verdict": "PASS"
     },
     {
@@ -2212,7 +2303,6 @@
         "kps": 40
       },
       "tier": "primitive",
-      "unsupported_reason": "",
       "verdict": "PASS"
     },
     {
@@ -2256,7 +2346,6 @@
         "landmark_2d_106": 848
       },
       "tier": "primitive",
-      "unsupported_reason": "",
       "verdict": "PASS"
     },
     {
@@ -2300,7 +2389,6 @@
         "landmark_2d_106": 848
       },
       "tier": "primitive",
-      "unsupported_reason": "",
       "verdict": "PASS"
     },
     {
@@ -2344,7 +2432,6 @@
         "landmark_2d_106": 848
       },
       "tier": "primitive",
-      "unsupported_reason": "",
       "verdict": "PASS"
     },
     {
@@ -2388,7 +2475,6 @@
         "landmark_2d_106": 848
       },
       "tier": "primitive",
-      "unsupported_reason": "",
       "verdict": "PASS"
     },
     {
@@ -2432,7 +2518,6 @@
         "landmark_3d_68": 816
       },
       "tier": "primitive",
-      "unsupported_reason": "",
       "verdict": "PASS"
     },
     {
@@ -2476,7 +2561,6 @@
         "landmark_3d_68": 816
       },
       "tier": "primitive",
-      "unsupported_reason": "",
       "verdict": "PASS"
     },
     {
@@ -2520,7 +2604,6 @@
         "landmark_3d_68": 816
       },
       "tier": "primitive",
-      "unsupported_reason": "",
       "verdict": "PASS"
     },
     {
@@ -2564,7 +2647,6 @@
         "landmark_3d_68": 816
       },
       "tier": "primitive",
-      "unsupported_reason": "",
       "verdict": "PASS"
     },
     {
@@ -2606,7 +2688,6 @@
         "pose": 12
       },
       "tier": "primitive",
-      "unsupported_reason": "",
       "verdict": "PASS"
     },
     {
@@ -2648,7 +2729,6 @@
         "pose": 12
       },
       "tier": "primitive",
-      "unsupported_reason": "",
       "verdict": "PASS"
     },
     {
@@ -2690,7 +2770,6 @@
         "pose": 12
       },
       "tier": "primitive",
-      "unsupported_reason": "",
       "verdict": "PASS"
     },
     {
@@ -2732,7 +2811,6 @@
         "pose": 12
       },
       "tier": "primitive",
-      "unsupported_reason": "",
       "verdict": "PASS"
     }
   ],
@@ -2787,19 +2865,12 @@
   },
   "shards_exited_over_findings": [],
   "shards_failed": [],
-  "skipped": [
-    {
-      "consumer_id": "face_selection",
-      "what": "Group(asset_id='1854865030', path='C:\\\\ComfyUI\\\\output\\\\sample-datasets\\\\people_detection\\\\files\\\\medium\\\\1854865030.jpg', sha256='02a5a86a7f6a61dfbb02f1ed956ada43fe7144194210755116047635c186932f', bytes=509635, released_people=2, age_ranges=('60s', '60s'), description='Senior couple hikers talking in snow-covered winter nature.')",
-      "why": "could not be detected on: 1854865030: the detector found 1 face(s); the dataset releases 2 people. A photograph the detector does not see two faces in cannot separate `first` from `largest_bbox_area`"
-    }
-  ],
+  "skipped": [],
   "verdicts": {
     "CONTRADICTED": 0,
     "FAIL": 0,
     "INCONCLUSIVE": 0,
     "PASS": 48,
-    "UNSUPPORTED": 0,
     "VENDOR_BASELINE_UNAVAILABLE": 0
   }
 }

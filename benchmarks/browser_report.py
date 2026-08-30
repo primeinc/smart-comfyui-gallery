@@ -30,9 +30,10 @@ import json
 import pathlib
 import shutil
 import socket
-import subprocess
 import sys
 import time
+
+import proc
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
 if str(REPO) not in sys.path:
@@ -125,8 +126,9 @@ def _wait_healthy(web, server) -> None:
     not as thirty quiet seconds of 'never answered'."""
     deadline = time.time() + 30
     while not _answers(web):
-        if server.poll() is not None:
-            raise RuntimeError(f"the server exited {server.returncode} before answering /health; see server.log")
+        ended = server.exited()
+        if ended is not None:
+            raise RuntimeError(f"the server exited {ended} before answering /health; see server.log")
         if time.time() > deadline:
             raise TimeoutError("the server never answered /health")
         time.sleep(0.2)
@@ -203,17 +205,13 @@ def _commit_stamp(where: pathlib.Path = REPO) -> str:
     git = shutil.which("git")
     if git is None:
         return "unknown"
-    head = subprocess.run(
-        [git, "rev-parse", "--short", "HEAD"], capture_output=True, text=True, check=False, timeout=10, cwd=where
-    )
-    if head.returncode != 0:
+    code, revision, _ = proc.text([git, "rev-parse", "--short", "HEAD"], timeout=proc.LOCAL_SECONDS, cwd=where)
+    if code != 0:
         return "unknown"
-    changed = subprocess.run(
-        [git, "status", "--porcelain"], capture_output=True, text=True, check=False, timeout=10, cwd=where
-    )
-    if changed.returncode != 0:
-        return head.stdout.strip() + "-unverified"
-    return head.stdout.strip() + ("-dirty" if changed.stdout.strip() else "")
+    code, changed, _ = proc.text([git, "status", "--porcelain"], timeout=proc.LOCAL_SECONDS, cwd=where)
+    if code != 0:
+        return revision.strip() + "-unverified"
+    return revision.strip() + ("-dirty" if changed.strip() else "")
 
 
 def _grid(base: str, slugs: list[str], kind: str = "thumb") -> str:
@@ -316,16 +314,13 @@ def capture(datasets: str, models_dir: str) -> list[dict]:
 
     home = pathlib.Path(tempfile.mkdtemp()) / "run"
     port = _free_port()
-    # The child's stdout is its access log, one line per request; a pipe
-    # nobody drains blocks the server at the OS buffer mid-capture. The
-    # log lands next to the screenshots as part of the run's evidence.
-    with (staging / "server.log").open("wb") as server_log:
-        server = subprocess.Popen(
-            [sys.executable, "-m", "sg_web", "--home", str(home), "--port", str(port)],
-            stdout=server_log,
-            stderr=subprocess.STDOUT,
-            cwd=REPO,
-        )
+    # The child's stdout is its access log, one line per request, and it lands
+    # next to the screenshots as part of the run's evidence.
+    with proc.background(
+        [sys.executable, "-m", "sg_web", "--home", str(home), "--port", str(port)],
+        log=staging / "server.log",
+        cwd=REPO,
+    ) as server:
         base = f"http://127.0.0.1:{port}"
         try:
             with httpx.Client(base_url=base, timeout=10.0) as web, sync_playwright() as p:
@@ -724,12 +719,9 @@ def capture(datasets: str, models_dir: str) -> list[dict]:
                 page.close()
                 browser.close()
         finally:
-            server.terminate()
-            try:
-                server.wait(timeout=15)
-            except subprocess.TimeoutExpired:
-                server.kill()
-                server.wait(timeout=15)
+            # `proc.background` stops the whole tree on the way out, so a
+            # worker the server spawned cannot keep the port.
+            server.stop()
     _publish(staging)
     return taken
 

@@ -56,7 +56,6 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import json
-import subprocess
 import sys
 import time
 from collections.abc import Callable, Generator
@@ -66,6 +65,7 @@ from typing import Any, Final
 
 import numpy as np
 
+import proc
 from compat.harness import provenance
 from compat.producers import insightface_pass as producer
 
@@ -74,7 +74,6 @@ ROOT: Final[Path] = Path(__file__).resolve().parent.parent
 #: Every git call here is bounded. `pinned_source.py:44` and
 #: `provenance.py:44` already were, with the reason: a hang turns a red
 #: gate into a run that never finishes, which reports nothing at all.
-GIT_SECONDS: Final[float] = 60.0
 
 #: The vendor's own checkpoint tree, downloaded from the repo its README names
 #: and kept outside this repository.
@@ -168,7 +167,6 @@ def missing_weights() -> list[str]:
 
 def consisid_fixture() -> Path | None:
     """The vendor's own example image, extracted from its pinned commit."""
-    import subprocess
 
     manifest = provenance.load_manifest()
     refs_root = (ROOT.parent / manifest["refs_root"]).resolve()
@@ -187,10 +185,10 @@ def consisid_fixture() -> Path | None:
             "blob",
             f"{row['commit']}:asserts/example_images/1.png",
         ]
-        done = subprocess.run(argv, capture_output=True, check=False, timeout=GIT_SECONDS)
-        if done.returncode != 0:
+        code, out, _ = proc.run(argv, timeout=proc.LOCAL_SECONDS)
+        if code != 0:
             return None
-        where.write_bytes(done.stdout)
+        where.write_bytes(out)
     return where
 
 
@@ -526,13 +524,12 @@ def _decode_rgb(where: Path) -> np.ndarray:
 
 def _blob_bytes(clone: Path, commit: str, path: str) -> bytes:
     """One file's bytes at one commit, without touching the working tree."""
-    import subprocess
-
-    argv: list[str] = ["git", "-C", str(clone), "cat-file", "blob", f"{commit}:{path}"]
-    done = subprocess.run(argv, capture_output=True, check=False, timeout=GIT_SECONDS)
-    if done.returncode != 0:
+    code, out, _ = proc.run(
+        ["git", "-C", str(clone), "cat-file", "blob", f"{commit}:{path}"], timeout=proc.LOCAL_SECONDS
+    )
+    if code != 0:
         raise LookupError(f"{path} is not at {commit[:12]} in {clone.name}")
-    return done.stdout
+    return out
 
 
 def _tree_against_pin(clone: Path, commit: str, paths: tuple[str, ...]) -> dict[str, str]:
@@ -592,21 +589,20 @@ def _importable(clone: Path) -> Generator[None]:
 
 def _vendor_blob(clone: Path, commit: str, path: str, into: str, name: str) -> Path | None:
     """One committed vendor file, extracted to the cache outside the repo."""
-    import subprocess
-
     where = ROOT.parent.parent / "sg-vendor-fixtures" / into / name
     where.parent.mkdir(parents=True, exist_ok=True)
-    argv: list[str] = ["git", "-C", str(clone), "cat-file", "blob", f"{commit}:{path}"]
-    done = subprocess.run(argv, capture_output=True, check=False, timeout=GIT_SECONDS)
-    if done.returncode != 0:
+    code, blob, _ = proc.run(
+        ["git", "-C", str(clone), "cat-file", "blob", f"{commit}:{path}"], timeout=proc.LOCAL_SECONDS
+    )
+    if code != 0:
         return None
     # The cache is checked AGAINST the pin, not instead of it: a hit that
     # returned early would publish a file edited, truncated or left over from
     # another commit as the vendor's committed bytes. The blob read is cheap; the
     # claim it supports is not.
-    if where.is_file() and where.read_bytes() == done.stdout:
+    if where.is_file() and where.read_bytes() == blob:
         return where
-    where.write_bytes(done.stdout)
+    where.write_bytes(blob)
     return where
 
 
@@ -1798,15 +1794,12 @@ def _digest_in_subprocess(name: str) -> str | None:
     convolution algorithm, the memory arena and every other per-process choice
     are made again rather than inherited.
     """
-    done = subprocess.run(
+    _, out, _ = proc.text(
         [sys.executable, "-m", "compat.vendor.acceptance", "--one", name],
-        capture_output=True,
-        text=True,
-        check=False,
-        cwd=str(ROOT.parent),
         timeout=1800,
+        cwd=ROOT.parent,
     )
-    for line in reversed(done.stdout.splitlines()):
+    for line in reversed(out.splitlines()):
         held = line.strip()
         if len(held) == 64 and all(one in "0123456789abcdef" for one in held):
             return held

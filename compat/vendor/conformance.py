@@ -44,6 +44,7 @@ from typing import Any, Final
 
 import numpy as np
 
+import proc
 from compat.contracts.case import Fixture, UInt8Array
 from compat.corpus.loaded import Shot
 from compat.vendor import fixtures
@@ -52,11 +53,6 @@ from compat.vendor import fixtures
 #: detect/crop/embed boundaries apply. Video, audio, masks and reference SETS
 #: are covered by their own lanes and are deliberately absent here.
 FACE_ROLES: Final[frozenset[str]] = frozenset({"single_reference", "reference_set"})
-
-#: Every git call here is bounded. `pinned_source.py:44` and
-#: `provenance.py:44` already were, with the reason: a hang turns a red gate
-#: into a run that never finishes, which reports nothing at all.
-GIT_SECONDS: Final[float] = 60.0
 
 #: Suffixes the face family can decode.
 IMAGE_SUFFIXES: Final[tuple[str, ...]] = (".jpg", ".jpeg", ".png", ".webp", ".bmp")
@@ -153,8 +149,6 @@ def without_vendor_fixture() -> list[str]:
 
 def _read(row: dict[str, Any]) -> bytes | None:
     """The fixture's bytes, from the pinned commit or the fetched cache."""
-    import subprocess
-
     path = Path(row["path"])
     if path.is_file():
         held = path.read_bytes()
@@ -175,9 +169,11 @@ def _read(row: dict[str, Any]) -> bytes | None:
             continue
         holder = upstreams.get(sample.from_upstream) or pinned.get(sample.from_upstream) or pinned[sample.consumer_id]
         clone = fixtures.provenance.clone_dir(refs_root, holder["repo"])
-        argv: list[str] = ["git", "-C", str(clone), "cat-file", "blob", f"{holder['commit']}:{row['path']}"]
-        done = subprocess.run(argv, capture_output=True, check=False, timeout=GIT_SECONDS)
-        return done.stdout if done.returncode == 0 else None
+        code, out, _ = proc.run(
+            ["git", "-C", str(clone), "cat-file", "blob", f"{holder['commit']}:{row['path']}"],
+            timeout=proc.LOCAL_SECONDS,
+        )
+        return out if code == 0 else None
     return None
 
 

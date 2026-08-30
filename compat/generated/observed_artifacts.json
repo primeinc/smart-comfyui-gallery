@@ -1,0 +1,39 @@
+{
+  "observations": [
+    {
+      "count": 1,
+      "identity": "antelopev2",
+      "loader": "FaceAnalysis",
+      "path": "",
+      "revision": ""
+    },
+    {
+      "count": 1,
+      "identity": "1k3d68.onnx",
+      "loader": "open",
+      "path": "C:/ComfyUI/output/.AImodels/insightface\\models\\antelopev2\\1k3d68.onnx",
+      "revision": ""
+    },
+    {
+      "count": 1,
+      "identity": "2d106det.onnx",
+      "loader": "open",
+      "path": "C:/ComfyUI/output/.AImodels/insightface\\models\\antelopev2\\2d106det.onnx",
+      "revision": ""
+    },
+    {
+      "count": 1,
+      "identity": "genderage.onnx",
+      "loader": "open",
+      "path": "C:/ComfyUI/output/.AImodels/insightface\\models\\antelopev2\\genderage.onnx",
+      "revision": ""
+    },
+    {
+      "count": 1,
+      "identity": "glintr100.onnx",
+      "loader": "open",
+      "path": "C:/ComfyUI/output/.AImodels/insightface\\models\\antelopev2\\glintr100.onnx",
+      "revision": ""
+    }
+  ]
+}

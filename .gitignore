@@ -166,3 +166,8 @@ compat/.cache/
 # reason compat/generated/timings.json is: a fact about the machine, and
 # keeping it out of the partials is what lets two runs serialise identically.
 compat/generated/shards/*.timings.json
+
+# The exclusive lock one case run holds over compat/generated/shards/
+# (compat/harness/sharded.py `only_one_run`). It exists only while a run is in
+# flight, and a lock left behind by a killed run is a machine-local fact.
+compat/generated/shards.lock
