@@ -227,7 +227,13 @@ def _dtype_str(where: str, value: object, dtype: np.dtype) -> str:
 
 
 def _container(spec: dict[str, Any], value: object, where: str, builtin: type) -> None:
-    """Record this node's own container when it is not the plain builtin."""
+    """Record this node's own class when it is not the plain builtin.
+
+    Every node kind whose Python type can be subclassed passes through here,
+    not only the three collections: a `np.ma.MaskedArray` decoded as an
+    ndarray has lost its mask, and an `IntEnum` decoded as an int has lost
+    which member it was. Both are the same silent widening.
+    """
     cls = type(value)
     if cls is builtin:
         return
@@ -283,6 +289,7 @@ def _node(written: _Written, value: object, where: str) -> dict[str, Any]:
             "n": flat.nbytes,
             "dev": str(value.device),
         }
+        _container(spec, value, where, torch.Tensor)
         payload.extend(flat.tobytes())
         return spec
     if isinstance(value, np.ndarray):
@@ -298,6 +305,7 @@ def _node(written: _Written, value: object, where: str) -> dict[str, Any]:
         # can observe it; every other stride pattern comes back C-contiguous.
         if value.ndim > 1 and value.flags["F_CONTIGUOUS"] and not value.flags["C_CONTIGUOUS"]:
             spec["order"] = "F"
+        _container(spec, value, where, np.ndarray)
         payload.extend(value.tobytes())
         return spec
     if isinstance(value, np.generic):
@@ -310,24 +318,36 @@ def _node(written: _Written, value: object, where: str) -> dict[str, Any]:
         payload.extend(value.tobytes())
         return spec
     if isinstance(value, bool):
+        # bool takes no subclass, so this node needs no container of its own
         return {"t": "bool", "v": value}
     if isinstance(value, int):
-        # json round-trips arbitrary-precision ints exactly; no string form needed
-        return {"t": "i", "v": value}
+        # json round-trips arbitrary-precision ints exactly, and formats an int
+        # subclass through `int.__repr__`, so a member's own class travels in
+        # the container beside the number rather than in it.
+        spec = {"t": "i", "v": value}
+        _container(spec, value, where, int)
+        return spec
     if isinstance(value, float):
         # hex, not repr: exact for every finite value, and 'nan'/'inf' parse back
-        return {"t": "f", "v": value.hex()}
+        spec = {"t": "f", "v": value.hex()}
+        _container(spec, value, where, float)
+        return spec
     if isinstance(value, complex):
         # Packed IEEE doubles, which is what a complex IS; hex text would do
         # too, but the payload already exists and struct carries NaN and the
         # infinities without a parser in the loop.
         spec = {"t": "c", "at": len(payload), "n": 16}
+        _container(spec, value, where, complex)
         payload.extend(struct.pack("<dd", value.real, value.imag))
         return spec
     if isinstance(value, str):
-        return {"t": "s", "v": value}
+        spec = {"t": "s", "v": value}
+        _container(spec, value, where, str)
+        return spec
     if isinstance(value, (bytes, bytearray)):
-        spec = {"t": "ba" if isinstance(value, bytearray) else "by", "at": len(payload), "n": len(value)}
+        held = isinstance(value, bytearray)
+        spec = {"t": "ba" if held else "by", "at": len(payload), "n": len(value)}
+        _container(spec, value, where, bytearray if held else bytes)
         payload.extend(value)
         return spec
     if isinstance(value, (list, tuple)):
@@ -376,6 +396,7 @@ def _decode(nodes: list[dict[str, Any]], index: int, payload: memoryview, done: 
 
 def _value(nodes: list[dict[str, Any]], node: dict[str, Any], payload: memoryview, done: dict[int, Any]) -> Any:
     kind = node["t"]
+    held = node.get("c")
     if kind == "z":
         return None
     if kind == "nd":
@@ -384,7 +405,7 @@ def _value(nodes: list[dict[str, Any]], node: dict[str, Any], payload: memoryvie
         # producer's own arrays are writable -- a replay must hand back what
         # a consumer could have mutated.
         values = np.frombuffer(raw, dtype=np.dtype(node["d"])).reshape(node["s"]).copy()
-        return np.asfortranarray(values) if node.get("order") == "F" else values
+        return _restore(held, np.asfortranarray(values) if node.get("order") == "F" else values)
     if kind == "tt":
         # The reader of a tensor record needs torch; on CPU, whatever device
         # produced it -- the recorded device is provenance, not a demand a
@@ -393,34 +414,36 @@ def _value(nodes: list[dict[str, Any]], node: dict[str, Any], payload: memoryvie
 
         raw = payload[node["at"] : node["at"] + node["n"]]
         values = np.frombuffer(raw, dtype=np.dtype(node["d"])).reshape(node["s"]).copy()
-        return torch.from_numpy(values)
+        return _restore(held, torch.from_numpy(values))
     if kind == "ns":
+        # A numpy scalar's own type is what its dtype spells, so the node
+        # needs no container beside it.
         raw = payload[node["at"] : node["at"] + node["n"]]
         return np.frombuffer(raw, dtype=np.dtype(node["d"]))[0]
     if kind == "bool":
         return bool(node["v"])
     if kind == "i":
-        return int(node["v"])
+        return _restore(held, int(node["v"]))
     if kind == "f":
-        return float.fromhex(node["v"])
+        return _restore(held, float.fromhex(node["v"]))
     if kind == "c":
         real, imag = struct.unpack("<dd", payload[node["at"] : node["at"] + node["n"]])
-        return complex(real, imag)
+        return _restore(held, complex(real, imag))
     if kind == "s":
-        return str(node["v"])
+        return _restore(held, str(node["v"]))
     if kind in ("by", "ba"):
         raw = bytes(payload[node["at"] : node["at"] + node["n"]])
-        return bytearray(raw) if kind == "ba" else raw
+        return _restore(held, bytearray(raw) if kind == "ba" else raw)
     if kind == "l":
-        return _restore(node.get("c"), [_decode(nodes, one, payload, done) for one in node["v"]])
+        return _restore(held, [_decode(nodes, one, payload, done) for one in node["v"]])
     if kind == "tu":
-        return _restore(node.get("c"), tuple(_decode(nodes, one, payload, done) for one in node["v"]))
+        return _restore(held, tuple(_decode(nodes, one, payload, done) for one in node["v"]))
     if kind == "d":
         built = {
             _decode(nodes, key, payload, done): _decode(nodes, one, payload, done)
             for key, one in zip(node["k"], node["v"], strict=True)
         }
-        return _restore(node.get("c"), built)
+        return _restore(held, built)
     raise ValueError(f"envelope names a node type {kind!r} this build does not know")
 
 
@@ -457,12 +480,23 @@ def _declared(value: object, container: str) -> None:
     is worse than refusing a capture that can still be re-run.
     """
     cls = type(value)
-    if container in (_dotted(cls), cls.__qualname__) or container in _ADAPTERS:
+    if container in (_dotted(cls), cls.__qualname__):
         return
-    raise Unpreservable(
-        f"result declares container {container!r}, which is neither this value's own"
-        f" {cls.__qualname__} nor a registered container adapter"
-    )
+    rebuild = _ADAPTERS.get(container)
+    if rebuild is None:
+        raise Unpreservable(
+            f"result declares container {container!r}, which is neither this value's own"
+            f" {cls.__qualname__} nor a registered container adapter"
+        )
+    # The adapter runs on the root now, so a declaration it cannot take fails
+    # at the pass that can re-run rather than at a replay. A decoded root has
+    # the same builtin kind as this one, so what passes here passes there.
+    try:
+        rebuild(value)
+    except (AttributeError, KeyError, TypeError, ValueError) as why:
+        raise Unpreservable(
+            f"result declares container {container!r}, which cannot be rebuilt from a {cls.__qualname__}: {why}"
+        ) from why
 
 
 def freeze(value: Any, *, producer: str, producer_version: str, container: str) -> bytes:

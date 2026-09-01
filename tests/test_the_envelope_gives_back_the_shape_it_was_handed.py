@@ -95,12 +95,19 @@ class Ledger(dict):
     """A mapping subclass with no protocol of its own, only its identity."""
 
 
+class Level(int):
+    """An int subclass, the shape an enumerated producer score has."""
+
+    __slots__ = ()
+
+
 def _dotted(cls: type) -> str:
     return f"{cls.__module__}.{cls.__qualname__}"
 
 
 facestore.register_container(_dotted(Rung), Rung)
 facestore.register_container(_dotted(Ledger), Ledger)
+facestore.register_container(_dotted(Level), Level)
 
 
 def carried(value, container="dict"):
@@ -215,6 +222,39 @@ def test_a_container_subclass_with_no_adapter_refuses_at_capture():
 def test_a_declared_container_nothing_can_rebuild_refuses_at_capture():
     with pytest.raises(facestore.Unpreservable, match=r"nowhere\.Invented"):
         facestore.freeze({"a": 1}, producer="probe", producer_version="v1", container="nowhere.Invented")
+
+
+def test_a_declared_container_that_cannot_take_this_root_refuses_at_capture():
+    """A registered name is not enough: an adapter that rebuilds a mapping
+    cannot rebuild a sequence, and finding that out at replay is finding it
+    out after the pass that could have re-run."""
+    with pytest.raises(facestore.Unpreservable, match=r"insightface\.app\.common\.Face"):
+        facestore.freeze([1, 2], producer="probe", producer_version="v1", container=UPSTREAM_FACE)
+
+
+def test_a_scalar_subclass_is_rebuilt_rather_than_widened():
+    """The widening the three collections have is not theirs alone. An int
+    subclass decoded as an int has lost which member it was, exactly as a
+    tuple subclass decoded as a tuple has."""
+    held = {"level": Level(3)}
+    assert type(held["level"]) is Level
+
+    back = carried(held)
+
+    assert type(back["level"]) is Level, "an int subclass came back as a plain int"
+    assert back["level"] == 3
+
+
+def test_a_masked_array_refuses_rather_than_dropping_its_mask():
+    """`np.ma.MaskedArray` subclasses ndarray, and its mask lives outside the
+    buffer `tobytes` writes. Storing it as an ndarray keeps every value and
+    silently discards which of them were masked."""
+    masked = np.ma.masked_array([1.0, 2.0, 3.0], mask=[False, True, False])
+    assert isinstance(masked, np.ndarray)
+    assert bool(masked.mask.any())
+
+    with pytest.raises(facestore.Unpreservable, match=r"result\['m'\].*MaskedArray"):
+        facestore.freeze({"m": masked}, producer="probe", producer_version="v1", container="dict")
 
 
 def test_a_consumer_reads_the_stored_record_exactly_as_it_read_the_live_one():
