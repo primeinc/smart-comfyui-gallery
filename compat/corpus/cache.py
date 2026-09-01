@@ -91,8 +91,10 @@ def frame_get(sha: str) -> npt.NDArray[np.uint8] | None:
         with where.open("rb") as handle:
             held = np.load(handle, allow_pickle=False)
     except (OSError, ValueError, EOFError, zipfile.BadZipFile):
+        missed("frame", "unreadable")
         return None
     if held.dtype != np.uint8:
+        missed("frame", "wrong_dtype")
         return None
     return np.ascontiguousarray(held)
 
@@ -108,10 +110,12 @@ def frame_put(sha: str, frame: npt.NDArray[np.uint8]) -> None:
             np.save(handle, frame, allow_pickle=False)
         back = np.load(beside, allow_pickle=False)
         if back.dtype != frame.dtype or back.shape != frame.shape or not np.array_equal(back, frame):
+            missed("frame", "round_trip_disagreed")
             beside.unlink(missing_ok=True)
             return
         os.replace(beside, where)
     except (OSError, ValueError):
+        missed("frame", "unwritable")
         beside.unlink(missing_ok=True)
 
 
@@ -130,16 +134,60 @@ def _same(one: Any, two: Any) -> bool:
     return True
 
 
+class _NeverRaised(Exception):
+    """Stands in for a refusal this build's facestore does not define.
+
+    envelope's capture-level `UnregisteredContainer` lands with the sgface3
+    envelope; until that merges there is nothing here to catch, and a
+    fallback that nothing raises keeps the branch INERT rather than
+    matching an exception it was not written for.
+    """
+
+
+def _unregistered(facestore: Any) -> type[BaseException]:
+    return getattr(facestore, "UnregisteredContainer", _NeverRaised)
+
+
 def _read(where: Path) -> Any | None:
+    """One stored entry, or a MISS THAT WAS COUNTED -- never a silent None.
+
+    Every way this can fail is tolerated and none is hidden, which are
+    independent choices. `refused` is the coarse one and says so: thaw
+    raises ValueError for three different facts -- a foreign or superseded
+    magic, a failed digest, and a node type this build does not know. The
+    last is the READ side of the capture boundary, and how a record naming
+    an adapter this build lacks will arrive. They cannot be told apart
+    except by matching the exception's message, which is the string-guard
+    defect; separating them needs facestore to raise distinct TYPES, which
+    is its owner's change, not this one. Until then the COUNT is what
+    makes a cache that stopped reading its own entries visible at all.
+    """
     from insightface.app.common import Face
 
     from vision import facestore
 
     try:
+        raw = where.read_bytes()
+    except OSError:
+        missed("ours", "unreadable")
+        return None
+    try:
         # thaw verifies the trailing digest, so corrupt bytes RAISE rather than
         # decode into something plausible. The old read path verified nothing.
-        record = facestore.thaw(where.read_bytes()).record
-    except (OSError, ValueError, facestore.Unpreservable):
+        held = facestore.thaw(raw)
+    except facestore.Unpreservable:
+        missed("ours", "unpreservable")
+        return None
+    except ValueError:
+        missed("ours", "refused")
+        return None
+    try:
+        record = held.record
+    except TypeError:
+        # A non-mapping root refuses with a PLAIN TypeError, which the clause
+        # above cannot catch -- Unpreservable is a TypeError subclass, its
+        # parent is not. Uncaught it crashed the load: G8b's shape, on read.
+        missed("ours", "not_a_mapping")
         return None
     return Face(**record)
 
@@ -175,9 +223,21 @@ def face_put(sha: str, face: Any) -> None:
             handle.write(blob)
         back = _read(beside)
         if back is None or not _same(face, back):
+            # The write's own round trip disagreed. It was a bare `return`:
+            # the one check proving the entry is faithful could fail on every
+            # entry and the run would look like a cache that simply never hit.
+            missed("ours", "round_trip_disagreed")
             return
         os.replace(beside, where)
+    except _unregistered(facestore):
+        # LOUD: a container this build cannot rebuild is a CAPTURE-level
+        # refusal, not a value this codec cannot carry. Eaten, one machine
+        # stores what another refuses and both report success.
+        raise
     except (OSError, ValueError, facestore.Unpreservable):
+        # Value-level, and a quiet miss is the ruled behaviour (G8b) -- quiet
+        # to the caller, never to the run.
+        missed("ours", "unwritable")
         return
     finally:
         beside.unlink(missing_ok=True)
@@ -188,6 +248,18 @@ _counts: dict[str, int] = {}
 
 def note(kind: str, hit: bool) -> None:
     key = f"{kind}_{'hit' if hit else 'miss'}"
+    _counts[key] = _counts.get(key, 0) + 1
+
+
+def missed(kind: str, why: str) -> None:
+    """A tolerated failure, COUNTED, and surfaced by `statistics()`.
+
+    Tolerating an error and hiding it are independent choices and only the
+    first is ever permitted. A cache may miss on an entry it cannot read;
+    a cache that has silently STOPPED CACHING must be readable off the run
+    rather than inferred from it being slow.
+    """
+    key = f"{kind}_miss_{why}"
     _counts[key] = _counts.get(key, 0) + 1
 
 
