@@ -88,6 +88,26 @@
 
 min_version: 1.10.0
 
+# What lefthook prints, not what the jobs run. Absent this key the default is
+# EVERYTHING: a nil `output` falls to the default arm of NewExecutionLogger
+# (internal/logger/execution_logger.go) and enables executionFull, which
+# replays every green job's entire captured stdout after the job exits -- as
+# ONE console write (internal/run/controller/run.go buffers stdout to a
+# bytes.Buffer and prints it whole). A green pre-push slice log is megabytes,
+# and on 2026-09-01 that single write into a looping ConPTY host blocked
+# `git push` for five hours.
+#
+# With this list a green job prints the banner, its checkmark and the
+# summary, and nothing else. A FAILED job still prints its captured output:
+# LogExecution short-circuits the replay only when err == nil
+# (internal/logger/execution_logger.go), so red keeps its evidence.
+output:
+  - meta
+  - summary
+  - success
+  - failure
+  - skips
+
 # A missing binary must FAIL, not silently pass. Without this the hook is a
 # file that exits 0 when lefthook is not installed, which is the same shape
 # as a test lane that collects nothing and exits clean.

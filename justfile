@@ -119,13 +119,29 @@ prove-push: web::build
     # Without it every rung reports UNKNOWN_NOT_MEASURED, which those tests
     # correctly refuse to read as reached.
     if [ -d "$root/../sg-run" ]; then export SG_HOME="$root/../sg-run"; fi
+    # The slice's log goes to a FILE, not the console: lefthook buffers a
+    # job's stdout and replays it as ONE write, and on 2026-09-01 a
+    # multi-megabyte replay into a wedged ConPTY host held a push for hours.
+
+    # Red prints the tail and names the file; green removes it.
+
+    # `|| settled=$?`, not `settled=$?` on the next line: under -e a bare
+    # capture after a failing pytest is dead code -- the failure exits the
+    # script first, and the testmon copy-back below never runs on red.
+    log=$(mktemp -t prove-push.XXXXXX)
+    settled=0
     PATH="$root/.venv/Scripts:$root/.venv/bin:$PATH" PYTHONPATH=. \
       "$root/{{ python }}" -m pytest tests/ -m slow -n 4 --dist loadfile \
       --deselect "$launch::test_an_interpreter_without_a_server_is_handed_to_the_one_that_has_it" \
       --deselect "$launch::test_the_environment_this_suite_runs_in_is_the_one_the_handover_targets" \
-      -p pytest-testmon --testmon --testmon-forceselect
-    settled=$?
+      -p pytest-testmon --testmon --testmon-forceselect > "$log" 2>&1 || settled=$?
     if [ -f "$pushed/.testmondata" ]; then cp "$pushed/.testmondata" "$root/.testmondata"; fi
+    if [ "$settled" -ne 0 ]; then
+        tail -n 200 "$log"
+        echo "the affected slice failed (exit $settled); full log: $log"
+    else
+        rm -f "$log"
+    fi
     # The two deselected above, run HERE. Deselecting them from the worktree
     # pass is not the same as not running them.
 
@@ -133,10 +149,10 @@ prove-push: web::build
     # THIS machine has an environment beside the source, which no commit
     # changes and no temporary copy of the source can answer.
     cd "$root"
-    "$root/{{ python }}" -m pytest       "$launch::test_an_interpreter_without_a_server_is_handed_to_the_one_that_has_it"       "$launch::test_the_environment_this_suite_runs_in_is_the_one_the_handover_targets"       -q --no-header
-    handover=$?
-    if [ "$settled" -ne 0 ]; then exit $settled; fi
-    exit $handover
+    handover=0
+    "$root/{{ python }}" -m pytest       "$launch::test_an_interpreter_without_a_server_is_handed_to_the_one_that_has_it"       "$launch::test_the_environment_this_suite_runs_in_is_the_one_the_handover_targets"       -q --no-header || handover=$?
+    if [ "$settled" -ne 0 ]; then exit "$settled"; fi
+    exit "$handover"
 
 # The PWA's rasters, drawn from the mark: icons, the iOS splash set, and the
 # install-sheet screenshots photographed off the real app over a generated
