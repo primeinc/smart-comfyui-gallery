@@ -1,6 +1,6 @@
 {
   "failing": [],
-  "identity": "cfd18d6206dcaa749d9db09faeb0a3324573673ba597123e85d2c0c7648fc43d",
+  "identity": "a9972fd9af42a6c0b840a869c152efaef9a8068a3f89527c753668ed0ac8273a",
   "probes": [
     {
       "detail": "GREEN",
@@ -13,7 +13,7 @@
       "name": "the graph names every artifact build() opened"
     },
     {
-      "detail": "stamp cfd18d6206dc unchanged by the regeneration, so only the graph sees it",
+      "detail": "stamp a9972fd9af42 unchanged by the regeneration, so only the graph sees it",
       "held": true,
       "name": "the regenerated input keeps its stamp"
     },

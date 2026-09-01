@@ -83,6 +83,24 @@ class Result:
     detail: str
 
 
+def exercised_against_real_evidence() -> dict[str, bool]:
+    """Which declared stage fields any real writer actually emits.
+
+    Three of the six read under `durable`, and _case() invents all three: no
+    CaseResult carries that field, so those stages are proven only for a shape
+    existing nowhere outside this fixture -- and they are precisely the three
+    that would demonstrate a store round trip. Recording the split turns an
+    artifact that overclaims into one naming its own limit, and makes a real
+    durable write a visible event rather than a silent BLOCKED-to-VERIFIED flip.
+    """
+    shipped = GENERATED / "cases.json"
+    if not shipped.is_file():
+        return dict.fromkeys(STAGE_EVIDENCE, False)
+    held = json.loads(shipped.read_text(encoding="utf-8"))
+    rows = held.get("results") or []
+    return {stage: any(ledger._at(row, one.field) for row in rows) for stage, one in STAGE_EVIDENCE.items()}
+
+
 def run_all() -> tuple[list[Result], str, bool]:
     out: list[Result] = []
     with tempfile.TemporaryDirectory(prefix="ledger_attack_") as raw:
@@ -129,12 +147,21 @@ def main() -> int:
     print(f"\n{len(results)} stage(s), {len(missed)} not independently derived: {missed or 'none'}")
     print(f"tripwire -- six distinct cell reasons: {distinct}")
 
+    real = exercised_against_real_evidence()
+    live = sorted(stage for stage, seen in real.items() if seen)
+    invented = sorted(stage for stage, seen in real.items() if not seen)
+    print(f"\nexercised against real evidence: {len(live)}/{len(real)}")
+    for stage in invented:
+        print(f"  FIXTURE ONLY  {stage:<24} no shipped case carries {STAGE_EVIDENCE[stage].field}")
+
     GENERATED.mkdir(parents=True, exist_ok=True)
     body = {
         "identity": str(evidence_identity.identity()["digest"]),
         "stages": sorted(STAGE_EVIDENCE),
         "results": [asdict(one) for one in results],
         "cells_distinct": distinct,
+        "exercised_against_real_evidence": real,
+        "fixture_only": invented,
         "failing": missed,
     }
     with (GENERATED / "ledger_controls.json").open("w", encoding="utf-8", newline="") as handle:

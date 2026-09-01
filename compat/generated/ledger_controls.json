@@ -1,7 +1,20 @@
 {
   "cells_distinct": true,
+  "exercised_against_real_evidence": {
+    "consumer_replay": true,
+    "durable_read_back": false,
+    "durable_write": false,
+    "emitted_observation": true,
+    "native_reconstruction": false,
+    "producer_execution": true
+  },
   "failing": [],
-  "identity": "cfd18d6206dcaa749d9db09faeb0a3324573673ba597123e85d2c0c7648fc43d",
+  "fixture_only": [
+    "durable_read_back",
+    "durable_write",
+    "native_reconstruction"
+  ],
+  "identity": "7fa515883c3c00828b9a45ed8147660534d589e199b58d198f818db6de6805da",
   "results": [
     {
       "detail": "-> producer_execution BLOCKED",
