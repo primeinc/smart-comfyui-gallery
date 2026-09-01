@@ -79,6 +79,10 @@ temp
 .thumbnails_cache/
 .omniquery/
 .coverage
+# pytest here rebuilds this cache WITHOUT its own .gitignore (measured by
+# envelope: deleted, re-ran, no self-ignore came back), so trees were clean
+# only by accident of already holding that file.
+.pytest_cache/
 # Benchmark scratch is machine-local and regenerable; the whole directory is
 # ignored with NO allowlist. Evidence that shipped constants cite lives in
 # benchmarks/evidence/ -- tracked wholesale. gitignore never affects tracked
