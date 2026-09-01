@@ -197,7 +197,11 @@ def lock() -> dict:
 
 
 def write_lock() -> pathlib.Path:
-    LOCKFILE.write_text(json.dumps(lock(), indent=2) + "\n", encoding="utf-8")
+    # newline="" or Windows writes CRLF into a file the repo stores as LF,
+    # dirtying a tracked lockfile with zero content delta and reddening the
+    # commit gate for whoever is holding a candidate.
+    with LOCKFILE.open("w", encoding="utf-8", newline="") as handle:
+        handle.write(json.dumps(lock(), indent=2) + "\n")
     return LOCKFILE
 
 

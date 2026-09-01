@@ -452,7 +452,11 @@ def measure(root: pathlib.Path | None = None, db_path: pathlib.Path | None = Non
         "totals": dict(sorted(tally.items())),
         "needs": needs,
     }
-    LEDGER.write_text(json.dumps(held, indent=2) + "\n", encoding="utf-8")
+    # newline="" or Windows writes CRLF into a file the repo stores as LF,
+    # dirtying a tracked lockfile with zero content delta and reddening the
+    # commit gate for whoever is holding a candidate.
+    with LEDGER.open("w", encoding="utf-8", newline="") as handle:
+        handle.write(json.dumps(held, indent=2) + "\n")
     return held
 
 
