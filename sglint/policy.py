@@ -8,8 +8,14 @@ are the tree's current truth.
 
 from __future__ import annotations
 
-#: Directories that are not this project's code.
-NOT_OURS = frozenset({".git", ".pytest_cache", ".venv", "__pycache__", "node_modules", "vendor"})
+#: Not this project's code AT ANY DEPTH: version control, caches, and
+#: installed dependencies. These names mean the same thing wherever they sit.
+NOT_OURS = frozenset({".git", ".pytest_cache", ".venv", "__pycache__", "node_modules"})
+
+#: Third-party trees this repository VENDORS, pruned at the TOP LEVEL ONLY.
+#: Matched by bare name, `vendor` also pruned compat/vendor -- our own
+#: acceptance harness -- out of every rule, by basename collision.
+NOT_OURS_AT_ROOT = frozenset({"vendor"})
 #: The test files SG007 does not judge: proving a rule fires means
 #: handing it source, which is the one place that is the point.
 SOURCE_INSPECTION_EXCUSED: frozenset[str] = frozenset({"test_sglint_has_teeth.py"})
@@ -752,3 +758,186 @@ HANDLER_DISPATCH: dict[str, tuple[str, ...]] = {
 
 #: The call that IS reporting.
 REPORTING_CALL = "report"
+
+
+# --- SG018: no error is swallowed into silence -------------------------------------------------
+
+#: What a handler may do with an error besides raising it: the calls that
+#: make the occurrence visible to something that reads it. SG018 is an
+#: allowlist, so a name absent here is an offence, not an unclassified pass.
+RECORDS_THE_MISS: frozenset[str] = frozenset(
+    {
+        # The logger at the levels that are ON by default, where the
+        # occurrence reaches a person. `debug` and `info` are absent on
+        # purpose: off by default is a record nobody reads.
+        "warning",
+        "error",
+        "exception",
+        "critical",
+        # The proof harness's miss counter -- a tolerated miss lands in a
+        # tally the run prints, which is the ruling's clause (c).
+        "missed",
+    }
+)
+
+#: Handlers somebody RULED may be silent, each with its reason, keyed
+#: `path:function:exception` exactly as SG018 prints it. Checked both ways:
+#: a line naming no live handler is reported, and so is an empty reason.
+SILENT_EXCEPT_WAIVED: dict[str, str] = {
+    "compat/vendor/acceptance.py:reactor_core:LookupError": (
+        "re-raises for every file but __init__.py, where an absent one at that "
+        "vendor commit is a package directory without it -- and the outcome IS "
+        "recorded: blobs['reactor_core/__init__.py'] takes sha256(b'') and ships "
+        "in the acceptance evidence. Clause (c) with the record derived from the "
+        "substituted value rather than from the exception, which no structural "
+        "reader here can see."
+    ),
+}
+
+#: The swallows already in the tree when SG018 landed. NOT WAIVERS -- nobody
+#: ruled on these; they are the debt, enumerated one key at a time because a
+#: count would hide which handlers it stood for. It can only shrink.
+SILENT_EXCEPT_INHERITED: frozenset[str] = frozenset(
+    {
+        "compat/consumers/aligned_crop.py:AlignedCropRunner.measure.reproduces:cv2.error",
+        "compat/consumers/consisid_facexlib.py:ConsisIDRunner.measure:(ValueError,TypeError,IndexError)",
+        "compat/consumers/face_family.py:FaceFamilyRunner._detection_equivalent_patch:ValueError",
+        "compat/consumers/face_selection.py:FaceSelectionRunner._discriminating:(ValueError,OSError)",
+        "compat/consumers/masked_reference.py:pairs:ValueError",
+        "compat/harness/childobserve/sitecustomize.py:_audit:(OSError,ValueError,TypeError)",
+        "compat/harness/childobserve/sitecustomize.py:_under_root:(OSError,ValueError)",
+        "compat/harness/childobserve/sitecustomize.py:_write:OSError",
+        "compat/harness/hf_check.py:_blobs:ValueError",
+        "compat/harness/hf_check.py:published_urls:(requests.RequestException,+3)",
+        "compat/harness/observe.py:_Watched.__call__:suppress(OSError,ValueError,TypeError,IndexError)",
+        "compat/harness/observe.py:_under_a_model_root:suppress(OSError,ValueError)",
+        "compat/harness/observe.py:_wrap_hub_apis.observed_init:suppress(TypeError,+3)",
+        "compat/harness/observe.py:_wrap_hub_apis.observed_session_init:suppress(TypeError,+3)",
+        "compat/harness/observe.py:_wrap_hub_apis:suppress(ImportError)",
+        "compat/harness/observe.py:_wrap_hub_apis:suppress(ImportError)#2",
+        "compat/harness/observe.py:_wrap_hub_apis:suppress(ImportError)#3",
+        "compat/harness/observe.py:_wrap_hub_apis:suppress(ImportError,AttributeError)",
+        "compat/harness/observe.py:absorb:(OSError,ValueError)",
+        "compat/harness/observe.py:model_roots:suppress(OSError,KeyError,TypeError,ValueError)",
+        "compat/harness/observe.py:model_roots:suppress(OSError,KeyError,TypeError,ValueError)#2",
+        "compat/harness/observe.py:model_roots:suppress(OSError,RuntimeError)",
+        "compat/harness/observe.py:model_roots:suppress(OSError,ValueError)",
+        "compat/harness/observe.py:wrap_recording.observed:suppress(TypeError,+4)",
+        "compat/harness/observe.py:wrap_recording.observed_classmethod:suppress(TypeError,+4)",
+        "compat/harness/population.py:parse:SyntaxError",
+        "compat/harness/population_attack.py:run_all:CONTROL_FAILURES",
+        "compat/harness/provenance.py:backend_identity:importlib.metadata.PackageNotFoundError",
+        "compat/harness/provenance.py:defines_symbol:SyntaxError",
+        "compat/harness/provision.py:_from_hub:(requests.RequestException,+4)",
+        "compat/harness/run.py:run_ablation:(KeyError,TypeError,ValueError,IndexError)",
+        "compat/harness/run.py:run_ablation:MissingPrimitive",
+        "compat/harness/selftest.py:dropped_persisted_primitive:KeyError",
+        "compat/harness/selftest.py:dropped_persisted_primitive:MissingPrimitive",
+        "compat/harness/selftest.py:retained_bytes_cannot_be_asserted:(KeyError,TypeError,ValueError)",
+        "compat/harness/selftest.py:retained_bytes_cannot_be_asserted:ValueError",
+        "compat/harness/selftest.py:vendor_asset_host_checked:ValueError",
+        "compat/harness/selftest.py:vendor_asset_host_checked:ValueError#2",
+        "compat/harness/sharded.py:_alive:PermissionError",
+        "compat/harness/sharded.py:_alive:ProcessLookupError",
+        "compat/harness/sharded.py:_owner:suppress(OSError)",
+        "compat/harness/sharded.py:only_one_run:FileExistsError",
+        "compat/producers/census.py:_imports:SyntaxError",
+        "compat/producers/census.py:_receiver:(ValueError,AttributeError,RecursionError)",
+        "compat/producers/census.py:build:(OSError,UnicodeDecodeError)",
+        "compat/producers/census.py:sites_in:SyntaxError",
+        "compat/producers/census.py:suppressed_in:SyntaxError",
+        "db/build.py:build:sqlite3.Error",
+        "db/capture.py:_canon_thumbnail:OSError",
+        "db/capture.py:_ifd:struct.error",
+        "db/capture.py:_number:(TypeError,ValueError,ZeroDivisionError)",
+        "db/capture.py:_offset_minutes:ValueError",
+        "db/capture.py:_quicktime_clock:ValueError",
+        "db/capture.py:_text:UnicodeDecodeError",
+        "db/capture.py:_tiff_bytes:OSError",
+        "db/capture.py:_timestamp:ValueError",
+        "db/capture.py:canon_time_zone:struct.error",
+        "db/capture.py:canon_time_zone:struct.error#2",
+        "db/connect.py:_ensure_wal:sqlite3.OperationalError",
+        "db/connect.py:close:suppress(sqlite3.Error)",
+        "db/derived.py:plain:(ValueError,TypeError)",
+        "db/exif_labels.py:label_for:(TypeError,ValueError)",
+        "db/graph.py:read:ValueError",
+        "db/ingest.py:_as_number:ValueError",
+        "db/inspecting.py:_embed_missing:ValueError",
+        "db/inspecting.py:_json:ValueError",
+        "db/library.py:_marker:FileNotFoundError",
+        "db/library.py:get:ValueError",
+        "db/probe.py:_number:(TypeError,ValueError)",
+        "db/rendering.py:story_card:(LookupError,stories.Corrupt)",
+        "db/resultset.py:_moments:(AttributeError,sqlite3.NotSupportedError)",
+        "db/runner.py:_caption_with_lookahead:(OSError,ValueError)",
+        "db/runner.py:run_next:sqlite3.OperationalError",
+        "db/scan.py:_fs_id_of:OSError",
+        "db/scan.py:survey:OSError",
+        "db/scan.py:survey:OSError#2",
+        "db/similarity.py:_imagehash_version:importlib.metadata.PackageNotFoundError",
+        "db/when.py:_day_of:ValueError",
+        "db/when.py:_start_of:ValueError",
+        "db/when.py:_wall:ValueError",
+        "db/when.py:swarm_stamp:ValueError",
+        "metaparse/adapters.py:DrawThingsAdapter.parse:Exception",
+        "metaparse/adapters.py:FooocusAdapter._scheme_and_payload:Exception",
+        "metaparse/adapters.py:FooocusAdapter.parse:Exception",
+        "metaparse/adapters.py:InvokeAIAdapter._parse_v2:Exception",
+        "metaparse/adapters.py:InvokeAIAdapter._parse_v3:Exception",
+        "metaparse/adapters.py:NovelAIAdapter.parse_stealth_json:Exception",
+        "metaparse/adapters.py:SwarmUIAdapter.parse_text:Exception",
+        "metaparse/adapters.py:_claimed_by:Exception",
+        "metaparse/adapters.py:_json_or_none:Exception",
+        "metaparse/adapters.py:_unquote:Exception",
+        "metaparse/containers.py:RawMetadata.stealth:Exception",
+        "metaparse/containers.py:RawMetadata.text_json:Exception",
+        "metaparse/containers.py:decode_user_comment:UnicodeDecodeError",
+        "metaparse/containers.py:load_raw:Exception",
+        "metaparse/containers.py:load_raw:Exception#2",
+        "metaparse/containers.py:load_raw:Exception#3",
+        "metaparse/containers.py:load_raw_video:Exception",
+        "metaparse/containers.py:load_raw_video:ImportError",
+        "metaparse/model.py:_weight:ValueError",
+        "metaparse/model.py:size_string:(TypeError,ValueError)",
+        "metaparse/stealth.py:_bits_to_text:Exception",
+        "metaparse/typed.py:to_float:ValueError",
+        "metaparse/typed.py:to_int:ValueError",
+        "metaparse/typed.py:to_int:ValueError#2",
+        "proc.py:Running.stop:suppress(subprocess.TimeoutExpired,OSError)",
+        "proc.py:_kill_tree:suppress(OSError,ProcessLookupError)",
+        "proc.py:_kill_tree:suppress(OSError,ProcessLookupError)#2",
+        "proc.py:_kill_tree:suppress(OSError,subprocess.SubprocessError)",
+        "proc.py:run:OSError",
+        "proc.py:run:subprocess.TimeoutExpired",
+        "proc.py:run:suppress(subprocess.TimeoutExpired,OSError)",
+        "proc_attack.py:_alive:(OSError,ProcessLookupError)",
+        "proc_attack.py:_reap:suppress(OSError,ProcessLookupError)",
+        "sg_web/__main__.py:handover:KeyboardInterrupt",
+        "sg_web/__main__.py:reachable:OSError",
+        "sg_web/__main__.py:reachable:OSError#2",
+        "sg_web/app.py:_bytecode_dir:OSError",
+        "sg_web/app.py:media_bytes:media.Unsatisfiable",
+        "sg_web/collection_view.py:_facts:collection_rules.BrokenCollectionRule",
+        "sg_web/collection_view.py:_facts:collection_rules.UnavailableCollectionRule",
+        "sg_web/collection_view.py:_facts:resultset.UnevaluatedCollection",
+        "sg_web/curating.py:_applied.proven:sqlite3.OperationalError",
+        "sg_web/operations.py:_recorded:(OSError,ValueError)",
+        "sg_web/timeline_view.py:_scrubber_unit:ValueError",
+        "sg_web/timeline_view.py:_surface:ValueError",
+        "vision/decode.py:_raw_preview:(LibRawNoThumbnailError,+4)",
+        "vision/derive.py:opened:pyvips.Error",
+        "vision/faces.py:OpenCVFaceBackend.__init__:Exception",
+        "vision/faiss_runtime.py:import_faiss:suppress(ValueError)",
+        "vision/semantic/openclip.py:_read_record:(OSError,ValueError,UnicodeDecodeError)",
+        "vision/semantic/openclip.py:openclip_version:importlib.metadata.PackageNotFoundError",
+        "vision/semantic/openclip.py:record_provision:suppress(OSError)",
+        "vision/semantic/qwen_vl.py:_cached_snapshot:(OSError,ValueError,KeyError)",
+        "vision/semantic/qwen_vl.py:policy_version:importlib.metadata.PackageNotFoundError",
+    }
+)
+
+#: What that debt may weigh -- pinned outside the list, as a literal the list
+#: cannot move: `len(INHERITED)` as its own bound passes at every size.
+#: Conversion lowers it; raising it is a recorded ruling, never an edit.
+SILENT_EXCEPT_CEILING: int = 135

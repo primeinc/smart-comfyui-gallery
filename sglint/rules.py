@@ -293,6 +293,19 @@ def web_sources() -> list[Source]:
     return [on_disk(one) for one in sorted((REPO_ROOT / "sg_web").glob("*.py"))]
 
 
+def shipped_sources() -> list[Source]:
+    """Every module outside tooling, as trees.
+
+    SG018's scope, stated where it can be read: the application a user
+    receives AND the proof harness, which is where a swallowed error
+    turns a measurement into a silently degraded one. `tests`,
+    `benchmarks` and `sglint` itself author failure shapes deliberately
+    -- handing them to the rule would be judging the controls by the
+    thing they exist to catch.
+    """
+    return [on_disk(one) for one in shipped()]
+
+
 @functools.cache
 def every_source() -> tuple[pathlib.Path, ...]:
     """Every .py file this repository owns, discovered rather than listed."""
@@ -302,7 +315,14 @@ def every_source() -> tuple[pathlib.Path, ...]:
         # A virtualenv is not ours whatever it is CALLED: a second environment
         # beside `.venv` walked as repository source can stop every rule on one
         # third-party file. `pyvenv.cfg` makes a directory an environment (PEP 405).
-        subdirs[:] = sorted(d for d in subdirs if d not in policy.NOT_OURS and not (here / d / "pyvenv.cfg").is_file())
+        at_root = here == REPO_ROOT
+        subdirs[:] = sorted(
+            d
+            for d in subdirs
+            if d not in policy.NOT_OURS
+            and not (at_root and d in policy.NOT_OURS_AT_ROOT)
+            and not (here / d / "pyvenv.cfg").is_file()
+        )
         found.extend(here / name for name in sorted(names) if name.endswith(".py"))
     return tuple(found)
 
@@ -2040,6 +2060,262 @@ def rule_recipe_module_imports(root: pathlib.Path = REPO_ROOT) -> list[Finding]:
     return found
 
 
+# --- SG018: no error is swallowed into silence -------------------------------------------------
+
+
+def _always_raises(body: list[ast.stmt]) -> bool:
+    """Whether control can leave `body` without an exception.
+
+    Conservative on purpose: a handler that raises in a shape this cannot
+    read is REPORTED, and gets rewritten or waived by name. The opposite
+    slant would be a check that passes on a body it did not understand.
+    """
+    if not body:
+        return False
+    last = body[-1]
+    if isinstance(last, ast.Raise):
+        return True
+    if isinstance(last, ast.If):
+        return _always_raises(last.body) and _always_raises(last.orelse)
+    if isinstance(last, (ast.With, ast.AsyncWith)):
+        return _always_raises(last.body)
+    if isinstance(last, ast.Try):
+        # The `finally` runs on every path, so a raise there is total.
+        if _always_raises(last.finalbody):
+            return True
+        return _always_raises(last.body) and all(_always_raises(one.body) for one in last.handlers)
+    return False
+
+
+def _terminal_name(call: ast.Call) -> str:
+    """What a call is CALLED, ignoring what it was reached through:
+    `report`, `self._missed`, `ledger.report` all answer their last name."""
+    if isinstance(call.func, ast.Attribute):
+        return call.func.attr
+    if isinstance(call.func, ast.Name):
+        return call.func.id
+    return ""
+
+
+def _records(node: ast.AST, vocabulary: frozenset[str]) -> bool:
+    return any(_terminal_name(one) in vocabulary for one in calls(node))
+
+
+def _hands_the_error_on(node: ast.ExceptHandler) -> bool:
+    """The caught error carried OUT of the handler, not dropped in it.
+
+    Two shapes no call vocabulary can see, because neither is a call.
+    Written onto something that outlives the handler --
+    `held.reason = f"{type(problem).__name__}: {problem}"`, eight vendor
+    acceptance handlers -- or RETURNED, which hands the caller the same
+    fact through a different door.
+
+    The discriminator in both is THE BOUND NAME IN THE VALUE. A handler
+    that binds the error and then writes or returns something else has
+    dropped it, and is still an offence; requiring an attribute or
+    subscript target rather than any assignment is what separates a record
+    that leaves the handler from a local nobody reads.
+    """
+    if node.name is None:
+        return False
+    for child in walked(node):
+        if isinstance(child, ast.Assign) and any(
+            isinstance(one, (ast.Attribute, ast.Subscript)) for one in child.targets
+        ):
+            carried: ast.expr | None = child.value
+        elif isinstance(child, ast.Return):
+            carried = child.value
+        else:
+            continue
+        if carried is not None and any(isinstance(one, ast.Name) and one.id == node.name for one in ast.walk(carried)):
+            return True
+    return False
+
+
+def _suppression(node: ast.With | ast.AsyncWith) -> ast.Call | None:
+    """The `contextlib.suppress(...)` a `with` is holding, if it is.
+
+    `suppress` is an except clause wearing a different syntax, and it has
+    no handler body at all -- there is nowhere for it to record and
+    nothing for it to re-raise, so it can only ever be the silent form.
+    A rule reading `except` alone would stop one step short of the
+    mechanism and report a tree with fifteen live suppressions as clean.
+    """
+    for item in node.items:
+        held = item.context_expr
+        if isinstance(held, ast.Call) and _terminal_name(held) == "suppress":
+            return held
+    return None
+
+
+#: How long a list of caught types may be before a key shortens it to the
+#: first name and a count of the rest. The count still moves when a catch
+#: widens, so a shortened key keeps discriminating.
+_SPELLING_LIMIT = 40
+
+
+def _shortened(names: list[str]) -> str:
+    joined = ",".join(names)
+    return joined if len(joined) <= _SPELLING_LIMIT or len(names) < 2 else f"{names[0]},+{len(names) - 1}"
+
+
+def _spelled_type(node: ast.expr | None) -> str:
+    #: A bare `except:` catches BaseException, and says so in the key.
+    if node is None:
+        return "BaseException"
+    if isinstance(node, ast.Tuple):
+        return f"({_shortened([ast.unparse(one) for one in node.elts])})"
+    return ast.unparse(node)
+
+
+#: What a guard can be. All three carry lineno and col_offset; bare
+#: `ast.AST` does not, and a Finding needs both.
+Guard = ast.ExceptHandler | ast.With | ast.AsyncWith
+
+
+def _guards(tree: ast.AST) -> list[tuple[str, Guard, str]]:
+    """Every place a module catches an exception: (where, node, spelling).
+
+    `where` is the dotted path of the enclosing definitions, so two
+    methods that share a name cannot share a waiver line.
+    """
+    found: list[tuple[str, Guard, str]] = []
+
+    def walk(node: ast.AST, where: str) -> None:
+        for child in ast.iter_child_nodes(node):
+            inner = where
+            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                inner = child.name if where == "<module>" else f"{where}.{child.name}"
+            if isinstance(child, ast.ExceptHandler):
+                found.append((where, child, _spelled_type(child.type)))
+            elif isinstance(child, (ast.With, ast.AsyncWith)):
+                held = _suppression(child)
+                if held is not None:
+                    args = _shortened([ast.unparse(one) for one in held.args])
+                    found.append((where, child, f"suppress({args})"))
+            walk(child, inner)
+
+    walk(tree, "<module>")
+    return found
+
+
+def rule_no_silent_except(
+    sources: typing.Iterable[Source] | None = None,
+    waived: dict[str, str] | None = None,
+    vocabulary: frozenset[str] | None = None,
+    inherited: frozenset[str] | None = None,
+    ceiling: int | None = None,
+) -> list[Finding]:
+    """SG018: an error caught and hidden.
+
+    The ruling, verbatim in intent: nothing may swallow an error into
+    silence. Every handler does one of three things -- it PROPAGATES, it
+    CONVERTS to a typed refusal the caller must handle, or it TOLERATES a
+    narrow expected condition WITH THE OCCURRENCE RECORDED somewhere
+    something reads. A cache may miss on a corrupt file; the miss is
+    counted and surfaced, never invisible. Tolerating an error and hiding
+    it are independent choices and only the first is ever permitted.
+
+    Written as an ALLOWLIST, which is the polarity the campaign learned
+    twice: a denylist of bad handler shapes admits every shape nobody
+    imagined. Raising is read from the body's structure and recording
+    from a declared vocabulary, so a handler doing neither is an offence
+    by default rather than an unclassified pass.
+
+    The escape is a WAIVER, declared in one list and cross-checked, never
+    a comment beside the handler: an inline suppression is invisible to
+    everything except the reader who is already there. Both directions
+    are reported, so a list line outliving the handler it names is a
+    finding and the lists can only shrink.
+
+    Two lists, kept apart on purpose. SILENT_EXCEPT_WAIVED holds the
+    handlers somebody RULED may be silent, each with its reason.
+    SILENT_EXCEPT_INHERITED holds what was already there when this rule
+    landed -- a debt, not a decision -- under a ceiling pinned in policy
+    where the list cannot move it. Merging them would let "0 unwaived"
+    stand for "162 waived in one act", which is the reporting failure S6
+    was written against.
+
+    Both lists get an exactness sweep and RECORDS_THE_MISS deliberately
+    does not. Those two are claims about the tree, so a line outliving
+    its handler is a stale fact; the vocabulary is a claim about what
+    recording IS, and an unused level is not stale. Sweeping it would red
+    the gate the moment somebody converted a handler by logging at a
+    level no other handler had reached yet -- a check whose only failure
+    mode is punishing the fix. It would not have caught the abuse it
+    looks like it guards either: a name added to silence a finding has a
+    caller by construction.
+    """
+    held = list(shipped_sources() if sources is None else sources)
+    excused = dict(policy.SILENT_EXCEPT_WAIVED if waived is None else waived)
+    owed = policy.SILENT_EXCEPT_INHERITED if inherited is None else inherited
+    spoken = policy.RECORDS_THE_MISS if vocabulary is None else vocabulary
+    policy_file = REPO_ROOT / "sglint" / "policy.py"
+
+    found: list[Finding] = []
+    caught: list[tuple[str, Guard, pathlib.Path]] = []
+    for source in held:
+        for where, node, spelling in _guards(source.tree):
+            #: Only a HANDLER can answer for what it caught: a `suppress` body
+            #: is the protected code, and reading it would let guarded work
+            #: vouch for its own guard.
+            if isinstance(node, ast.ExceptHandler) and (
+                _always_raises(node.body) or _records(node, spoken) or _hands_the_error_on(node)
+            ):
+                continue
+            caught.append((f"{source.relative}:{where}:{spelling}", node, source.path))
+
+    #: One key, one handler: eleven groups shared a name at SG018's landing,
+    #: and a line answering for three handlers excuses two nobody read. The
+    #: ordinal is positional, so a renumbering vacates a key, reported below.
+    seen: dict[str, int] = {}
+    silent: dict[str, Finding] = {}
+    for stem, node, path in caught:
+        seen[stem] = seen.get(stem, 0) + 1
+        key = stem if seen[stem] == 1 else f"{stem}#{seen[stem]}"
+        said = (
+            f"catches {stem.rsplit(':', 1)[1]} and neither raises nor records it"
+            f" -- convert it, or name it in SILENT_EXCEPT_WAIVED as {key!r}"
+        )
+        silent[key] = Finding(path, node.lineno, node.col_offset, "SG018", said)
+
+    for key, offence in sorted(silent.items()):
+        if key in excused and key in owed:
+            found.append(
+                dataclasses.replace(offence, message=f"{key!r} is both waived and inherited; one list answers for it")
+            )
+        elif key not in excused and key not in owed:
+            found.append(offence)
+        elif key in excused and not excused[key].strip():
+            found.append(
+                dataclasses.replace(offence, message=f"is waived by {key!r} with no reason; say why or convert it")
+            )
+
+    found.extend(
+        Finding(policy_file, 1, 0, "SG018", f"{key!r} waives no silent handler; remove its SILENT_EXCEPT_WAIVED line")
+        for key in sorted(excused)
+        if key not in silent
+    )
+    found.extend(
+        Finding(policy_file, 1, 0, "SG018", f"{key!r} names no silent handler; remove its SILENT_EXCEPT_INHERITED line")
+        for key in sorted(owed)
+        if key not in silent
+    )
+    pinned = policy.SILENT_EXCEPT_CEILING if ceiling is None else ceiling
+    if len(owed) > pinned:
+        found.append(
+            Finding(
+                policy_file,
+                1,
+                0,
+                "SG018",
+                f"{len(owed)} inherited swallows against a ceiling of {pinned};"
+                " the debt may only shrink, and raising the pin is a recorded ruling",
+            )
+        )
+    return found
+
+
 RULES = (
     rule_sources_parse,
     rule_spawns,
@@ -2061,6 +2337,7 @@ RULES = (
     rule_request_contracts,
     rule_response_contracts,
     rule_comment_blocks,
+    rule_no_silent_except,
 )
 
 

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import ast
 import pathlib
+from typing import Any
 
 import pytest
 
@@ -949,3 +950,241 @@ def test_the_justfile_sweep_reaches_a_nested_file(tmp_path):
     (tmp_path / "vendor" / "theirs.just").write_text("# ok\n", encoding="utf-8")
     found = [one.name for one in rules.every_just(tmp_path)]
     assert found == ["deep.just"], f"expected only the nested file, got {found}"
+
+
+#: One module carrying every handler shape SG018 has to tell apart, read
+#: in one pass: the clean ones are proved clean while the silent ones are
+#: present, which is what the repository actually looks like.
+_SWALLOWER = """
+import contextlib
+import logging
+
+_logger = logging.getLogger(__name__)
+
+
+class Refused(Exception):
+    pass
+
+
+def propagates():
+    try:
+        risky()
+    except OSError:
+        raise
+
+
+def converts():
+    try:
+        risky()
+    except OSError as why:
+        raise Refused(str(why)) from why
+
+
+def converts_in_every_branch(fatal):
+    try:
+        risky()
+    except OSError as why:
+        if fatal:
+            raise
+        else:
+            raise Refused(str(why)) from why
+
+
+def records():
+    try:
+        risky()
+    except OSError as why:
+        _logger.warning("could not read: %s", why)
+        return None
+
+
+def records_onto_a_field(held):
+    try:
+        risky()
+    except OSError as why:
+        held.reason = f"{type(why).__name__}: {why}"
+        return held
+
+
+def binds_but_writes_something_else(held):
+    try:
+        risky()
+    except OSError as why:
+        held.reason = "something went wrong"
+        return held
+
+
+def whispers():
+    try:
+        risky()
+    except OSError:
+        _logger.debug("handled a failure", exc_info=True)
+        return None
+
+
+def swallows():
+    try:
+        risky()
+    except OSError:
+        return None
+
+
+def swallows_twice():
+    try:
+        risky()
+    except ValueError:
+        pass
+    try:
+        risky()
+    except ValueError:
+        pass
+
+
+def suppresses():
+    with contextlib.suppress(OSError):
+        risky()
+
+
+def half_raises(flag):
+    try:
+        risky()
+    except OSError:
+        if flag:
+            raise
+        return None
+"""
+
+#: What the module above must report, by the key SG018 prints for each.
+_SWALLOWED = {
+    "tests/swallower.py:binds_but_writes_something_else:OSError",
+    "tests/swallower.py:whispers:OSError",
+    "tests/swallower.py:swallows:OSError",
+    "tests/swallower.py:swallows_twice:ValueError",
+    "tests/swallower.py:swallows_twice:ValueError#2",
+    "tests/swallower.py:suppresses:suppress(OSError)",
+    "tests/swallower.py:half_raises:OSError",
+}
+
+
+def _silent(found) -> set[str]:
+    """The handlers SG018 called silent, by the key it prints."""
+    return {one.message.rsplit("as '", 1)[1][:-1] for one in found if "neither raises nor records" in one.message}
+
+
+def _bookkeeping(found) -> set[str]:
+    return {one.message for one in found if "neither raises nor records" not in one.message}
+
+
+def test_the_silent_except_rule_can_fail():
+    """SG018: an error caught and hidden.
+
+    The three permitted answers are propagate, convert, record -- and the
+    rule is an ALLOWLIST, so the interesting half is what it does NOT
+    excuse. `whispers` is the judgment worth arguing with: it logs, at a
+    level that is off by default, which is a record produced but never
+    read. `suppresses` is the shape a rule reading `except` alone cannot
+    see at all, and the tree had twenty-four of them.
+    """
+    module = rules.from_text("tests/swallower.py", _SWALLOWER)
+
+    def ask(**kw: Any) -> list[rules.Finding]:
+        held: dict[str, Any] = {"waived": {}, "inherited": frozenset()}
+        held.update(kw)
+        return rules.rule_no_silent_except([module], **held)
+
+    assert _silent(ask()) == _SWALLOWED, (
+        "propagating, converting and recording are the three answers; logging below the default level"
+        " is not a fourth, and contextlib.suppress is an except clause in different syntax"
+    )
+
+    # Recording by ASSIGNMENT, which no call vocabulary can see. The
+    # discriminator is the BOUND NAME in the value: binding the error and
+    # then writing something else has dropped it, and is still an offence.
+    assert "tests/swallower.py:records_onto_a_field:OSError" not in _silent(ask())
+    assert "tests/swallower.py:binds_but_writes_something_else:OSError" in _silent(ask())
+
+    # Two handlers of one type in one function get one key each. Eleven
+    # groups shared a name on the real tree, and a single line answering
+    # for three handlers excuses two nobody read.
+    assert "tests/swallower.py:swallows_twice:ValueError#2" in _silent(ask())
+
+
+def test_a_silent_handler_is_excused_only_by_a_line_that_still_names_it():
+    """The waiver list is CHECKED, not trusted, in both directions."""
+    module = rules.from_text("tests/swallower.py", _SWALLOWER)
+
+    def ask(**kw: Any) -> list[rules.Finding]:
+        held: dict[str, Any] = {"waived": {}, "inherited": frozenset()}
+        held.update(kw)
+        return rules.rule_no_silent_except([module], **held)
+
+    one = "tests/swallower.py:swallows:OSError"
+
+    assert _silent(ask(waived={one: "the caller re-reads and this path is the retry"})) == _SWALLOWED - {one}
+
+    assert _silent(ask(inherited=frozenset({one}))) == _SWALLOWED - {one}, "the inherited debt excuses the same way"
+
+    # A reason is the whole point of a waiver.
+    blank = ask(waived={one: "   "})
+    assert one in _silent(blank) or any("with no reason" in m for m in _bookkeeping(blank)), (
+        "a waiver with nothing in the reason field is not a decision"
+    )
+
+    # A line that outlives its handler is reported, so both lists shrink.
+    gone = "tests/swallower.py:propagates:OSError"
+    assert any("waives no silent handler" in m for m in _bookkeeping(ask(waived={gone: "stale"}))), (
+        "a waiver naming a handler that now raises has to be reported, or the list rots into fiction"
+    )
+    assert any("names no silent handler" in m for m in _bookkeeping(ask(inherited=frozenset({gone})))), (
+        "and so does an inherited line, which is what makes the debt shrink-only"
+    )
+
+    # One handler, two lists: the report would say waived and owed at once.
+    both = ask(waived={one: "ruled"}, inherited=frozenset({one}))
+    assert any("both waived and inherited" in m for m in _bookkeeping(both))
+
+
+def test_the_inherited_debt_is_pinned_outside_itself():
+    """The ratchet G6r's comment was not.
+
+    `len(INHERITED)` as its own bound passes at every size -- the
+    self-referential control, fourth instance. The pin is a literal in
+    policy that the list cannot move, so growing the debt without
+    raising the pin by hand is what goes red.
+    """
+    module = rules.from_text("tests/swallower.py", _SWALLOWER)
+    owed = frozenset({"tests/swallower.py:swallows:OSError", "tests/swallower.py:half_raises:OSError"})
+    over = rules.rule_no_silent_except([module], waived={}, inherited=owed, ceiling=1)
+    assert any("against a ceiling of 1" in m for m in _bookkeeping(over))
+    under = rules.rule_no_silent_except([module], waived={}, inherited=owed, ceiling=2)
+    assert not any("ceiling" in m for m in _bookkeeping(under)), "at the pin it is silent; over it, it is not"
+
+
+def test_the_silent_except_sweep_reaches_the_application():
+    """The rule reads the shipped tree, and the debt it carries is exact.
+
+    A sweep that reached nothing would report a clean tree, which is the
+    same output as a tree with no swallows in it.
+    """
+    reached = rules.shipped_sources()
+    assert len(reached) > 50, f"the sweep is not reaching the application: {len(reached)} module(s)"
+    assert any(one.relative.startswith("db/") for one in reached)
+    assert any(one.relative.startswith("compat/") for one in reached)
+    assert not any(one.relative.startswith(("tests/", "sglint/")) for one in reached), (
+        "tests and the linter author failure shapes on purpose; judging them would judge the controls"
+    )
+
+    # compat/vendor is OURS -- the acceptance harness. `vendor` in NOT_OURS
+    # matched it BY BASENAME and pruned it out of every sglint rule; depth is
+    # the discriminator, so the third-party tree at the root stays pruned.
+    assert any(one.relative.startswith("compat/vendor/") for one in reached), (
+        "compat/vendor is pruned by basename collision with the top-level vendored tree"
+    )
+    assert not any(one.relative.startswith("vendor/") for one in reached), (
+        "the third-party tree at the root is somebody else's code and stays out"
+    )
+
+    # Both lists are exact against the tree as it stands: no line names a
+    # handler that stopped being silent, and no silent handler is unlisted.
+    assert rules.rule_no_silent_except() == []
+    assert len(policy.SILENT_EXCEPT_INHERITED) <= policy.SILENT_EXCEPT_CEILING
