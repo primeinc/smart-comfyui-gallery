@@ -29,6 +29,48 @@ STAGES: Final[tuple[str, ...]] = (
 )
 
 
+#: Stages whose cell comes from provenance or verdicts rather than a case's own
+#: record. Every other stage must name the case-result field it reads, below.
+DERIVED_ELSEWHERE: Final[frozenset[str]] = frozenset({"source_provenance", "weight_provenance", "comparison_verdict"})
+
+
+@dataclass(frozen=True)
+class Evidence:
+    #: The case-result field this stage's cell is derived from -- distinct per stage,
+    #: because one Cell aliased into six was the defect and six equal-but-distinct
+    #: cells built from one boolean would defeat an object-identity check alone.
+    field: str
+    absent: str
+
+
+STAGE_EVIDENCE: Final[dict[str, Evidence]] = {
+    "producer_execution": Evidence("baseline.sha256", "no baseline artifact, so nothing records a producer running"),
+    "emitted_observation": Evidence("retained_bytes", "no retained field sizes, so nothing records what was captured"),
+    "durable_write": Evidence("durable.written_bytes", "no durable write recorded; the runner replays from memory"),
+    "durable_read_back": Evidence("durable.read_back_sha256", "no read-back recorded; nothing was re-opened"),
+    "native_reconstruction": Evidence("durable.thawed_keys", "no thaw recorded; no native record was rebuilt"),
+    "consumer_replay": Evidence("replay.sha256", "no replay artifact, so the stored branch produced nothing"),
+}
+
+
+def stages_are_covered() -> None:
+    homeless = sorted(set(STAGES) - set(STAGE_EVIDENCE) - DERIVED_ELSEWHERE)
+    if homeless:
+        raise KeyError(
+            f"{homeless} appear in STAGES with no evidence source. A stage added here must name "
+            f"the case-result field its cell derives from, or its column cannot be proven."
+        )
+
+
+def _at(row: dict[str, Any], dotted: str) -> Any:
+    held: Any = row
+    for part in dotted.split("."):
+        if not isinstance(held, dict):
+            return None
+        held = held.get(part)
+    return held
+
+
 @dataclass
 class Cell:
     state: str
@@ -45,8 +87,8 @@ class Row:
         return all(one.state == VERIFIED for one in self.cells.values())
 
 
-def _read(name: str) -> dict[str, Any] | None:
-    path = GENERATED / name
+def _read(name: str, where: Path = GENERATED) -> dict[str, Any] | None:
+    path = where / name
     if not path.is_file():
         return None
     return json.loads(path.read_text(encoding="utf-8"))
@@ -59,20 +101,21 @@ def _current(held: dict[str, Any] | None, digest: str) -> bool:
     return isinstance(recorded, dict) and recorded.get("digest") == digest
 
 
-def lane_exits() -> dict[str, int]:
+def lane_exits(where: Path = GENERATED) -> dict[str, int]:
     from compat.harness import lanes
 
-    return lanes.exits(GENERATED)
+    return lanes.exits(where)
 
 
-def build() -> dict[str, Any]:
+def build(where: Path = GENERATED) -> dict[str, Any]:
+    stages_are_covered()
     now = evidence_identity.identity()
     manifest = provenance.load_manifest()
     declared = sorted(one["id"] for one in manifest.get("consumers", []))
-    lanes = lane_exits()
+    lanes = lane_exits(where)
 
-    pins = _read("provenance.json")
-    cases = _read("cases.json")
+    pins = _read("provenance.json", where)
+    cases = _read("cases.json", where)
 
     current_cases: dict[str, Any] | None = cases if _current(cases, now["digest"]) else None
 
@@ -142,11 +185,16 @@ def build() -> dict[str, Any]:
             rows.append(row)
             continue
 
-        ran = Cell(VERIFIED, f"{len(mine)} case(s) executed")
-        for stage in ("producer_execution", "emitted_observation", "durable_write", "durable_read_back"):
-            row.cells[stage] = ran
-        row.cells["native_reconstruction"] = ran
-        row.cells["consumer_replay"] = ran
+        for stage, evidence in STAGE_EVIDENCE.items():
+            carrying = [one for one in mine if _at(one, evidence.field)]
+            if not carrying:
+                row.cells[stage] = Cell(BLOCKED, f"{evidence.absent} ({evidence.field} absent from all {len(mine)})")
+            elif len(carrying) < len(mine):
+                row.cells[stage] = Cell(
+                    FAILED, f"{len(mine) - len(carrying)} of {len(mine)} case(s) record no {evidence.field}"
+                )
+            else:
+                row.cells[stage] = Cell(VERIFIED, f"{len(carrying)} case(s) record {evidence.field}")
 
         failed = [one for one in mine if one["verdict"] != "PASS"]
         row.cells["comparison_verdict"] = (

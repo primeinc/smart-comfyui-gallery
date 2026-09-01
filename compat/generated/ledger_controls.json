@@ -1,0 +1,45 @@
+{
+  "cells_distinct": true,
+  "failing": [],
+  "identity": "1670c70bcaf547704064b51883e4176c210e6df32f2a439d703642fd8264943e",
+  "results": [
+    {
+      "detail": "-> producer_execution BLOCKED",
+      "name": "suppress baseline.sha256",
+      "only_its_own_stage_red": true
+    },
+    {
+      "detail": "-> emitted_observation BLOCKED",
+      "name": "suppress retained_bytes",
+      "only_its_own_stage_red": true
+    },
+    {
+      "detail": "-> durable_write BLOCKED",
+      "name": "suppress durable.written_bytes",
+      "only_its_own_stage_red": true
+    },
+    {
+      "detail": "-> durable_read_back BLOCKED",
+      "name": "suppress durable.read_back_sha256",
+      "only_its_own_stage_red": true
+    },
+    {
+      "detail": "-> native_reconstruction BLOCKED",
+      "name": "suppress durable.thawed_keys",
+      "only_its_own_stage_red": true
+    },
+    {
+      "detail": "-> consumer_replay BLOCKED",
+      "name": "suppress replay.sha256",
+      "only_its_own_stage_red": true
+    }
+  ],
+  "stages": [
+    "consumer_replay",
+    "durable_read_back",
+    "durable_write",
+    "emitted_observation",
+    "native_reconstruction",
+    "producer_execution"
+  ]
+}

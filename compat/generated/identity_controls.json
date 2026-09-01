@@ -1,7 +1,7 @@
 {
   "controls": [
     {
-      "detail": "73 file(s); all 3 present",
+      "detail": "74 file(s); all 3 present",
       "held": true,
       "name": "sources digests its declared files"
     },
@@ -61,7 +61,7 @@
       "name": "gates moves the digest"
     },
     {
-      "detail": "be46b659b228 -> be36db31becd -> be46b659b228",
+      "detail": "1670c70bcaf5 -> 6481a246aecb -> 1670c70bcaf5",
       "held": true,
       "name": "a new .just module moves the live digest"
     },
@@ -72,5 +72,5 @@
     }
   ],
   "failing": [],
-  "identity": "be46b659b228eabc0cfbf5f69a401e6a85ae2130d9f08c59e3cf97d550b015e1"
+  "identity": "1670c70bcaf547704064b51883e4176c210e6df32f2a439d703642fd8264943e"
 }
