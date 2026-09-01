@@ -1,0 +1,32 @@
+{
+  "failing": [],
+  "identity": "d8f34ddb7d95fd4477e5a107ca5f3ed1891922753ae0c8a63cc770c78580a3d8",
+  "ledger_stages": [
+    "source_provenance",
+    "weight_provenance",
+    "producer_execution",
+    "emitted_observation",
+    "durable_write",
+    "durable_read_back",
+    "native_reconstruction",
+    "consumer_replay",
+    "comparison_verdict"
+  ],
+  "probes": [
+    {
+      "detail": "closure RED on every lane exited 0 [failed]",
+      "held": true,
+      "name": "a red attack lane turns the verdict RED"
+    },
+    {
+      "detail": "closure RED on every lane exited 0 [failed], no ledger cell BLOCKED [failed]",
+      "held": true,
+      "name": "shipped evidence re-stamped cannot close"
+    },
+    {
+      "detail": "closure.py carries no directory waiver",
+      "held": true,
+      "name": "no non-default-directory waiver remains"
+    }
+  ]
+}
