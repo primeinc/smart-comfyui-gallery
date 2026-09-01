@@ -172,6 +172,30 @@ def test_one_mapping_under_two_names_stays_one_mapping():
     assert back["listed"][0]["count"] == 2
 
 
+def test_two_equal_but_separate_values_stay_separate():
+    """Aliasing's complement, and what an equality-keyed memo would get
+    wrong while passing every test above: values that merely compare equal
+    are still two values, and a write through one must not reach the other."""
+    held = {
+        "left": np.arange(4, dtype=np.float32),
+        "right": np.arange(4, dtype=np.float32),
+        "one": {"n": 1},
+        "other": {"n": 1},
+    }
+    assert held["left"] is not held["right"]
+    assert np.array_equal(held["left"], held["right"])
+    assert held["one"] is not held["other"]
+
+    back = carried(held)
+
+    assert back["left"] is not back["right"], "two separate arrays were folded into one"
+    assert back["one"] is not back["other"], "two separate mappings were folded into one"
+    back["left"][0] = np.float32(9)
+    assert back["right"][0] == np.float32(0), "a write through one array reached the other"
+    back["one"]["n"] = 2
+    assert back["other"]["n"] == 1
+
+
 def test_a_record_that_holds_itself_is_refused_by_path():
     """`Unpreservable` names where the loop closed. A RecursionError names
     the envelope's own frames, which is a report about this module rather
