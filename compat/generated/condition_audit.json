@@ -1,6 +1,7 @@
 {
   "clean": true,
   "declared": {
+    "every ablation concluded": "cases.json:ablations",
     "every declared member accounted for": "ledger.json:rows",
     "every lane exited 0": "lanes.json:lanes",
     "every weight VERIFIED": "provenance.json:weights",
@@ -11,6 +12,9 @@
     "no skipped input": "cases.json:results"
   },
   "emptied": {
+    "cases.json:ablations": [
+      "every ablation concluded"
+    ],
     "cases.json:results": [
       "no shard failed",
       "no skipped input"
@@ -33,6 +37,10 @@
   },
   "findings": [],
   "sources": {
+    "cases.json:ablations": {
+      "validator": "run.py:116 compares observed_break against the declared expect_breaks",
+      "writer": "run.py:run_ablation() -> run_case(); tallied by run.py:ablation_tally"
+    },
     "cases.json:results": {
       "validator": "assertions/arrays.py:compare() decides each verdict; run.py:run_case records it",
       "writer": "sharded.py:main() for the shipped lane; run.py:main() when run whole"

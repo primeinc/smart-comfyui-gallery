@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, Final
 
 import proc
-from compat.contracts.case import Tier, Verdict
+from compat.contracts.case import CaseVerdict, Tier
 from compat.harness import failfast, provenance
 from compat.harness import identity as evidence_identity
 from compat.harness import run as case_runner
@@ -141,7 +141,8 @@ def merge(partials: list[dict[str, Any]]) -> dict[str, Any]:
             "primitive_tier_only": sorted(at_tier[Tier.PRIMITIVE.value] - covered),
             "unexercised": sorted(declared - covered),
         },
-        "verdicts": {one.value: sum(1 for row in results if row["verdict"] == one.value) for one in Verdict},
+        "verdicts": {one.value: sum(1 for row in results if row["verdict"] == one.value) for one in CaseVerdict},
+        "ablation_verdicts": case_runner.ablation_tally(results),
     }
     return case_runner.evidence_shape(out, "sharded.merge")
 

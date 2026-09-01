@@ -51,6 +51,14 @@ def _empty(artifact: str, field_name: str) -> Callable[[Path], None]:
     return emptied
 
 
+def _empty_ablations(where: Path) -> None:
+    def strip(held: dict[str, Any]) -> None:
+        for row in held.get("results") or []:
+            row["ablations"] = []
+
+    _rewrite(where, "cases.json", strip)
+
+
 def _drop_ledger(where: Path) -> None:
     (where / "ledger.json").unlink(missing_ok=True)
 
@@ -75,6 +83,11 @@ SOURCES: Final[dict[str, Source]] = {
         empty=_empty("provenance.json", "weights"),
         writer="provenance.py:weight_identity() -> main(), state from weight_state() at :505-517",
         validator="provenance.weight_is_verified() -- the one predicate closure and ledger now share",
+    ),
+    "cases.json:ablations": Source(
+        empty=_empty_ablations,
+        writer="run.py:run_ablation() -> run_case(); tallied by run.py:ablation_tally",
+        validator="run.py:116 compares observed_break against the declared expect_breaks",
     ),
     "cases.json:results": Source(
         empty=_empty("cases.json", "results"),

@@ -34,6 +34,15 @@ class Verdict(StrEnum):
     VENDOR_BASELINE_UNAVAILABLE = "VENDOR_BASELINE_UNAVAILABLE"
 
 
+class CaseVerdict(StrEnum):
+    # run_case can only ever reach these two, so the other three were unreachable
+    # at this level -- and a gate reading `verdicts["CONTRADICTED"] == 0` over case
+    # results was therefore constant-true. They are now unrepresentable here.
+    REPRODUCED = "PASS"
+
+    DIVERGED = "FAIL"
+
+
 @dataclass(frozen=True)
 class Skipped:
     consumer_id: str
@@ -265,7 +274,7 @@ class CaseResult:
     case: str
     consumer_id: str
     tier: Tier
-    verdict: Verdict
+    verdict: CaseVerdict
     fixture_sha256: str
     baseline: Artifact | None = None
     replay: Artifact | None = None

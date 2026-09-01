@@ -26,6 +26,9 @@ def _case(who: str) -> dict[str, Any]:
         "replay": {"sha256": "a" * 64, "dtype": "uint8", "shape": [1]},
         "retained_bytes": {"whole_reference_image": 1024},
         "durable": {"written_bytes": 1024, "read_back_sha256": "b" * 64, "thawed_keys": ["whole_reference_image"]},
+        "ablations": [
+            {"primitive": "whole_reference_image", "expect_breaks": True, "observed_break": True, "verdict": "PASS"}
+        ],
     }
 
 

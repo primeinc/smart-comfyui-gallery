@@ -13,6 +13,7 @@ from compat.contracts.case import (
     Artifact,
     Case,
     CaseResult,
+    CaseVerdict,
     Measurement,
     MissingPrimitive,
     Registry,
@@ -145,7 +146,7 @@ def run_case(runner: Runner, case: Case) -> CaseResult:
             case=case.name,
             consumer_id=case.consumer_id,
             tier=case.tier,
-            verdict=Verdict.DIVERGED,
+            verdict=CaseVerdict.DIVERGED,
             fixture_sha256=case.fixture.sha256,
             comparison=f"{type(problem).__name__}: {problem}",
             seconds=time.perf_counter() - began,
@@ -168,7 +169,7 @@ def run_case(runner: Runner, case: Case) -> CaseResult:
     )
     measurements = tuple(run_measurement(runner, case, retained, one) for one in case.measurements)
 
-    verdict = Verdict.REPRODUCED if result.equal else Verdict.DIVERGED
+    verdict = CaseVerdict.REPRODUCED if result.equal else CaseVerdict.DIVERGED
 
     return CaseResult(
         case=case.name,
@@ -258,6 +259,7 @@ EVIDENCE_KEYS: Final[frozenset[str]] = frozenset(
         "shards_exited_over_findings",
         "population",
         "verdicts",
+        "ablation_verdicts",
     }
 )
 
@@ -279,14 +281,19 @@ def blocking_failures(results: list[dict[str, Any]]) -> dict[str, list[str]]:
     for row in results:
         who = row["consumer_id"]
         cases[who] = cases.get(who, 0) + 1
-        passes[who] = passes.get(who, 0) + (row["verdict"] == Verdict.REPRODUCED.value)
-        if row["verdict"] == Verdict.DIVERGED.value:
+        passes[who] = passes.get(who, 0) + (row["verdict"] == CaseVerdict.REPRODUCED.value)
+        if row["verdict"] == CaseVerdict.DIVERGED.value:
             out["diverged"].append(f"{row['case']}: {row.get('comparison', '')[:100]}")
 
     for who, held in sorted(cases.items()):
         if held and not passes.get(who):
             out["no case answered"].append(f"{who}: {held} case(s), not one reproduced")
     return {why: names for why, names in out.items() if names}
+
+
+def ablation_tally(results: list[dict[str, Any]]) -> dict[str, int]:
+    held = [one for row in results for one in (row.get("ablations") or [])]
+    return {one.value: sum(1 for a in held if a.get("verdict") == one.value) for one in Verdict}
 
 
 def canonical(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -330,7 +337,8 @@ def run_all(only: str = "") -> dict[str, Any]:
             "primitive_tier_only": sorted(at_tier[Tier.PRIMITIVE] - covered),
             "unexercised": sorted(declared - covered),
         },
-        "verdicts": {one.value: sum(1 for result in results if result.verdict is one) for one in Verdict},
+        "verdicts": {one.value: sum(1 for result in results if result.verdict is one) for one in CaseVerdict},
+        "ablation_verdicts": ablation_tally([_without_timing(asdict(one)) for one in results]),
     }
     return evidence_shape(out, "run_all")
 
@@ -339,7 +347,7 @@ def report(out: dict[str, Any]) -> None:
     for row in out["results"]:
         print(f"{row['verdict']:<13} {row['case']:<38} {row['comparison']}")
         for one in row["ablations"]:
-            mark = "ok " if one["verdict"] == Verdict.REPRODUCED.value else "!! "
+            mark = "ok " if one["verdict"] == CaseVerdict.REPRODUCED.value else "!! "
             expected = "breaks" if one["expect_breaks"] else "survives"
             observed = "broke" if one["observed_break"] else "survived"
             print(
@@ -408,7 +416,10 @@ def main(argv: list[str] | None = None) -> int:
             for one in names:
                 print(f"        {one}")
 
-    clean = not blocking and out["verdicts"][Verdict.CONTRADICTED.value] == 0
+    # Was `out["verdicts"][CONTRADICTED]`, which run_case cannot assign: constant
+    # true. The ablation tally is where CONTRADICTED and INCONCLUSIVE actually land.
+    unsettled = out["ablation_verdicts"]
+    clean = not blocking and unsettled.get(Verdict.CONTRADICTED.value, 0) == 0
     complete = not out["population"]["unexercised"]
     print(f"\ncases: {'clean' if clean else 'NOT clean'}   population: {'complete' if complete else 'INCOMPLETE'}")
     return 0 if (clean and complete) else 1

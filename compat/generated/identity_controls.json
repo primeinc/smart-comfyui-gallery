@@ -61,7 +61,7 @@
       "name": "gates moves the digest"
     },
     {
-      "detail": "f635e113aa58 -> 042a8ba2c51a -> f635e113aa58",
+      "detail": "97a86f869b5b -> 216ed6082e2b -> 97a86f869b5b",
       "held": true,
       "name": "a new .just module moves the live digest"
     },
@@ -72,5 +72,5 @@
     }
   ],
   "failing": [],
-  "identity": "f635e113aa585e77bf35979fa17ea03d38efea124d0a31eff2b2cba3fdfb0641"
+  "identity": "97a86f869b5b611034e10a4b1e57d43e9a84f07a587483961b8ed396eac6d1d5"
 }

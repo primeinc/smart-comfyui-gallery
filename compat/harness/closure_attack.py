@@ -72,6 +72,18 @@ def _case_diverged(held: dict[str, Any]) -> None:
     held["cases.json"]["results"][0]["verdict"] = "FAIL"
 
 
+def _ablation_contradicted(held: dict[str, Any]) -> None:
+    # An ablation that behaved opposite to its declaration. 497 of 1037 shipped
+    # green because nothing aggregated these at all.
+    held["cases.json"]["results"][0]["ablations"][0]["verdict"] = "CONTRADICTED"
+
+
+def _ablations_over_allowance(held: dict[str, Any]) -> None:
+    row = held["cases.json"]["results"][0]
+    one = dict(row["ablations"][0], verdict="INCONCLUSIVE")
+    row["ablations"] = [one] * (closure.ABLATION_INCONCLUSIVE_ALLOWANCE + 1)
+
+
 def _lane_failed(held: dict[str, Any]) -> None:
     held["lanes.json"]["lanes"]["attack"] = 1
 
@@ -93,6 +105,8 @@ MUTATIONS: Final[tuple[tuple[str, Callable[[dict[str, Any]], None]], ...]] = (
     ("producer_prevented", _producer_prevented),
     ("stored_field_dropped", _stored_field_dropped),
     ("case_diverged", _case_diverged),
+    ("ablation_contradicted", _ablation_contradicted),
+    ("ablations_over_allowance", _ablations_over_allowance),
     ("input_skipped", _input_skipped),
     ("shard_killed", _shard_killed),
     ("lane_failed", _lane_failed),

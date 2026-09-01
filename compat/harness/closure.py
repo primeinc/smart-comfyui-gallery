@@ -16,6 +16,12 @@ FAILED: Final[str] = "failed"
 NOT_APPLICABLE: Final[str] = "not-applicable"
 
 
+#: Ablations the runner could not drive to a conclusion. A RATCHET, not a budget:
+#: it may only ever be lowered. 497 of 1037 shipped green while ablation verdicts
+#: reached no gate at all -- this number exists so that stops being invisible.
+ABLATION_INCONCLUSIVE_ALLOWANCE: Final[int] = 497
+
+
 @dataclass
 class Condition:
     name: str
@@ -79,6 +85,27 @@ def _every_lane_green(lanes: dict[str, Any] | None) -> Condition:
     held = found if isinstance(found, dict) else {}
     red = sorted(f"{name} exited {code}" for name, code in held.items() if int(code) != 0)
     return _over("every lane exited 0", "lanes.json:lanes", len(held), red, f"{len(held)} lane(s), all 0")
+
+
+def _ablations_concluded(cases: dict[str, Any] | None) -> Condition:
+    # The only mechanism proving a retained field is load-bearing, and its verdicts
+    # were aggregated nowhere. CONTRADICTED gets no allowance: it means an ablation
+    # behaved opposite to its declaration, which is a finding, not a shortfall.
+    held = [one for row in ((cases or {}).get("results") or []) for one in (row.get("ablations") or [])]
+    contradicted = [one for one in held if one.get("verdict") == "CONTRADICTED"]
+    inconclusive = [one for one in held if one.get("verdict") == "INCONCLUSIVE"]
+
+    offending = [f"{one.get('primitive', '?')} CONTRADICTED" for one in contradicted[:4]]
+    if len(inconclusive) > ABLATION_INCONCLUSIVE_ALLOWANCE:
+        offending.append(f"{len(inconclusive)} INCONCLUSIVE over an allowance of {ABLATION_INCONCLUSIVE_ALLOWANCE}")
+    return _over(
+        "every ablation concluded",
+        "cases.json:ablations",
+        len(held),
+        offending,
+        f"{len(held)} ablation(s), 0 contradicted, {len(inconclusive)} inconclusive "
+        f"within the allowance of {ABLATION_INCONCLUSIVE_ALLOWANCE}",
+    )
 
 
 def conditions(where: Path = GENERATED) -> list[Condition]:
@@ -146,6 +173,8 @@ def conditions(where: Path = GENERATED) -> list[Condition]:
     out.append(
         _over("no skipped input", "cases.json:results", len(results), skipped, f"{len(results)} case(s), none skipped")
     )
+
+    out.append(_ablations_concluded(cases))
 
     shards = [str(one) for one in ((cases or {}).get("shards_failed") or [])]
     out.append(
