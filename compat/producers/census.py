@@ -96,6 +96,10 @@ CONFIRMED: Final[str] = "CONFIRMED"
 CHAINED: Final[str] = "CHAINED"
 CANDIDATE: Final[str] = "CANDIDATE"
 LOAD: Final[str] = "LOAD"
+#: Excluded by the arity rule rather than by classification. Enumerated, not
+#: tallied: a number says how many were skipped, a list says WHICH -- and the
+#: difference is whether a reader can check the rule's judgement.
+SIGNATURE_SUPPRESSED: Final[str] = "SIGNATURE_SUPPRESSED"
 
 
 @dataclass(frozen=True)
@@ -200,10 +204,11 @@ def sites_in(path: str, body: str) -> list[Site]:
             # cannot see, and the one that hid eleven sites from two censuses.
             kind, why = CHAINED, "receiver is itself a call; the producer is built inline"
         elif callee == "get" and (len(node.args) >= 2 or node.keywords):
-            # `mapping.get(key, default)` by SIGNATURE, not by receiver name: a
-            # producer's `get(frame)` takes one positional and no keyword. The one
-            # discriminator here that reads the call instead of guessing at a name.
-            continue
+            # `mapping.get(key, default)` by SIGNATURE, not by receiver name.
+            # RECORDED, never dropped: upstream's own `get(img, max_num=0, ...)`
+            # wears this shape, and an unrecorded exclusion is an absence claim.
+            shown = receiver or "<bare>"
+            kind, why = SIGNATURE_SUPPRESSED, f"receiver {shown!r} unresolved and the call carries a default"
         elif callee in AMBIGUOUS:
             # Inside a runtime-reachable module an overloaded name is likelier a
             # producer call than a dict lookup; suppressing it here dropped four
@@ -378,17 +383,38 @@ def controls(bodies: dict[str, str]) -> dict[str, Any]:
             positive.append({"path": path, "found": False, "why": "file is not in the tracked tree"})
             continue
         before = sites_in(path, body)
-        hits = [one for one in before if needle.rstrip("(").endswith(one.callee)]
-        positive.append({"path": path, "found": bool(hits), "sites": len(before), "matching": len(hits)})
+        # The seeded SITE by line, not a callee of the same NAME anywhere in the
+        # file: the old suffix match was satisfied by any `get` in the module,
+        # so it asserted the file still held a matching name, not this call.
+        seeded_lines = {n for n, line in enumerate(body.splitlines(), 1) if needle in line}
+        hits = [one for one in before if one.line in seeded_lines]
+        positive.append(
+            {
+                "path": path,
+                "found": bool(hits),
+                "sites": len(before),
+                "seeded_lines": sorted(seeded_lines),
+                "matched_lines": sorted(one.line for one in hits),
+            }
+        )
 
         stripped = "\n".join(line for line in body.splitlines() if needle not in line)
+        # A stripped body that no longer PARSES makes sites_in return [], which
+        # satisfies `after < before` by breakage rather than by removal. The
+        # control has to prove the site went away, not that the file did.
+        parses = True
+        try:
+            ast.parse(stripped)
+        except SyntaxError:
+            parses = False
         after = sites_in(path, stripped)
         negative.append(
             {
                 "path": path,
                 "before": len(before),
                 "after": len(after),
-                "changed": len(after) < len(before),
+                "still_parses": parses,
+                "changed": parses and len(after) < len(before),
             }
         )
     return {
@@ -438,7 +464,8 @@ def build(root: Path = ROOT) -> dict[str, Any]:
         set(_git_lines(root, "ls-files", "benchmarks/results/")) - {one["artifact"] for one in cited}
     )
     checks = controls(bodies)
-    counted = {kind: sum(1 for one in sites if one.kind == kind) for kind in (LOAD, CONFIRMED, CHAINED, CANDIDATE)}
+    kinds = (LOAD, CONFIRMED, CHAINED, CANDIDATE, SIGNATURE_SUPPRESSED)
+    counted = {kind: sum(1 for one in sites if one.kind == kind) for kind in kinds}
     return {
         "sites": [asdict(one) for one in sorted(sites, key=lambda one: (one.path, one.line))],
         "totals": {
@@ -471,6 +498,7 @@ def main() -> int:
     print(f"  CHAINED    (built inline)      : {totals[CHAINED]}")
     print(f"  CANDIDATE  (unresolved)        : {totals[CANDIDATE]}")
     print(f"  total sites                    : {totals['sites']} in {totals['files_with_sites']} files")
+    print(f"  SIGNATURE_SUPPRESSED (arity)   : {totals[SIGNATURE_SUPPRESSED]}")
     print(f"  suppressed ambiguous names     : {totals['suppressed_ambiguous']}")
     print(f"  off-runtime name collisions    : {totals['off_runtime_ignored']} (same name, no runtime reachable)")
     if totals["unreadable"]:
@@ -478,6 +506,12 @@ def main() -> int:
     print("\nby top-level directory:")
     for where, count in totals["by_top_directory"].items():
         print(f"  {where:<12} {count:>5}")
+
+    if totals[SIGNATURE_SUPPRESSED]:
+        print(f"\n{totals[SIGNATURE_SUPPRESSED]} site(s) excluded by the arity rule -- WHICH, not how many:")
+        for one in out["sites"]:
+            if one["kind"] == SIGNATURE_SUPPRESSED:
+                print(f"  {one['path']}:{one['line']}  {one['receiver']}.{one['callee']}()")
 
     if totals[CANDIDATE]:
         print(f"\n{totals[CANDIDATE]} CANDIDATE site(s) -- an unresolved site is not an absent one:")
