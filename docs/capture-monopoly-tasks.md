@@ -68,7 +68,11 @@ provable and R1 being asserted.
       unifies the state predicate closure and ledger read (closure whitelists three bad
       states, ledger blacklists ≠VERIFIED — E10, latent today because ledger's blacklist
       is a superset, live the moment the predicates are reconciled the wrong direction).
-      Per-face negative controls. ACCEPTANCE additionally: an audit of ALL nine conditions
+      Per-face negative controls. ACCEPTANCE additionally: an audit of ALL closure
+      conditions (a COUNT is not the spec: at G4's landing this is 8 — the original nine
+      minus the weight trio unified into one, plus G1's lane condition, plus nothing
+      dropped — and the audit enumerates from closure.conditions() itself, so the set is
+      derived, never remembered)
       against their input sources confirms no remaining condition reports held over an
       empty input — the found sites are two of a family; the audit covers the third nobody
       enumerated (flavor-2 shape 1). METHOD CONSTRAINT (proof, against itself): the audit
