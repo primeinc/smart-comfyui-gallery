@@ -100,6 +100,10 @@ LOAD: Final[str] = "LOAD"
 #: tallied: a number says how many were skipped, a list says WHICH -- and the
 #: difference is whether a reader can check the rule's judgement.
 SIGNATURE_SUPPRESSED: Final[str] = "SIGNATURE_SUPPRESSED"
+#: The role a suppressed site carries. NOT the invocation role its callee name
+#: implies -- `_SEX_WORDS.get(code, "unknown")` filed as a face-analysis
+#: invocation is this census recording something as what it is not.
+NOT_A_PRODUCER: Final[str] = "not-a-producer-call"
 
 
 @dataclass(frozen=True)
@@ -108,7 +112,7 @@ class Site:
 
     path: str
     line: int
-    kind: str  # LOAD | CONFIRMED | CHAINED | CANDIDATE
+    kind: str  # LOAD | CONFIRMED | CHAINED | CANDIDATE | SIGNATURE_SUPPRESSED
     callee: str
     role: str
     receiver: str
@@ -223,7 +227,7 @@ def sites_in(path: str, body: str) -> list[Site]:
                 line=node.lineno,
                 kind=kind,
                 callee=callee,
-                role=INVOCATIONS[callee],
+                role=NOT_A_PRODUCER if kind == SIGNATURE_SUPPRESSED else INVOCATIONS[callee],
                 receiver=receiver,
                 evidence=why,
             )
@@ -398,23 +402,28 @@ def controls(bodies: dict[str, str]) -> dict[str, Any]:
             }
         )
 
-        stripped = "\n".join(line for line in body.splitlines() if needle not in line)
-        # A stripped body that no longer PARSES makes sites_in return [], which
-        # satisfies `after < before` by breakage rather than by removal. The
-        # control has to prove the site went away, not that the file did.
+        # BLANKED, not deleted, so line numbers hold and the assertion can name
+        # the seeded SITE. Deleting renumbered everything below, forcing the old
+        # `len(after) < len(before)` -- which any other site vanishing satisfies.
+        blanked = "\n".join("" if needle in line else line for line in body.splitlines())
+        # A body that no longer PARSES makes sites_in return [], which satisfies
+        # any shrinkage test by breakage rather than by removal.
         parses = True
         try:
-            ast.parse(stripped)
+            ast.parse(blanked)
         except SyntaxError:
             parses = False
-        after = sites_in(path, stripped)
+        after = sites_in(path, blanked)
+        survivors = sorted(seeded_lines & {one.line for one in after})
         negative.append(
             {
                 "path": path,
                 "before": len(before),
                 "after": len(after),
                 "still_parses": parses,
-                "changed": parses and len(after) < len(before),
+                "seeded_lines": sorted(seeded_lines),
+                "surviving_seeded_lines": survivors,
+                "changed": parses and bool(seeded_lines) and not survivors,
             }
         )
     return {
@@ -466,10 +475,19 @@ def build(root: Path = ROOT) -> dict[str, Any]:
     checks = controls(bodies)
     kinds = (LOAD, CONFIRMED, CHAINED, CANDIDATE, SIGNATURE_SUPPRESSED)
     counted = {kind: sum(1 for one in sites if one.kind == kind) for kind in kinds}
+    from compat.harness import identity as evidence_identity
+
     return {
+        # The tree this census describes. Without it the artifact cannot say it
+        # is stale, and every total can be byte-identical while the sites moved.
+        "identity": evidence_identity.identity()["digest"],
         "sites": [asdict(one) for one in sorted(sites, key=lambda one: (one.path, one.line))],
         "totals": {
             **counted,
+            # The four classified kinds. `sites` counts SIGNATURE_SUPPRESSED too,
+            # so printing the kinds and then `sites` invited a reader to add 420
+            # and be told 660.
+            "census_sites": sum(counted[kind] for kind in (LOAD, CONFIRMED, CHAINED, CANDIDATE)),
             "sites": len(sites),
             "files_with_sites": len({one.path for one in sites}),
             "by_top_directory": dict(sorted(by_dir.items())),
@@ -489,7 +507,56 @@ def build(root: Path = ROOT) -> dict[str, Any]:
     }
 
 
+def drift(root: Path = ROOT) -> dict[str, Any]:
+    """How the committed artifact differs from the tree it claims to describe.
+
+    Compares SITES, not totals. Every total can be byte-identical while the
+    sites moved -- an edit that shifts a call down two lines leaves the counts
+    alone -- so a totals-based currency check calls a stale artifact current.
+    That is `a count is not an enumeration` appearing in an artifact rather than
+    in a control.
+    """
+    target = ROOT / "compat" / "generated" / "producer_census.json"
+    if not target.is_file():
+        return {"artifact": str(target), "present": False, "current": False, "why": "no artifact on disk"}
+    try:
+        shipped = json.loads(target.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as why:
+        return {"artifact": str(target), "present": True, "current": False, "why": f"unreadable: {why}"}
+    fresh = build(root)
+
+    def keyed(one: dict[str, Any]) -> set[tuple[str, int, str]]:
+        return {(s["path"], s["line"], s["kind"]) for s in one.get("sites", [])}
+
+    was, now = keyed(shipped), keyed(fresh)
+    return {
+        "artifact": str(target),
+        "present": True,
+        "identity_shipped": shipped.get("identity", ""),
+        "identity_now": fresh["identity"],
+        "identity_matches": shipped.get("identity", "") == fresh["identity"],
+        "shipped_only": sorted(was - now),
+        "fresh_only": sorted(now - was),
+        "current": was == now and shipped.get("identity", "") == fresh["identity"],
+    }
+
+
 def main() -> int:
+    import sys
+
+    if "--check" in sys.argv[1:]:
+        told = drift()
+        print(f"census artifact: {told['artifact']}")
+        if not told.get("present"):
+            print(f"  STALE: {told['why']}")
+            return 1
+        print(f"  identity shipped {told['identity_shipped'][:16] or '<none>'} now {told['identity_now'][:16]}")
+        for where in ("shipped_only", "fresh_only"):
+            for one in told[where]:
+                print(f"  {where:<13} {one[0]}:{one[1]} {one[2]}")
+        print("  CURRENT" if told["current"] else "  STALE -- re-run `python -m compat.producers.census`")
+        return 0 if told["current"] else 1
+
     out = build()
     totals = out["totals"]
     print("producer population, derived from the tracked tree (no directory list)\n")
@@ -497,8 +564,9 @@ def main() -> int:
     print(f"  CONFIRMED  (receiver bound)    : {totals[CONFIRMED]}")
     print(f"  CHAINED    (built inline)      : {totals[CHAINED]}")
     print(f"  CANDIDATE  (unresolved)        : {totals[CANDIDATE]}")
-    print(f"  total sites                    : {totals['sites']} in {totals['files_with_sites']} files")
+    print(f"  census sites (those four)      : {totals['census_sites']} in {totals['files_with_sites']} files")
     print(f"  SIGNATURE_SUPPRESSED (arity)   : {totals[SIGNATURE_SUPPRESSED]}")
+    print(f"  rows written (census + those)  : {totals['sites']}")
     print(f"  suppressed ambiguous names     : {totals['suppressed_ambiguous']}")
     print(f"  off-runtime name collisions    : {totals['off_runtime_ignored']} (same name, no runtime reachable)")
     if totals["unreadable"]:
