@@ -265,7 +265,7 @@ check: web::fresh gates
 
 [parallel]
 [private]
-gates: api::check lint fmt-check web::types types-python web::unit db-check prose
+gates: api::check lint fmt-check web::types types-python web::unit db-check prose probes
 
 # Comment and docstring prose, against CONTRIBUTING.md. Vale reads Python
 # through tree-sitter, so it sees comments and docstrings, never string
@@ -465,3 +465,11 @@ mod corpus
 [doc('Print which faiss build the app loads, and how many GPUs it sees')]
 faiss-verify:
     {{ python }} -c "from vision.faiss_runtime import import_faiss; f = import_faiss(); print(f.__file__); print('faiss GPUs:', f.get_num_gpus())"
+
+# Fresh-interpreter proofs: cold replay with no producer import; torch-tensor
+# capture away from resident onnxruntime. The probes spawn nothing themselves;
+# the interpreter boundary is this recipe, where sglint SG006 puts a spawn.
+[private]
+probes:
+    {{ python }} -m tests.probes.cold_replay
+    {{ python }} -m tests.probes.torch_capture
