@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import copy
 import json
-import tempfile
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -13,11 +11,15 @@ from compat.harness import closure, closure_attack
 ROOT: Final[Path] = Path(__file__).resolve().parent.parent
 GENERATED: Final[Path] = ROOT / "generated"
 
+ARTIFACTS: Final[tuple[str, ...]] = ("ledger.json", "cases.json", "provenance.json", "lanes.json")
+
 
 @dataclass(frozen=True)
 class Source:
-    #: Emptying this is what proves a condition over it cannot hold on nothing.
-    empty: Callable[[dict[str, Any]], None]
+    #: Emptying this on disk is what proves a condition over it cannot hold on
+    #: nothing. It acts on the written artifacts, because the ledger is DERIVED
+    #: from the inputs rather than supplied, so there is no input dict to edit.
+    empty: Callable[[Path], None]
 
     #: The BOUNDARY RULE: a field traced only to its writer stops one screen above
     #: the guard, which is where the guarantee usually lives. Both are cited so a
@@ -26,26 +28,37 @@ class Source:
     validator: str
 
 
-def _strip_stamps(held: dict[str, Any]) -> None:
-    for body in held.values():
-        body.pop("identity", None)
+def _rewrite(where: Path, name: str, change: Callable[[dict[str, Any]], None]) -> None:
+    path = where / name
+    if not path.is_file():
+        return
+    held: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
+    change(held)
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        handle.write(json.dumps(held, indent=2, sort_keys=True, default=str))
+        handle.write("\n")
 
 
-def _empty(artifact: str, field_name: str) -> Callable[[dict[str, Any]], None]:
-    def emptied(held: dict[str, Any]) -> None:
-        held[artifact][field_name] = [] if field_name != "lanes" else {}
+def _strip_stamps(where: Path) -> None:
+    for name in ARTIFACTS:
+        _rewrite(where, name, lambda held: held.pop("identity", None))
+
+
+def _empty(artifact: str, field_name: str) -> Callable[[Path], None]:
+    def emptied(where: Path) -> None:
+        _rewrite(where, artifact, lambda held: held.__setitem__(field_name, {} if field_name == "lanes" else []))
 
     return emptied
 
 
-def _drop_ledger(held: dict[str, Any]) -> None:
-    held.pop("ledger.json", None)
+def _drop_ledger(where: Path) -> None:
+    (where / "ledger.json").unlink(missing_ok=True)
 
 
 SOURCES: Final[dict[str, Source]] = {
     "generated:identity stamps": Source(
         empty=_strip_stamps,
-        writer="each artifact's own main(): ledger.py:155, sharded.py:112, lanes.py:main, provenance.py:main",
+        writer="each artifact's own main(): ledger.py:build, sharded.py:112, lanes.py:main, provenance.py:main",
         validator="identity.py:identity() recomputes the tree digest; closure._one_tree compares every stamp to it",
     ),
     "lanes.json:lanes": Source(
@@ -56,7 +69,7 @@ SOURCES: Final[dict[str, Source]] = {
     "ledger.json:rows": Source(
         empty=_empty("ledger.json", "rows"),
         writer="ledger.py:build() -- one row per manifest consumer",
-        validator="NONE -- rows are derived, not checked; G2 gives each stage cell its own evidence",
+        validator="ledger.py:stages_are_covered() + STAGE_EVIDENCE: each cell derives from its own case field",
     ),
     "provenance.json:weights": Source(
         empty=_empty("provenance.json", "weights"),
@@ -98,17 +111,15 @@ class Audit:
 Provider = Callable[[Path], list[closure.Condition]]
 
 
-def _states(where: Path, held: dict[str, Any], asked: Provider) -> dict[str, closure.Condition]:
-    closure_attack._write(where, held)
-    return {one.name: one for one in asked(where)}
-
-
 def run(asked: Provider = closure.conditions) -> Audit:
+    import tempfile
+
     out = Audit()
     with tempfile.TemporaryDirectory(prefix="condition_audit_") as raw:
         where = Path(raw)
         base = closure_attack.green_fixture()
-        control = _states(where, base, asked)
+        closure_attack._write(where, base)
+        control = {one.name: one for one in asked(where)}
 
         for name, one in control.items():
             out.declared[name] = one.population
@@ -125,11 +136,9 @@ def run(asked: Provider = closure.conditions) -> Audit:
             over = sorted(n for n, one in control.items() if one.population == population)
             out.emptied[population] = over
 
-            for path in (where / one for one in ("ledger.json", "cases.json", "provenance.json", "lanes.json")):
-                path.unlink(missing_ok=True)
-            held = copy.deepcopy(base)
-            source.empty(held)
-            after = _states(where, held, asked)
+            closure_attack._write(where, base)
+            source.empty(where)
+            after = {one.name: one for one in asked(where)}
 
             for name in over:
                 found = after.get(name)

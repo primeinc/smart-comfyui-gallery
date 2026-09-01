@@ -39,7 +39,7 @@
     },
     "generated:identity stamps": {
       "validator": "identity.py:identity() recomputes the tree digest; closure._one_tree compares every stamp to it",
-      "writer": "each artifact's own main(): ledger.py:155, sharded.py:112, lanes.py:main, provenance.py:main"
+      "writer": "each artifact's own main(): ledger.py:build, sharded.py:112, lanes.py:main, provenance.py:main"
     },
     "generated:ledger": {
       "validator": "closure.conditions() returns only `ledger present` when the file is absent",
@@ -50,7 +50,7 @@
       "writer": "compat.just `run` appends `<lane> <code>` per lane; lanes.py:_recorded parses it"
     },
     "ledger.json:rows": {
-      "validator": "NONE -- rows are derived, not checked; G2 gives each stage cell its own evidence",
+      "validator": "ledger.py:stages_are_covered() + STAGE_EVIDENCE: each cell derives from its own case field",
       "writer": "ledger.py:build() -- one row per manifest consumer"
     },
     "provenance.json:weights": {
