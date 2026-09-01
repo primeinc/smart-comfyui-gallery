@@ -21,9 +21,20 @@ starts from the answer.
 
 So a fixture seeds from `tests/schemas/vNN.sql`: the file `git show`
 returns for the commit that shipped that version, vendored verbatim.
-`just schema vendor NN` adds one, `just schema versions` lists what git
-has (v1 through v35 today), and `just schema prove` runs the check at
-the bottom of this file.
+`just schema vendor NN` adds one, `just schema versions` prints every
+version git holds a schema.sql for, and `just schema prove` runs the
+check at the bottom of this file. Which versions those are is not
+restated here: a count in a docstring is an artifact frozen beside the
+claim it describes, and it goes stale the first time anybody vendors
+one. Run `just schema versions` -- it enumerates rather than remembers.
+
+Seeding matters most at the version a NEW step starts from, and for a
+long time nothing seeded above v31: every seed began below the range
+the recent steps run over, so a defect specific to a v32-or-later
+starting state had nothing to fail on. v47 is vendored for exactly that
+reason -- it is the state `@step(47)` migrates, so the claim that the
+step carries a real v47 database to v48 now rests on a real v47
+database.
 
 They are vendored rather than read from git at test time because the
 suite must run from a checkout with no git available, and they are never
