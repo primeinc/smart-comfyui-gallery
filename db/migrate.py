@@ -3040,7 +3040,7 @@ def _an_answer_is_stale_only_when_an_answer_could_have_changed(conn: sqlite3.Con
     data_version` -- "somebody committed something". Jobs commit per
     item, so at 80,000 files a page cost 0.179 ms at rest and 37.93 ms
     while a job ran, a factor of 211.8
-    (benchmarks/results/answer_currency.json), and the job that runs for
+    (benchmarks/evidence/answer_currency.json), and the job that runs for
     hours writes nothing but the ledger.
 
     The counter is built here the same way schema.sql builds it, from

@@ -288,7 +288,24 @@ provable and R1 being asserted.
       G4r2+F13 LANDED d894fa2: every source carries the second degenerate shape (a
       member no classifier claims; every condition over that population must stop
       holding — per-condition, after proof caught itself weakening the rule to "the
-      verdict must cost" and the self-control caught the weakening); a THIRD denylist
+      verdict must cost" and the self-control caught the weakening);
+      AXIS SCOPE (adversary F23, post-respawn — verified all eight malformers red on
+      their own axis): "shape" as implemented means the VALUE axis only — a fully
+      populated member with an unrecognised value. The MISSING-KEY axis is untested
+      across all eight populations, and four hard subscripts (closure.py:320,
+      ledger.py:161/190/233) turn a key-missing artifact into a traceback instead of
+      a verdict — fail-loud, not false-green, and F23 IS the mutation evidence the
+      ledger.py:189 widening was waiting on: fix the malformer axis, not the four
+      .gets one at a time. FURTHER (same round): F24 closure.py:145 truncates
+      unconcluded[:4] BEFORE _over counts (220 CONTRADICTED report as "4 of 220");
+      F25 lanes.exits() still coerces where closure classifies (false/0.0 fabricate
+      clean exit 0; WOBBLE/null kill ledger.build); F26 the ledger's own lanes block
+      is read by nothing (29 fictional lanes moved zero conditions). ORDERING
+      CONSTRAINT: F25 lands BEFORE F26 — giving the lanes block a reader while
+      exits() still fabricates converts an inert fabrication into a load-bearing
+      lie. HELD this round: all eight value-axis malformers, classify-don't-coerce
+      in the judge, the empty-population rule, G4r's collection-derived _over.
+      [owner: proof, folds with the post-loop staleness item] a THIRD denylist
       found immediately ("no ledger cell BLOCKED"/"FAILED" both passed a WOBBLE cell
       — now one allowlist `every ledger cell VERIFIED`, importing the ledger's own
       constant since two spellings of the good state is how E10 happened); F13
@@ -481,6 +498,22 @@ comment's two disagreeing halves.
       architecture, final round]
 - S7  Projections (`derived_face_instance`, `derived_embedding`, `derived_annotation`) carry
       canonical_result_id FK (SQL-enforceable lineage); face table drops `native`.
+      TWO PRE-WRITE DESIGN FINDINGS (architecture, both the chain-stops-one-step-
+      early flavour — nobody wrote the missing step, so walking mechanisms to their
+      ends found them where reading checks could not): (1) ADDRESSABILITY — the FK
+      proves parentage but producer_result.invocation_id is UNIQUE and the envelope
+      holds the WHOLE output list, so N face rows point at ONE result and reproject
+      cannot tell which element a row projects. S7 carries an ORDINAL beside the FK:
+      (canonical_result_id, result_ordinal) written at projection time; an
+      out-of-range ordinal is itself an offence. The best-agreement matcher is
+      REJECTED as circular (agreement is the property under test — self-referential
+      family inside the lineage fix). (2) FRAME SIZE — bbox/kps normalize against
+      the ORIENTED frame's w,h (faces.py:551; EXIF 5-8 swap dimensions per
+      oriented.py:53-59; videos have NULL file dims), which the store never writes:
+      geometry is unre-derivable today and NOTHING in the tree can check a geometry
+      column against its record. The capture frame's dimensions join the invocation
+      CONFIGURATION (already an identity preimage field). Both fold into the
+      S7+C1-C6 unit's DDL/config; neither moves its boundaries.
 - S8  drop_all refuses any table carrying canonical data, enforced by a DECLARED
       table_class drop_all asserts against — not a LIKE-pattern naming convention
       (standing attack: drop with a missing-file library must not destroy last copies).
@@ -771,10 +804,14 @@ exercise one path with one decision; the reorder hazard is covered because the t
 matches the MESSAGE "version 2", which a digest-first reorder would break). And the
 machine-fact half ("no stored v2 blob exists anywhere") CANNOT be a test — it asserts
 a fact about a machine, not a property of the tree; it stays a re-runnable
-measurement, never a gate. STATUS, scope-exact (envelope's own correction — a verdict
-pinned to a moved tree is the F9 shape): NO FINDINGS covers a55082f/d6c90dc/9ee5413;
-6ab494f is un-attacked (tests-only, envelope bytes identical to the attacked tree) and
-awaits the adversary's glance. PROVEN pending that glance + merge.
+measurement, never a gate. STATUS: 6ab494f CLEARED by the respawned adversary
+(attacked against the commit's own tree via git show; both assertions verified,
+negative control precise) — V1-V5 = PROVEN PENDING MERGE ONLY, full branch. One
+narrow finding F27 (with envelope): a v3 blob with only its magic flipped to sgface2
+is misreported "version 2, re-run the producer" while its digest disagrees — magic
+sits inside the digested body and thaw decides on blob[:8] before computing the
+digest, so a CORRUPTED record reads as intact-but-old, prescribing an R-6-scale
+re-detect instead of naming corruption. Invariant not violated; diagnosis sign error.
 - V1  Aliasing: reference nodes or refuse-by-name (`Unpreservable` naming the path); attack:
       thawed["a"] is thawed["b"] or capture refused. [C3-adv]
 - V2  Cycles: visited-set → `Unpreservable` with path, not RecursionError. [C4-adv]
@@ -880,9 +917,18 @@ awaits the adversary's glance. PROVEN pending that glance + merge.
       flat 6.437-6.440e-04 through 128; preprocess bit-identical at all worker
       counts. REPRODUCES the unpinned re-run to every digit — and the second
       independent run (separate process, separate working tree, same pinned corpus)
-      is BIT-IDENTICAL at every batch width: determinism evidence n=2. What was never
+      is BIT-IDENTICAL at every batch width: determinism evidence n=2 — now n=3
+      (post-fix pinned run, --expect-digest accepted, numbers exactly equal). DIGEST
+      FACT (population's correction of the lead's respawn brief): the fixed
+      bytes-hashing code still emits d51e1a11… because every member's disk bytes
+      equal the recorded content_sha256 on this corpus — the VALUE held, the MEANING
+      inverted; proven non-vacuous by two-directional tamper controls (DB-column
+      tamper moves only the old function; byte tamper moves only the new, the old
+      being blind since it never opened the file). ALSO: I6's own restatement
+      enumeration missed benchmarks/openclip_retrieval.py:4 citing the refuted
+      2.2e-03 — caught and restated in the same candidate. What was never
       reproducible was the corpus, which is exactly what the pin fixes. Still 3.4x
-      below the docstring's 2.2e-03. Acceptance:
+      below the old docstring's 2.2e-03. Acceptance:
       2 of 4 conditions hold (pinned, identity recorded); artifact tracking waits on
       I7; docstring restatement ordered from the pinned artifact.
 - I7  Cited evidence must be readable: five shipped constants are justified by
@@ -989,6 +1035,19 @@ edits routed through runtime)
       exporter/loader contract; else explicitly application-native; refusal attack. [B19]
 - P7  The 17 generated artifacts no closure condition reads: each becomes read-by-a-gate or
       explicitly documented as informational. [shape 3]
+      COMPANION F28 (adversary, enumerated not counted — and explicitly NOT the same
+      set as P7's 17): of 31 generated artifacts, TEN carry an identity stamp but
+      closure._one_tree compares exactly FOUR (ledger, cases, provenance, lanes) —
+      seven artifacts pay the stamping cost with no reader; twenty-one carry no
+      stamp at all, closure.json and condition_audit.json included. MITIGATION
+      stated: per-lane control staleness is guarded indirectly by `every lane exited
+      0`, so not an open hole today — a mechanism built and not load-bearing.
+      ALSO RECORDED (author-half forwarded-claim): ce89bff's message claims "a
+      malformed record is a verdict rather than a traceback" — true of closure,
+      FALSE of the run (lanes.exits() coerces; ledger crashes on WOBBLE; and ledger/
+      closure sit OUTSIDE the lane loop with no || guard under -euo pipefail, so a
+      ledger crash aborts run and closure never executes — the concrete reachable
+      crash for the post-loop staleness item). Fix rides F25 + the staleness fold.
 - P8  Tier accounting: the store-reading runner counts toward consumer coverage or a
       consumer-tier store case exists per consumer. [P-9]
 

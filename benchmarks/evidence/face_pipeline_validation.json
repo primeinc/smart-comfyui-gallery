@@ -1,0 +1,553 @@
+{
+  "recorded_at": 1787245904.7172542,
+  "kyc": {
+    "runs": [
+      {
+        "method": "chinese-whispers",
+        "threshold": 0.6,
+        "backend": "faiss-gpu",
+        "clusters": 8,
+        "largest": 14,
+        "median": 12.5,
+        "alone_share": 0.043010752688172046,
+        "silhouette": 0.7343508369677052,
+        "agreement": {
+          "asserted_people": 7,
+          "held_together": 7,
+          "split_apart": 0,
+          "clusters_mixing_people": 0
+        },
+        "pair_f1": 0.9825581395348837
+      },
+      {
+        "method": "chinese-whispers",
+        "threshold": 0.55,
+        "backend": "faiss-gpu",
+        "clusters": 7,
+        "largest": 14,
+        "median": 13.0,
+        "alone_share": 0.043010752688172046,
+        "silhouette": 0.748320609898738,
+        "agreement": {
+          "asserted_people": 7,
+          "held_together": 7,
+          "split_apart": 0,
+          "clusters_mixing_people": 0
+        },
+        "pair_f1": 1.0
+      },
+      {
+        "method": "chinese-whispers",
+        "threshold": 0.48,
+        "backend": "faiss-gpu",
+        "clusters": 7,
+        "largest": 14,
+        "median": 13.0,
+        "alone_share": 0.03225806451612903,
+        "silhouette": 0.7404620492676378,
+        "agreement": {
+          "asserted_people": 7,
+          "held_together": 7,
+          "split_apart": 0,
+          "clusters_mixing_people": 0
+        },
+        "pair_f1": 1.0
+      },
+      {
+        "method": "chinese-whispers",
+        "threshold": 0.4,
+        "backend": "faiss-gpu",
+        "clusters": 7,
+        "largest": 14,
+        "median": 13.0,
+        "alone_share": 0.03225806451612903,
+        "silhouette": 0.7404620492676378,
+        "agreement": {
+          "asserted_people": 7,
+          "held_together": 7,
+          "split_apart": 0,
+          "clusters_mixing_people": 0
+        },
+        "pair_f1": 1.0
+      },
+      {
+        "method": "connected-components",
+        "threshold": 0.6,
+        "backend": "faiss-gpu",
+        "clusters": 8,
+        "largest": 14,
+        "median": 12.5,
+        "alone_share": 0.043010752688172046,
+        "silhouette": 0.7343508369677052,
+        "agreement": {
+          "asserted_people": 7,
+          "held_together": 7,
+          "split_apart": 0,
+          "clusters_mixing_people": 0
+        },
+        "pair_f1": 0.9825581395348837
+      },
+      {
+        "method": "connected-components",
+        "threshold": 0.55,
+        "backend": "faiss-gpu",
+        "clusters": 7,
+        "largest": 14,
+        "median": 13.0,
+        "alone_share": 0.043010752688172046,
+        "silhouette": 0.748320609898738,
+        "agreement": {
+          "asserted_people": 7,
+          "held_together": 7,
+          "split_apart": 0,
+          "clusters_mixing_people": 0
+        },
+        "pair_f1": 1.0
+      },
+      {
+        "method": "connected-components",
+        "threshold": 0.48,
+        "backend": "faiss-gpu",
+        "clusters": 7,
+        "largest": 14,
+        "median": 13.0,
+        "alone_share": 0.03225806451612903,
+        "silhouette": 0.7404620492676378,
+        "agreement": {
+          "asserted_people": 7,
+          "held_together": 7,
+          "split_apart": 0,
+          "clusters_mixing_people": 0
+        },
+        "pair_f1": 1.0
+      },
+      {
+        "method": "connected-components",
+        "threshold": 0.4,
+        "backend": "faiss-gpu",
+        "clusters": 7,
+        "largest": 14,
+        "median": 13.0,
+        "alone_share": 0.03225806451612903,
+        "silhouette": 0.7404620492676378,
+        "agreement": {
+          "asserted_people": 7,
+          "held_together": 7,
+          "split_apart": 0,
+          "clusters_mixing_people": 0
+        },
+        "pair_f1": 1.0
+      },
+      {
+        "method": "spherical-kmeans",
+        "threshold": 0.6,
+        "backend": "faiss-gpu",
+        "clusters": 8,
+        "largest": 26,
+        "median": 12.0,
+        "alone_share": 0.0,
+        "silhouette": 0.46282838899847356,
+        "agreement": {
+          "asserted_people": 7,
+          "held_together": 5,
+          "split_apart": 2,
+          "clusters_mixing_people": 2
+        },
+        "pair_f1": 0.7777777777777778
+      },
+      {
+        "method": "spherical-kmeans",
+        "threshold": 0.55,
+        "backend": "faiss-gpu",
+        "clusters": 7,
+        "largest": 26,
+        "median": 13.0,
+        "alone_share": 0.0,
+        "silhouette": 0.48951003736691884,
+        "agreement": {
+          "asserted_people": 7,
+          "held_together": 5,
+          "split_apart": 2,
+          "clusters_mixing_people": 3
+        },
+        "pair_f1": 0.7932098765432098
+      },
+      {
+        "method": "spherical-kmeans",
+        "threshold": 0.48,
+        "backend": "faiss-gpu",
+        "clusters": 7,
+        "largest": 26,
+        "median": 13.0,
+        "alone_share": 0.0,
+        "silhouette": 0.48951003736691884,
+        "agreement": {
+          "asserted_people": 7,
+          "held_together": 5,
+          "split_apart": 2,
+          "clusters_mixing_people": 3
+        },
+        "pair_f1": 0.7932098765432098
+      },
+      {
+        "method": "spherical-kmeans",
+        "threshold": 0.4,
+        "backend": "faiss-gpu",
+        "clusters": 7,
+        "largest": 26,
+        "median": 13.0,
+        "alone_share": 0.0,
+        "silhouette": 0.48951003736691884,
+        "agreement": {
+          "asserted_people": 7,
+          "held_together": 5,
+          "split_apart": 2,
+          "clusters_mixing_people": 3
+        },
+        "pair_f1": 0.7932098765432098
+      },
+      {
+        "method": "consensus",
+        "threshold": 0.6,
+        "backend": "faiss-gpu",
+        "clusters": 8,
+        "largest": 14,
+        "median": 12.5,
+        "alone_share": 0.043010752688172046,
+        "silhouette": 0.7343508369677052,
+        "agreement": {
+          "asserted_people": 7,
+          "held_together": 7,
+          "split_apart": 0,
+          "clusters_mixing_people": 0
+        },
+        "pair_f1": 0.9825581395348837
+      },
+      {
+        "method": "consensus",
+        "threshold": 0.55,
+        "backend": "faiss-gpu",
+        "clusters": 7,
+        "largest": 14,
+        "median": 13.0,
+        "alone_share": 0.043010752688172046,
+        "silhouette": 0.748320609898738,
+        "agreement": {
+          "asserted_people": 7,
+          "held_together": 7,
+          "split_apart": 0,
+          "clusters_mixing_people": 0
+        },
+        "pair_f1": 1.0
+      },
+      {
+        "method": "consensus",
+        "threshold": 0.48,
+        "backend": "faiss-gpu",
+        "clusters": 7,
+        "largest": 14,
+        "median": 13.0,
+        "alone_share": 0.03225806451612903,
+        "silhouette": 0.7404620492676378,
+        "agreement": {
+          "asserted_people": 7,
+          "held_together": 7,
+          "split_apart": 0,
+          "clusters_mixing_people": 0
+        },
+        "pair_f1": 1.0
+      },
+      {
+        "method": "consensus",
+        "threshold": 0.4,
+        "backend": "faiss-gpu",
+        "clusters": 7,
+        "largest": 14,
+        "median": 13.0,
+        "alone_share": 0.03225806451612903,
+        "silhouette": 0.7404620492676378,
+        "agreement": {
+          "asserted_people": 7,
+          "held_together": 7,
+          "split_apart": 0,
+          "clusters_mixing_people": 0
+        },
+        "pair_f1": 1.0
+      }
+    ],
+    "chosen": [
+      "chinese-whispers",
+      0.48
+    ],
+    "labels_best": [
+      "chinese-whispers",
+      0.48
+    ],
+    "labels_best_f1": 1.0
+  },
+  "i2i": {
+    "runs": [
+      {
+        "method": "chinese-whispers",
+        "threshold": 0.6,
+        "backend": "faiss-gpu",
+        "clusters": 2,
+        "largest": 54,
+        "median": 48.5,
+        "alone_share": 0.13392857142857142,
+        "silhouette": 0.7161641028880722,
+        "agreement": {
+          "asserted_people": 0,
+          "held_together": 0,
+          "split_apart": 0,
+          "clusters_mixing_people": 0
+        }
+      },
+      {
+        "method": "chinese-whispers",
+        "threshold": 0.55,
+        "backend": "faiss-gpu",
+        "clusters": 3,
+        "largest": 54,
+        "median": 45.0,
+        "alone_share": 0.08928571428571429,
+        "silhouette": 0.6024519694525257,
+        "agreement": {
+          "asserted_people": 0,
+          "held_together": 0,
+          "split_apart": 0,
+          "clusters_mixing_people": 0
+        }
+      },
+      {
+        "method": "chinese-whispers",
+        "threshold": 0.48,
+        "backend": "faiss-gpu",
+        "clusters": 2,
+        "largest": 54,
+        "median": 54.0,
+        "alone_share": 0.03571428571428571,
+        "silhouette": 0.6422891960808037,
+        "agreement": {
+          "asserted_people": 0,
+          "held_together": 0,
+          "split_apart": 0,
+          "clusters_mixing_people": 0
+        }
+      },
+      {
+        "method": "chinese-whispers",
+        "threshold": 0.4,
+        "backend": "faiss-gpu",
+        "clusters": 2,
+        "largest": 55,
+        "median": 54.5,
+        "alone_share": 0.026785714285714284,
+        "silhouette": 0.6330690031156904,
+        "agreement": {
+          "asserted_people": 0,
+          "held_together": 0,
+          "split_apart": 0,
+          "clusters_mixing_people": 0
+        }
+      },
+      {
+        "method": "connected-components",
+        "threshold": 0.6,
+        "backend": "faiss-gpu",
+        "clusters": 2,
+        "largest": 54,
+        "median": 48.5,
+        "alone_share": 0.13392857142857142,
+        "silhouette": 0.7161641028880722,
+        "agreement": {
+          "asserted_people": 0,
+          "held_together": 0,
+          "split_apart": 0,
+          "clusters_mixing_people": 0
+        }
+      },
+      {
+        "method": "connected-components",
+        "threshold": 0.55,
+        "backend": "faiss-gpu",
+        "clusters": 2,
+        "largest": 54,
+        "median": 51.0,
+        "alone_share": 0.08928571428571429,
+        "silhouette": 0.687004904679586,
+        "agreement": {
+          "asserted_people": 0,
+          "held_together": 0,
+          "split_apart": 0,
+          "clusters_mixing_people": 0
+        }
+      },
+      {
+        "method": "connected-components",
+        "threshold": 0.48,
+        "backend": "faiss-gpu",
+        "clusters": 2,
+        "largest": 54,
+        "median": 54.0,
+        "alone_share": 0.03571428571428571,
+        "silhouette": 0.6422891960808037,
+        "agreement": {
+          "asserted_people": 0,
+          "held_together": 0,
+          "split_apart": 0,
+          "clusters_mixing_people": 0
+        }
+      },
+      {
+        "method": "connected-components",
+        "threshold": 0.4,
+        "backend": "faiss-gpu",
+        "clusters": 2,
+        "largest": 55,
+        "median": 54.5,
+        "alone_share": 0.026785714285714284,
+        "silhouette": 0.6330690031156904,
+        "agreement": {
+          "asserted_people": 0,
+          "held_together": 0,
+          "split_apart": 0,
+          "clusters_mixing_people": 0
+        }
+      },
+      {
+        "method": "spherical-kmeans",
+        "threshold": 0.6,
+        "backend": "faiss-gpu",
+        "clusters": 2,
+        "largest": 56,
+        "median": 56.0,
+        "alone_share": 0.0,
+        "silhouette": 0.6059511264803749,
+        "agreement": {
+          "asserted_people": 0,
+          "held_together": 0,
+          "split_apart": 0,
+          "clusters_mixing_people": 0
+        }
+      },
+      {
+        "method": "spherical-kmeans",
+        "threshold": 0.55,
+        "backend": "faiss-gpu",
+        "clusters": 2,
+        "largest": 56,
+        "median": 56.0,
+        "alone_share": 0.0,
+        "silhouette": 0.6059511264803749,
+        "agreement": {
+          "asserted_people": 0,
+          "held_together": 0,
+          "split_apart": 0,
+          "clusters_mixing_people": 0
+        }
+      },
+      {
+        "method": "spherical-kmeans",
+        "threshold": 0.48,
+        "backend": "faiss-gpu",
+        "clusters": 2,
+        "largest": 56,
+        "median": 56.0,
+        "alone_share": 0.0,
+        "silhouette": 0.6059511264803749,
+        "agreement": {
+          "asserted_people": 0,
+          "held_together": 0,
+          "split_apart": 0,
+          "clusters_mixing_people": 0
+        }
+      },
+      {
+        "method": "spherical-kmeans",
+        "threshold": 0.4,
+        "backend": "faiss-gpu",
+        "clusters": 2,
+        "largest": 56,
+        "median": 56.0,
+        "alone_share": 0.0,
+        "silhouette": 0.6059511264803749,
+        "agreement": {
+          "asserted_people": 0,
+          "held_together": 0,
+          "split_apart": 0,
+          "clusters_mixing_people": 0
+        }
+      },
+      {
+        "method": "consensus",
+        "threshold": 0.6,
+        "backend": "faiss-gpu",
+        "clusters": 2,
+        "largest": 54,
+        "median": 48.5,
+        "alone_share": 0.13392857142857142,
+        "silhouette": 0.7161641028880722,
+        "agreement": {
+          "asserted_people": 0,
+          "held_together": 0,
+          "split_apart": 0,
+          "clusters_mixing_people": 0
+        }
+      },
+      {
+        "method": "consensus",
+        "threshold": 0.55,
+        "backend": "faiss-gpu",
+        "clusters": 3,
+        "largest": 54,
+        "median": 45.0,
+        "alone_share": 0.08928571428571429,
+        "silhouette": 0.6024519694525257,
+        "agreement": {
+          "asserted_people": 0,
+          "held_together": 0,
+          "split_apart": 0,
+          "clusters_mixing_people": 0
+        }
+      },
+      {
+        "method": "consensus",
+        "threshold": 0.48,
+        "backend": "faiss-gpu",
+        "clusters": 2,
+        "largest": 54,
+        "median": 54.0,
+        "alone_share": 0.03571428571428571,
+        "silhouette": 0.6422891960808037,
+        "agreement": {
+          "asserted_people": 0,
+          "held_together": 0,
+          "split_apart": 0,
+          "clusters_mixing_people": 0
+        }
+      },
+      {
+        "method": "consensus",
+        "threshold": 0.4,
+        "backend": "faiss-gpu",
+        "clusters": 2,
+        "largest": 55,
+        "median": 54.5,
+        "alone_share": 0.026785714285714284,
+        "silhouette": 0.6330690031156904,
+        "agreement": {
+          "asserted_people": 0,
+          "held_together": 0,
+          "split_apart": 0,
+          "clusters_mixing_people": 0
+        }
+      }
+    ],
+    "chosen": [
+      "chinese-whispers",
+      0.48,
+      2
+    ]
+  }
+}

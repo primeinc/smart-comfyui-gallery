@@ -38,7 +38,7 @@ than one -- pHash sees global low-frequency composition, dHash local gradient
 structure -- so a pair that is pHash-close but dHash-far is similar composition
 over different content. Over 2,141 labelled pairs from real libraries
 (benchmarks/fingerprint_calibration.py ->
-benchmarks/results/fingerprint_calibration.json) every true duplicate agrees
+benchmarks/evidence/fingerprint_calibration.json) every true duplicate agrees
 within 4 dHash bits, the verifier vetoed no positive at any cutoff, and 8 vetoes
 144 of the 183 false positives pHash proposes at radius 16. Validated at submit,
 0..63.
@@ -102,7 +102,7 @@ REGISTRY: dict[str, tuple[str, tuple[str, ...] | None]] = {
     "semantic_model": ("ViT-B-32/laion2b_s34b_b79k", None),
     # The second opinion on every pHash dupe candidate, in dHash bits, or "off"
     # to trust pHash alone. The module docstring carries the calibration and
-    # its artifact (benchmarks/results/fingerprint_calibration.json).
+    # its artifact (benchmarks/evidence/fingerprint_calibration.json).
     "dupe_dhash_verify": ("8", None),
     # The cosine similarity at which two faces are the same person; "auto" is
     # the measured per-embedder point (db/derived.py SAME_PERSON). The module

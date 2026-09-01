@@ -29,7 +29,7 @@ REVISION = "main"
 MOST_TOKENS = 40
 
 #: How many pictures go through the model at once: sixteen is where the curve
-#: flattens (benchmarks/results/caption_batch.json, `just bench captions`), every
+#: flattens (benchmarks/evidence/caption_batch.json, `just bench captions`), every
 #: float32 row reporting same_as_baseline 1.0 against captioning alone.
 
 #: Past that a larger batch is mostly a longer wait for whoever asked the job to
@@ -101,7 +101,7 @@ class BlipCaptioner:
         torch.nn.Module.to(loaded, self.device)
         # Half precision on CUDA only; on a CPU most of these kernels are
         # emulated and slower than float32. Batched, it raises throughput and
-        # halves peak VRAM at same_as_baseline 0.979 (benchmarks/results/caption_batch.json).
+        # halves peak VRAM at same_as_baseline 0.979 (benchmarks/evidence/caption_batch.json).
         if self.device == "cuda":
             torch.nn.Module.half(loaded)
         self.model = loaded

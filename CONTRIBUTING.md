@@ -40,7 +40,7 @@ A comment that cannot be proven is shortened to the provable fact, or deleted.
 
 ### Why citing beats reading
 
-One measurement existed in four files in three wrong versions. At 80,000 files `benchmarks/results/answer_currency.json` records `quiet_ms 0.179`, `answer_commit_ms 37.93`, `answer_factor 211.8`; `db/resultset.py`, `db/migrate.py` and `tests/test_an_answer_knows_when_it_is_stale.py` each said `0.18`, `38.26` and `214`. That last file also carried the 40,000-file row as `105.9` where the artifact records `98.4`.
+One measurement existed in four files in three wrong versions. At 80,000 files `benchmarks/evidence/answer_currency.json` records `quiet_ms 0.179`, `answer_commit_ms 37.93`, `answer_factor 211.8`; `db/resultset.py`, `db/migrate.py` and `tests/test_an_answer_knows_when_it_is_stale.py` each said `0.18`, `38.26` and `214`. That last file also carried the 40,000-file row as `105.9` where the artifact records `98.4`.
 
 Every one was found by trying to source the number and failing. None was found by reading the prose and doubting it — each reads as confident and correct, and three of them agreed with each other. That is the argument for citing rather than for writing carefully: careful reading was never going to find them.
 

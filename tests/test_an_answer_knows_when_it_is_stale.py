@@ -7,7 +7,7 @@ slicing, valid for one (question, library state) pair. Library state was
 is what FTS5 uses for its own structure cache (sqlite/sqlite
 ext/fts5/fts5_index.c fts5IndexDataVersion) and it is fine there,
 because the thing FTS5 re-reads is one small record. Here the cached
-thing is the whole library (benchmarks/results/answer_currency.json,
+thing is the whole library (benchmarks/evidence/answer_currency.json,
 twenty rounds per size):
 
     files    at rest     while a job commits    factor

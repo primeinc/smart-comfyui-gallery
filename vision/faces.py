@@ -223,7 +223,7 @@ class OpenCVFaceBackend(FaceBackend):
     Recognizers ('embedder'):
       - 'arcface' — antelopev2 glintr100 (ResNet100@Glint360K, 512-d),
         aligned via the canonical 5-landmark Umeyama warp. Best of the
-        three-way labeled A/B (benchmarks/results/face_embedder_ab.json);
+        three-way labeled A/B (benchmarks/evidence/face_embedder_ab.json);
         weights are non-commercial research license
         (deepinsight/insightface).
       - 'sface'   — OpenCV FaceRecognizerSF (128-d), its own alignCrop.
@@ -257,7 +257,7 @@ class OpenCVFaceBackend(FaceBackend):
         request's.
 
         The cap's effect, read off the two recorded runs over the same 824
-        ground-truth faces -- benchmarks/results/face_detection_recall_native.json
+        ground-truth faces -- benchmarks/evidence/face_detection_recall_native.json
         (policy_max_side 0) against face_detection_recall_ms1600.json
         (policy_max_side 1600):
 
@@ -300,7 +300,7 @@ class OpenCVFaceBackend(FaceBackend):
         self.model_version = f"{base}-ms{detect_max_side}"
         # 0.48 is what `just bench faces-validate` selects on its own, recording
         # `chosen` and `labels_best` as chinese-whispers at 0.48
-        # (benchmarks/results/face_pipeline_validation.json).
+        # (benchmarks/evidence/face_pipeline_validation.json).
 
         # The band there is wide: 0.40, 0.48 and 0.55 all reach pair_f1 1.0 and
         # 0.60 breaks a cluster, so 0.48 sits inside it rather than on an edge.
@@ -511,7 +511,7 @@ class InsightFaceBackend(FaceBackend):
     5-landmark alignment, glintr100 (ResNet100@Glint360K, 512-d)
     embedding. On the labeled A/B this is near-perfect
     (pairwise F1 0.999, P 1.000/R 0.998 at threshold 0.35-0.40 —
-    benchmarks/results/face_embedder_ab.json); the gap over YuNet-based
+    benchmarks/evidence/face_embedder_ab.json); the gap over YuNet-based
     pipelines is detection + landmark-alignment quality, not the
     recognizer. Weights are non-commercial research license
     (deepinsight/insightface)."""

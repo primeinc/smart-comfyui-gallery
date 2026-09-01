@@ -1,0 +1,245 @@
+{
+  "device": "cuda",
+  "gpu": "NVIDIA GeForce RTX 3070 Ti",
+  "model": "ViT-B-32/laion2b_s34b_b79k",
+  "pictures": 512,
+  "runs": [
+    {
+      "batch": 1,
+      "workers": 1,
+      "overlap": false,
+      "images_per_second": 72.5,
+      "total_ms": 7058.9,
+      "peak_vram_mb": 619.6,
+      "preprocess_ms": 3586.0,
+      "inference_ms": 3472.5,
+      "inference_ms_per_image": 6.78
+    },
+    {
+      "batch": 64,
+      "workers": 1,
+      "overlap": false,
+      "images_per_second": 118.4,
+      "total_ms": 4326.0,
+      "peak_vram_mb": 774.7,
+      "preprocess_ms": 3727.6,
+      "inference_ms": 597.4,
+      "inference_ms_per_image": 1.17
+    },
+    {
+      "batch": 64,
+      "workers": 2,
+      "overlap": false,
+      "images_per_second": 158.1,
+      "total_ms": 3239.2,
+      "peak_vram_mb": 774.7,
+      "preprocess_ms": 2591.3,
+      "inference_ms": 642.3,
+      "inference_ms_per_image": 1.25
+    },
+    {
+      "batch": 64,
+      "workers": 4,
+      "overlap": false,
+      "images_per_second": 253.5,
+      "total_ms": 2019.5,
+      "peak_vram_mb": 774.7,
+      "preprocess_ms": 1450.4,
+      "inference_ms": 560.0,
+      "inference_ms_per_image": 1.09
+    },
+    {
+      "batch": 64,
+      "workers": 8,
+      "overlap": false,
+      "images_per_second": 364.7,
+      "total_ms": 1403.9,
+      "peak_vram_mb": 774.7,
+      "preprocess_ms": 944.8,
+      "inference_ms": 450.9,
+      "inference_ms_per_image": 0.88
+    },
+    {
+      "batch": 64,
+      "workers": 16,
+      "overlap": false,
+      "images_per_second": 370.8,
+      "total_ms": 1381.0,
+      "peak_vram_mb": 774.7,
+      "preprocess_ms": 912.3,
+      "inference_ms": 463.8,
+      "inference_ms_per_image": 0.91
+    },
+    {
+      "batch": 1,
+      "workers": 16,
+      "overlap": false,
+      "images_per_second": 62.7,
+      "total_ms": 8168.5,
+      "peak_vram_mb": 619.6,
+      "preprocess_ms": 4276.9,
+      "inference_ms": 3890.6,
+      "inference_ms_per_image": 7.6
+    },
+    {
+      "batch": 2,
+      "workers": 16,
+      "overlap": false,
+      "images_per_second": 97.1,
+      "total_ms": 5273.0,
+      "peak_vram_mb": 624.2,
+      "preprocess_ms": 3005.6,
+      "inference_ms": 2264.5,
+      "inference_ms_per_image": 4.42
+    },
+    {
+      "batch": 4,
+      "workers": 16,
+      "overlap": false,
+      "images_per_second": 179.3,
+      "total_ms": 2855.2,
+      "peak_vram_mb": 627.0,
+      "preprocess_ms": 1765.4,
+      "inference_ms": 1083.6,
+      "inference_ms_per_image": 2.12
+    },
+    {
+      "batch": 8,
+      "workers": 16,
+      "overlap": false,
+      "images_per_second": 295.2,
+      "total_ms": 1734.2,
+      "peak_vram_mb": 639.7,
+      "preprocess_ms": 1128.8,
+      "inference_ms": 597.3,
+      "inference_ms_per_image": 1.17
+    },
+    {
+      "batch": 16,
+      "workers": 16,
+      "overlap": false,
+      "images_per_second": 395.8,
+      "total_ms": 1293.6,
+      "peak_vram_mb": 656.3,
+      "preprocess_ms": 806.4,
+      "inference_ms": 465.7,
+      "inference_ms_per_image": 0.91
+    },
+    {
+      "batch": 32,
+      "workers": 16,
+      "overlap": false,
+      "images_per_second": 350.8,
+      "total_ms": 1459.4,
+      "peak_vram_mb": 697.0,
+      "preprocess_ms": 950.4,
+      "inference_ms": 495.0,
+      "inference_ms_per_image": 0.97
+    },
+    {
+      "batch": 64,
+      "workers": 16,
+      "overlap": false,
+      "images_per_second": 375.9,
+      "total_ms": 1361.9,
+      "peak_vram_mb": 774.7,
+      "preprocess_ms": 939.5,
+      "inference_ms": 414.1,
+      "inference_ms_per_image": 0.81
+    },
+    {
+      "batch": 128,
+      "workers": 16,
+      "overlap": false,
+      "images_per_second": 400.5,
+      "total_ms": 1278.4,
+      "peak_vram_mb": 933.9,
+      "preprocess_ms": 836.3,
+      "inference_ms": 429.8,
+      "inference_ms_per_image": 0.84
+    },
+    {
+      "batch": 256,
+      "workers": 16,
+      "overlap": false,
+      "images_per_second": 395.2,
+      "total_ms": 1295.5,
+      "peak_vram_mb": 1246.3,
+      "preprocess_ms": 863.2,
+      "inference_ms": 416.3,
+      "inference_ms_per_image": 0.81
+    },
+    {
+      "batch": 32,
+      "workers": 16,
+      "overlap": true,
+      "images_per_second": 568.9,
+      "total_ms": 899.9,
+      "peak_vram_mb": 716.3,
+      "pipeline_ms": 878.3
+    },
+    {
+      "batch": 64,
+      "workers": 16,
+      "overlap": true,
+      "images_per_second": 555.8,
+      "total_ms": 921.1,
+      "peak_vram_mb": 774.7,
+      "pipeline_ms": 911.6
+    },
+    {
+      "batch": 128,
+      "workers": 16,
+      "overlap": true,
+      "images_per_second": 517.4,
+      "total_ms": 989.6,
+      "peak_vram_mb": 933.9,
+      "pipeline_ms": 974.9
+    }
+  ],
+  "preprocess_equivalence": {
+    "2": {
+      "bit_identical": true,
+      "max_abs_difference": 0.0
+    },
+    "4": {
+      "bit_identical": true,
+      "max_abs_difference": 0.0
+    },
+    "8": {
+      "bit_identical": true,
+      "max_abs_difference": 0.0
+    },
+    "16": {
+      "bit_identical": true,
+      "max_abs_difference": 0.0
+    }
+  },
+  "vector_equivalence": {
+    "2": {
+      "max_abs_difference": 5.587935447692871e-07,
+      "min_cosine_against_batch_1": 0.9999998807907104,
+      "bit_identical": false
+    },
+    "8": {
+      "max_abs_difference": 0.0022023022174835205,
+      "min_cosine_against_batch_1": 0.9999467134475708,
+      "bit_identical": false
+    },
+    "32": {
+      "max_abs_difference": 0.0022021085023880005,
+      "min_cosine_against_batch_1": 0.9999465942382812,
+      "bit_identical": false
+    },
+    "64": {
+      "max_abs_difference": 0.0022025853395462036,
+      "min_cosine_against_batch_1": 0.999946653842926,
+      "bit_identical": false
+    },
+    "128": {
+      "max_abs_difference": 0.002202436327934265,
+      "min_cosine_against_batch_1": 0.9999467134475708,
+      "bit_identical": false
+    }
+  }
+}

@@ -44,7 +44,7 @@ serve all. `db/derived.py threshold_for` holds the measured operating
 point per embedder: insightface 0.40, opencv/arcface 0.48, opencv/sface
 0.55; an unmeasured embedder gets a deliberately tight default.
 
-Labelled A/B, 175-177 faces / 31 identities (`benchmarks/results/face_embedder_ab.json`):
+Labelled A/B, 175-177 faces / 31 identities (`benchmarks/evidence/face_embedder_ab.json`):
 
 | variant | verification best-F1 | cluster peak F1 | P/R at shipped threshold |
 |---|---|---|---|
@@ -64,7 +64,7 @@ Chinese Whispers (dlib's update rule, fixed ascending sweeps, ties to the
 lowest label) replaces connected components, whose transitive chaining
 merged 97% of a real 22k-face library into one cluster. Operating points
 on 12,713 SFace embeddings from 5,775 mixed real images
-(`benchmarks/results/faiss_graph_evidence.json`):
+(`benchmarks/evidence/faiss_graph_evidence.json`):
 
 | threshold | edges | clusters | top-cluster share | labelled-identity purity |
 |---|---|---|---|---|
@@ -89,7 +89,7 @@ reads the same rows to say "found nobody" rather than "nobody looked".
 
 YuNet detects faces of ~10 to ~300 px. Detection input is capped at 1600
 px on the longest side (`detect_max_side`), so large faces stay inside
-that band (`benchmarks/results/face_detection_recall_{native,ms1600}.json`):
+that band (`benchmarks/evidence/face_detection_recall_{native,ms1600}.json`):
 
 | ground-truth min-side | native recall | max-side-1600 recall |
 |---|---|---|
@@ -111,8 +111,8 @@ the blobs that chain clusters.
 
 ```
 just bench faces-validate   # both sample datasets through db/, every clustering method judged
-                            # -> benchmarks/results/face_pipeline_validation.json
+                            # -> benchmarks/evidence/face_pipeline_validation.json
 ```
 
 The A/B, the operating points and the detection-policy tables above are
-the records under `benchmarks/results/` named beside each.
+the records under `benchmarks/evidence/` named beside each.

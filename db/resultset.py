@@ -435,7 +435,7 @@ def currency(conn) -> str:
     means "somebody committed something", and what is cached here is the
     WHOLE ORDERED ANSWER. Jobs commit per item, so at 80,000 files a
     page costs 0.179 ms at rest and 37.93 ms while a job runs, 211.8x
-    (benchmarks/results/answer_currency.json) -- and the job that runs
+    (benchmarks/evidence/answer_currency.json) -- and the job that runs
     for hours writes nothing but the ledger.
 
     The counter moves for every table except `job`, `job_item` and
