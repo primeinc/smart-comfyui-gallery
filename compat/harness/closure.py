@@ -36,12 +36,35 @@ def _stamp(held: dict[str, Any]) -> str:
     return str(found or "")
 
 
+def _every_lane_green(where: Path) -> Condition:
+    # A lane's exit code was recorded and read by nothing: `attack` and `selftest`
+    # could both exit 1 while this printed GREEN. The lane record is now evidence.
+    held = _read("lanes.json", where)
+    if held is None:
+        return Condition("every lane exited 0", False, "no lanes.json: the run recorded no lane exit")
+
+    found = held.get("lanes")
+    if not isinstance(found, dict) or not found:
+        return Condition("every lane exited 0", False, "lanes.json records no lane; an empty set is not a pass")
+
+    red = sorted(name for name, code in found.items() if int(code) != 0)
+    return Condition(
+        "every lane exited 0",
+        not red,
+        f"{len(found)} lane(s), all 0" if not red else f"{len(red)} of {len(found)} red: {', '.join(red)}",
+    )
+
+
 def _one_tree(
-    ledger: dict[str, Any], cases: dict[str, Any] | None, pins: dict[str, Any] | None, where: Path
+    ledger: dict[str, Any],
+    cases: dict[str, Any] | None,
+    pins: dict[str, Any] | None,
+    lanes: dict[str, Any] | None,
+    where: Path,
 ) -> Condition:
     now = str(evidence_identity.identity()["digest"])
     stamped = {"ledger.json": _stamp(ledger)}
-    for name, held in (("cases.json", cases), ("provenance.json", pins)):
+    for name, held in (("cases.json", cases), ("provenance.json", pins), ("lanes.json", lanes)):
         if held is not None:
             stamped[name] = _stamp(held)
     wrong = {name: held for name, held in stamped.items() if held != now}
@@ -64,11 +87,13 @@ def conditions(where: Path = GENERATED) -> list[Condition]:
     ledger = _read("ledger.json", where)
     pins = _read("provenance.json", where)
     cases = _read("cases.json", where)
+    lanes = _read("lanes.json", where)
 
     if ledger is None:
         return [Condition("ledger present", False, "no ledger.json: the ledger lane did not run")]
 
-    out.append(_one_tree(ledger, cases, pins, where))
+    out.append(_one_tree(ledger, cases, pins, lanes, where))
+    out.append(_every_lane_green(where))
 
     rows: list[dict[str, Any]] = ledger["rows"]
     out.append(

@@ -60,8 +60,9 @@ def _current(held: dict[str, Any] | None, digest: str) -> bool:
 
 
 def lane_exits() -> dict[str, int]:
-    held = _read("lanes.json")
-    return {key: int(value) for key, value in held.items()} if held else {}
+    from compat.harness import lanes
+
+    return lanes.exits(GENERATED)
 
 
 def build() -> dict[str, Any]:

@@ -45,6 +45,10 @@ def green_fixture() -> dict[str, Any]:
                 for who in CONSUMERS
             ],
         },
+        "lanes.json": {
+            "identity": "c" * 64,
+            "lanes": {"check": 0, "pins": 0, "cases": 0, "attack": 0, "selftest": 0},
+        },
         "ledger.json": {
             "identity": "c" * 64,
             "stages": list(STAGES),
@@ -100,6 +104,17 @@ def _shard_killed(held: dict[str, Any]) -> None:
     held["cases.json"]["shards_failed"] = ["shard primitives wrote no partial, exit 1"]
 
 
+def _lane_failed(held: dict[str, Any]) -> None:
+    # The B8 demonstration in miniature: the attack lane exits 1 and every other
+    # artifact still says what it said. Before G1 this closed GREEN.
+    held["lanes.json"]["lanes"]["attack"] = 1
+
+
+def _lane_record_empty(held: dict[str, Any]) -> None:
+    # A recorded-nothing run must not read as a passed-everything run.
+    held["lanes.json"]["lanes"] = {}
+
+
 MUTATIONS: Final[tuple[tuple[str, Callable[[dict[str, Any]], None]], ...]] = (
     ("attestation_removed", _attestation_removed),
     ("attested_digest_altered", _attested_digest_altered),
@@ -108,6 +123,8 @@ MUTATIONS: Final[tuple[tuple[str, Callable[[dict[str, Any]], None]], ...]] = (
     ("stored_field_dropped", _stored_field_dropped),
     ("input_skipped", _input_skipped),
     ("shard_killed", _shard_killed),
+    ("lane_failed", _lane_failed),
+    ("lane_record_empty", _lane_record_empty),
 )
 
 

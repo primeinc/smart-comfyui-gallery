@@ -11,22 +11,24 @@ sync:
 [script]
 run: sync
     cd "$(git rev-parse --show-toplevel)"
-    rm -f compat/generated/lanes.json
-    rows=""
+    mkdir -p compat/generated
+    rm -f compat/generated/lanes.json compat/generated/lanes.raw
     for lane in check proc-attack weights weights-attack pins citations hf population population-attack vendor acceptance producer union cases observe-attack reconcile reconcile-attack matrices attack closure-attack selftest staleness missing; do
         echo "=== compat: $lane ==="
         code=0
         just compat "$lane" || code=$?
-        [ -z "$rows" ] || rows="$rows,"$'\n'
-        rows="$rows  \"$lane\": $code"
+        printf '%s %s\n' "$lane" "$code" >> compat/generated/lanes.raw
         [ "$code" = 0 ] || echo "!! lane $lane exited $code; continuing so the rest still produce evidence"
     done
-    printf '{\n%s\n}\n' "$rows" > compat/generated/lanes.json.part
-    mv -f compat/generated/lanes.json.part compat/generated/lanes.json
+    echo "=== compat: lanes ==="
+    just compat lanes
     echo "=== compat: ledger ==="
     just compat ledger
     echo "=== compat: closure ==="
     just compat closure
+
+lanes:
+    {{ python }} -m compat.harness.lanes
 
 ledger:
     {{ python }} -m compat.harness.ledger
