@@ -1,39 +1,13 @@
-"""Find the smallest retained extent that still reproduces the baseline.
-
-An ablation asks "is this needed", which is the right question for a primitive
-that is either present or absent. A patch of pixels is not that: it has four
-edges and a size, and asking "is the margin needed" answers yes or no about
-whichever constant somebody typed. That is folklore with a threshold attached
--- it passes while the constant is too generous, and says nothing about where
-the real edge is.
-
-So this searches instead. Each side is moved inward independently by binary
-search until the replay stops reproducing, which gives the furthest that side
-can travel on its own. The four results are then applied TOGETHER and probed,
-because sides interact: a warp reading a diagonal band can tolerate losing the
-left column or the top row but not both. Where the combination fails, it is
-walked back one side at a time rather than reported as if it held.
-
-The search is over integer pixel offsets and every probe is the real replay
-against the real baseline, so the number that comes out is a measurement of
-the implementation, not of a model of it.
-"""
-
 from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
 
-#: Left, top, right, bottom, as signed inward moves on (x0, y0, x1, y1).
-#: Named rather than indexed because an off-by-one in a side index produces a
-#: plausible smaller rectangle and a silently wrong measurement.
 SIDES: tuple[str, ...] = ("left", "top", "right", "bottom")
 
 
 @dataclass(frozen=True)
 class Rect:
-    """A half-open source rectangle, in whole source pixels."""
-
     x0: int
     y0: int
     x1: int
@@ -52,7 +26,6 @@ class Rect:
         return max(self.width, 0) * max(self.height, 0)
 
     def inset(self, side: str, amount: int) -> Rect:
-        """This rectangle with one side moved inward by `amount` pixels."""
         if side == "left":
             return Rect(self.x0 + amount, self.y0, self.x1, self.y1)
         if side == "top":
@@ -73,29 +46,19 @@ class Rect:
         return (self.x0, self.y0, self.x1, self.y1)
 
 
-#: Answers one question: does a replay restricted to this rectangle still
-#: reproduce the baseline? Anything that raises counts as "no" at the call
-#: site, never here.
 Probe = Callable[[Rect], bool]
 
 
 @dataclass(frozen=True)
 class SideResult:
-    """How far one side travelled before the replay stopped reproducing."""
-
     side: str
     max_inset: int
     probes: int
     ceiling_hit: bool
-    """True when the search ran out of room rather than out of margin: the
-    side reached the limit and still reproduced, so the real maximum is at
-    least this and the number is a lower bound, not the edge."""
 
 
 @dataclass(frozen=True)
 class Minimum:
-    """The measured smallest extent, and everything needed to re-derive it."""
-
     start: Rect
     per_side: tuple[SideResult, ...]
     combined: Rect
@@ -119,28 +82,12 @@ class Minimum:
 
 
 def _safe(probe: Probe, rect: Rect) -> bool:
-    """A probe result, with a degenerate rectangle answering False.
-
-    A rectangle that has collapsed cannot reproduce anything, and letting the
-    replay raise on it would make "too small" indistinguishable from "the
-    runner is broken".
-    """
     if rect.width <= 0 or rect.height <= 0:
         return False
     return probe(rect)
 
 
 def largest_inset(probe: Probe, start: Rect, side: str, limit: int) -> SideResult:
-    """The furthest one side can move inward and still reproduce.
-
-    Binary search on the inset, not a linear walk: the property is monotone in
-    the amount removed -- pixels the warp reads do not come back once they are
-    gone -- so the first failure bounds every larger inset too.
-
-    Monotonicity is the assumption this rests on, and it is checked rather
-    than trusted: `limit` is probed first, and a `limit` that reproduces makes
-    the answer a lower bound (`ceiling_hit`) instead of an edge.
-    """
     probes = 0
 
     if limit <= 0:
@@ -150,7 +97,7 @@ def largest_inset(probe: Probe, start: Rect, side: str, limit: int) -> SideResul
     if _safe(probe, start.inset(side, limit)):
         return SideResult(side=side, max_inset=limit, probes=probes, ceiling_hit=True)
 
-    low, high = 0, limit  # low reproduces, high does not
+    low, high = 0, limit
     while high - low > 1:
         middle = (low + high) // 2
         probes += 1
@@ -162,17 +109,6 @@ def largest_inset(probe: Probe, start: Rect, side: str, limit: int) -> SideResul
 
 
 def minimum_extent(probe: Probe, start: Rect, *, limit: int | None = None) -> Minimum:
-    """The smallest rectangle measured to still reproduce the baseline.
-
-    Four independent searches, then the combination, then a walk-back. The
-    combination is probed rather than assumed because the per-side maxima were
-    each measured with the other three sides intact; applying all four at once
-    removes strictly more than any one search saw.
-
-    `start` must itself reproduce. If it does not, the runner or the derived
-    footprint is wrong and there is nothing here to measure -- that is a
-    failed case, not a minimum of zero.
-    """
     probes = 1
     if not _safe(probe, start):
         raise ValueError(
@@ -193,9 +129,6 @@ def minimum_extent(probe: Probe, start: Rect, *, limit: int | None = None) -> Mi
     probes += 1
     holds = _safe(probe, combined)
 
-    # Sides interact, so where the combination fails, give pixels back one
-    # side at a time rather than report a rectangle never observed to work.
-    # Largest claimed inset first, since that side took the most.
     walked_back: list[str] = []
     if not holds:
         order = sorted(SIDES, key=lambda one: amounts[one], reverse=True)

@@ -1,27 +1,3 @@
-"""The only command that may report green.
-
-Every other lane answers one question and says so. This reads what they all
-wrote and decides whether the suite has closed, against eight conditions that
-must hold together:
-
-    every declared population member accounted for
-    no weight MISSING
-    no weight UNATTESTED where provenance is required
-    no weight MISMATCH
-    no ledger cell BLOCKED
-    no skipped input
-    every required producer executed
-    every emitted observation survived durable write and read-back
-    every compatible consumer reproduced from stored state alone
-
-A condition that cannot be evaluated is not satisfied. There is no state here
-meaning "could not check", because that was the whole defect: `UNSUPPORTED`
-and `matches_published is not False` each turned an open question into a pass.
-
-Red is the correct result until the work exists. This never writes evidence;
-it only reads it, so it cannot make the tree look closed by running.
-"""
-
 from __future__ import annotations
 
 import json
@@ -54,12 +30,6 @@ def _read(name: str, where: Path = GENERATED) -> dict[str, Any] | None:
 
 
 def _stamp(held: dict[str, Any]) -> str:
-    """The tree digest an artifact was built under, in either spelling.
-
-    `cases.json` carries the whole identity mapping and the rest carry the
-    digest alone. An artifact with neither returns empty and cannot be
-    current, which is the honest answer for one that names no tree.
-    """
     found = held.get("identity")
     if isinstance(found, dict):
         return str(found.get("digest", ""))
@@ -69,26 +39,13 @@ def _stamp(held: dict[str, Any]) -> str:
 def _one_tree(
     ledger: dict[str, Any], cases: dict[str, Any] | None, pins: dict[str, Any] | None, where: Path
 ) -> Condition:
-    """Every artifact this gate reads describes ONE tree, and it is this tree.
-
-    Nothing checked this. `generated/` held artifacts from four runs spanning
-    four hours, and closure was computed at 20:01 over a `cases.json` that did
-    not exist until 20:11 -- a verdict assembled from three trees, which is
-    the exact failure this suite exists to refuse, in the only gate that
-    reports green.
-
-    The ledger stamps the digest it was built under; `cases.json` carries its
-    own. Both must equal the tree as it stands now, or the verdict is about
-    evidence nobody can reproduce.
-    """
     now = str(evidence_identity.identity()["digest"])
     stamped = {"ledger.json": _stamp(ledger)}
     for name, held in (("cases.json", cases), ("provenance.json", pins)):
         if held is not None:
             stamped[name] = _stamp(held)
     wrong = {name: held for name, held in stamped.items() if held != now}
-    # A fixture directory is a different tree by construction, and
-    # `closure_attack` builds one to prove this gate can go red at all.
+
     if where != GENERATED:
         return Condition("evidence from one tree", True, f"fixture directory {where.name}, identity not compared")
     return Condition(
@@ -103,13 +60,6 @@ def _one_tree(
 
 
 def conditions(where: Path = GENERATED) -> list[Condition]:
-    """Every closure condition, over one directory of evidence.
-
-    `where` is a parameter so `closure_attack` can build a green fixture set,
-    mutate one thing, and require this to go red -- without a green tree to
-    mutate, a gate that can never fail and a gate that never has are the same
-    output.
-    """
     out: list[Condition] = []
     ledger = _read("ledger.json", where)
     pins = _read("provenance.json", where)

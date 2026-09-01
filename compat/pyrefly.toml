@@ -1,31 +1,8 @@
-# pyrefly, for compat/ only, from compat/'s own environment.
-#
-# The companion to compat/ty.toml, and it exists for the same reason: compat/
-# is not in the root pyproject's [tool.pyrefly] project-includes, because its
-# runtimes live in .venv-compat rather than .venv. See compat.just.
-#
-# `just compat check` invokes this as `pyrefly check -c compat/pyrefly.toml`.
-# Passing the config explicitly makes pyrefly use THIS file's directory as the
-# directory to check (configuration.mdx:106-108) and disables the upward search
-# that would otherwise find the root pyproject and query the wrong interpreter.
-#
-# Every setting below is the root's. Where this file differs, the difference is
-# scope or environment, never severity.
-
 project-includes = ["."]
 python-version = "3.13"
 
-# The suite's own environment, so facexlib, diffusers and torchaudio resolve.
-# Without it pyrefly queries whatever interpreter it finds and reports three
-# missing-import errors for packages that are installed -- just not there.
 python-interpreter-path = "../.venv-compat/Scripts/python.exe"
 
-# The line that makes pyrefly a gate rather than a report. `min-severity`
-# controls CLI display and exit code and defaults to "error", which hides
-# warnings and exits zero with them outstanding.
 min-severity = "warn"
 
-# `enabled-ignores` defaults to ["type", "pyrefly"], so out of the box pyrefly
-# honours the bare `type` suppression comment. This tree carries no suppression
-# of any kind and dropping it closes the hole.
 enabled-ignores = ["pyrefly"]

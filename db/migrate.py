@@ -3897,3 +3897,26 @@ def _a_measurement_is_kept_at_the_width_it_was_measured(conn: sqlite3.Connection
             f"  v46 landmarks: {widened} widened, {already} already float64, "
             f"{len(skipped)} left unconverted{': ' + ', '.join(str(one) for one in skipped[:20]) if skipped else ''}"
         )
+
+
+@step(46)
+def _the_producers_record_survives_as_typed_bytes(conn: sqlite3.Connection) -> None:
+    """v46 -> v47: `derived_face_instance.native` replaces `attributes`.
+
+    `attributes` was JSON, and JSON cannot say what it holds: a float32
+    array through a JSON list comes back as Python floats with dtype and
+    shape gone, so reading one back meant a hand-written inverse per key --
+    the allowlist again, one layer down. `native` is a
+    `vision/facestore.py` envelope: the producer's complete record, captured
+    by iteration, with dtype, shape, byte order and container structure
+    recorded beside the bytes. Replay and export read it and nothing else.
+
+    No backfill, because none is possible: the JSON already discarded the
+    type information the envelope exists to keep. Existing rows read NULL
+    until a faces pass looks at their bytes again (`POST /jobs/faces` with
+    `{"everything": true}`) -- the same re-read every earlier face
+    migration pointed at, and this time the row keeps what the producer
+    said, whole.
+    """
+    conn.execute("ALTER TABLE derived_face_instance DROP COLUMN attributes")
+    conn.execute("ALTER TABLE derived_face_instance ADD COLUMN native BLOB")

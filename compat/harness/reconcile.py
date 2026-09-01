@@ -1,31 +1,3 @@
-"""Static discovery against what the run actually opened.
-
-`population.py` reads the pinned source and finds what a loader COULD resolve.
-`observe.py` records what a process DID resolve. Neither is the population on
-its own, and the difference between them is the finding:
-
-    AGREED             discovered statically and observed loading
-    UNEXERCISED        discovered, never observed -- a variant nothing ran
-    POPULATION_DEFECT  observed, never discovered -- discovery missed it
-
-`Edge.dynamic_observed` existed as a field that nothing ever set, and
-`observe.write` had no caller. So every edge read `dynamic_observed = False`,
-which looked like a finding and was actually the absence of a measurement.
-
-WHAT UNEXERCISED IS ALLOWED TO MEAN
------------------------------------
-It depends on the observer's own controls, and this reads them rather than
-assuming either way. `_observer_complete` reports what `observe-attack`
-measured on this run: while any probe is red, UNEXERCISED is "no evidence it
-ran" and never "evidence it did not", because an observer with a blind spot
-cannot be quoted on absence.
-
-POPULATION_DEFECT does not depend on that, and the asymmetry is the reason: a
-blind spot can only make the observer MISS an artifact, so anything it did see
-and discovery did not is a hole in discovery either way. That is why it is the
-only verdict here that reds the lane.
-"""
-
 from __future__ import annotations
 
 import json
@@ -44,8 +16,6 @@ POPULATION_DEFECT: Final[str] = "POPULATION_DEFECT"
 
 @dataclass
 class Reconciled:
-    """One artifact identity, and how the two views of it compare."""
-
     identity: str
     verdict: str
     consumers: list[str] = field(default_factory=list)
@@ -55,14 +25,6 @@ class Reconciled:
 
 
 def _stems(identity: str) -> set[str]:
-    """Every spelling one artifact answers to.
-
-    Static discovery records what the SOURCE says -- `antelopev2`,
-    `org/model`, `weights/det.onnx` -- and the observer records what the
-    PROCESS resolved, which is a filename or a repository id. Matching them
-    exactly would report a defect for every artifact whose two views spell it
-    differently, so both sides are reduced to the same set of stems.
-    """
     held = identity.strip().strip("/").replace("\\", "/")
     parts = [one for one in held.split("/") if one]
     out = {held, parts[-1] if parts else held}
@@ -75,13 +37,6 @@ def _stems(identity: str) -> set[str]:
 
 
 def _resolve(identity: str, claimed: dict[str, set[str]]) -> tuple[str, set[str]]:
-    """The one population artifact this observation names, or the collision.
-
-    A stem is a bare filename among other things, and the manifest carries two
-    `models/image_encoder/model.safetensors` under different consumers. Taking
-    the first would credit an observation of one to the other and leave the
-    other reading UNEXERCISED, silently.
-    """
     for stem in _stems(identity):
         holders = claimed.get(stem)
         if not holders:
@@ -93,14 +48,11 @@ def _resolve(identity: str, claimed: dict[str, set[str]]) -> tuple[str, set[str]
 
 
 def reconcile(population: dict[str, Any], observed: list[dict[str, Any]]) -> list[Reconciled]:
-    """Every artifact from both sides, classified."""
     static: dict[str, Reconciled] = {}
     claimed: dict[str, set[str]] = {}
     for edge in population.get("edges", []):
         identity = str(edge.get("artifact_logical_identity", ""))
-        # An UNRESOLVED row names no artifact -- it names the fact that one
-        # could not be resolved -- so pairing it against an observation would
-        # be matching a finding to a file.
+
         if not identity or identity.startswith(("UNRESOLVED_ARTIFACT:", "UNRESOLVED_CALL:")):
             continue
         held = static.setdefault(identity, Reconciled(identity, UNEXERCISED))
@@ -116,9 +68,7 @@ def reconcile(population: dict[str, Any], observed: list[dict[str, Any]]) -> lis
     for row in observed:
         identity = str(row.get("identity", ""))
         loader = str(row.get("loader", ""))
-        # A native-opener marker names a SYMBOL, not an artifact. Comparing it
-        # against the population would report `_wfopen` as a model discovery
-        # missed, which is the opposite of what it says.
+
         if loader == observe.NATIVE_UNSEEN:
             continue
         matched, ambiguous = _resolve(identity, claimed)
@@ -168,22 +118,12 @@ def build() -> dict[str, Any]:
         "totals": {
             one: sum(1 for row in rows if row.verdict == one) for one in (AGREED, UNEXERCISED, POPULATION_DEFECT)
         },
-        # The observer's own controls decide whether UNEXERCISED can be read as
-        # absence. While any probe is red it cannot, and the number is carried
-        # here so a reader of this file does not have to go and find out.
         "observer_is_complete": _observer_complete(generated, cases),
         "evidence_from_one_tree": trees,
     }
 
 
 def _one_tree(population: dict[str, Any], cases: dict[str, Any]) -> dict[str, Any]:
-    """Both sides describe the same tree, or the comparison means nothing.
-
-    This lane's whole output is a difference between two artifacts. Nothing
-    required them to be built under one tree, so a stale population against
-    current observations would have read as discovery defects and unexercised
-    variants that are neither.
-    """
     from compat.harness import identity as evidence_identity
 
     now = str(evidence_identity.identity()["digest"])
@@ -202,14 +142,6 @@ def _one_tree(population: dict[str, Any], cases: dict[str, Any]) -> dict[str, An
 
 
 def _observer_complete(generated: Path, cases: dict[str, Any]) -> dict[str, Any]:
-    """Whether an unobserved artifact may be read as one that did not load.
-
-    Two things have to hold, and only one of them is about the observer. The
-    other is that the cases ACTUALLY RAN: a run where every shard died records
-    no observations at all, and reading that as "nothing loaded" turns a dead
-    run into a finding about the artifacts. Observed here: six shards failed
-    on one KeyError, and this reported twelve artifacts as not loaded.
-    """
     ran = int(cases.get("cases", 0)) > 0 and not cases.get("shards_failed")
     where = generated / "observer_controls.json"
     if not where.is_file():
@@ -260,9 +192,6 @@ def main() -> int:
         handle.write("\n")
     print(f"wrote {target}")
 
-    # A POPULATION_DEFECT is a hole in discovery and reds this lane. An
-    # UNEXERCISED row does not, while the observer is known incomplete: it
-    # would be reporting the observer's blindness as the population's fault.
     return 0 if not totals[POPULATION_DEFECT] else 1
 
 

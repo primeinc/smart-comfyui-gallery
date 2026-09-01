@@ -1,5 +1,5 @@
 {
-  "identity": "0ab752e0f991ddf331b393f5840a74c4c85d916774af8f77dd6f2c8538fb8451",
+  "identity": "d45829b13396bffd27ce529e89ee7cec1ec32c19d29f23d58332018f30ca2833",
   "manifest_version": 1,
   "population": {
     "total": 22
@@ -1848,7 +1848,7 @@
       "pack": "antelopev2",
       "path": "C:\\ComfyUI\\output\\.AImodels\\insightface\\models\\antelopev2\\glintr100.onnx",
       "present": true,
-      "role": "recognition -- the 512-d embedding every identity claim rests on",
+      "role": "recognition -- the antelopev2 512-d embedding space; w600k_r50 and facexlib arcface are separate spaces",
       "sha256": "4ab1d6435d639628a6f3e5008dd4f929edf4c4124b1a7169e1048f9fef534cdf",
       "state": "VERIFIED"
     },
@@ -1985,7 +1985,7 @@
       "pack": "buffalo_l",
       "path": "C:\\ComfyUI\\output\\.AImodels\\insightface\\models\\buffalo_l\\det_10g.onnx",
       "present": true,
-      "role": "detection for UniPortrait; NOT the same detector as antelopev2",
+      "role": "detection for UniPortrait; byte-identical to antelopev2's scrfd_10g_bnkps.onnx per the attestations below",
       "sha256": "5838f7fe053675b1c7a08b633df49e7af5495cee0493c7dcf6697200b85b5b91",
       "state": "VERIFIED"
     },
@@ -2111,7 +2111,7 @@
       "pack": "facexlib",
       "path": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv-compat\\Lib\\site-packages\\facexlib\\weights\\detection_Resnet50_Final.pth",
       "present": true,
-      "role": "",
+      "role": "retinaface_resnet50 -- the detector in the loop for PuLID/ConsisID/InfiniteYou",
       "sha256": "6d1de9c2944f2ccddca5f5e010ea5ae64a39845a86311af6fdf30841b0a5a16d",
       "state": "VERIFIED"
     },
@@ -2145,7 +2145,7 @@
       "pack": "facexlib",
       "path": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv-compat\\Lib\\site-packages\\facexlib\\weights\\recognition_arcface_ir_se50.pth",
       "present": true,
-      "role": "",
+      "role": "InfiniteYou's embedding model; a DIFFERENT 512-d space from glintr100",
       "sha256": "a035c768259b98ab1ce0e646312f48b9e1e218197a0f80ac6765e88f8b6ddf28",
       "state": "VERIFIED"
     },
@@ -2179,7 +2179,7 @@
       "pack": "facexlib",
       "path": "C:\\Users\\will\\dev\\smart-comfyui-gallery\\.venv-compat\\Lib\\site-packages\\facexlib\\weights\\parsing_bisenet.pth",
       "present": true,
-      "role": "",
+      "role": "face parsing for PuLID/ConsisID masked crops",
       "sha256": "468e13ca13a9b43cc0881a9f99083a430e9c0a38abd935431d1c28ee94b26567",
       "state": "VERIFIED"
     }

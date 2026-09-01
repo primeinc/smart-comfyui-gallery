@@ -1,45 +1,3 @@
-"""Record every external artifact a run actually opens.
-
-Static discovery reads the pinned source and finds what a loader COULD resolve.
-It cannot see a filename assembled at runtime, a parameter default bound at
-call time, or a branch a config chooses -- the regenerated population carries
-168 UNRESOLVED variants and 211 unresolved call sites for exactly that reason.
-
-This closes the other half: what is recorded is what the process resolved.
-
-WHY AN AUDIT HOOK AND NOT A MONKEYPATCH
----------------------------------------
-`from module import load` binds a reference at import time, so a patch applied
-afterwards is never consulted and the observer misses the load while reporting
-success. That is the instrumentation equivalent of a green over zero files.
-
-`sys.addaudithook` is CPython's own mechanism and fires inside the
-implementation, so an aliased reference is still seen. Measured here rather
-than assumed: with a hook installed, both `open(path)` and
-`from builtins import open as aliased; aliased(path)` were captured.
-
-The trade is that a hook cannot be REMOVED once added -- documented CPython
-behaviour -- so recording is gated on a flag rather than on installing and
-uninstalling the hook.
-
-WHAT IS STILL PATCHED, AND WHY
-------------------------------
-An audit hook sees files. It does not see a load that resolves entirely inside
-a cache, or one whose identity is a repository rather than a path:
-`from_pretrained("org/model")` names bytes without naming a file. Those APIs
-are wrapped so the REQUESTED identity is recorded beside the resolved path.
-
-RECONCILIATION IS THE POINT, not the recording. Three outcomes, three different
-pieces of work:
-
-    static and dynamic agree     the edge exists and was taken
-    static only, not observed    UNEXERCISED -- nothing ran that variant
-    observed, not static         POPULATION DEFECT -- discovery missed it
-
-`reconcile.py` does that comparison and decides what UNEXERCISED may mean,
-from the coverage `observe_attack` measured on the same run.
-"""
-
 from __future__ import annotations
 
 import contextlib
@@ -55,7 +13,7 @@ from typing import Any, Final, override
 
 ROOT: Final[Path] = Path(__file__).resolve().parent.parent
 
-#: Suffixes that make an opened file model bytes rather than source or data.
+
 MODEL_SUFFIX: Final[frozenset[str]] = frozenset(
     {".onnx", ".pth", ".pt", ".bin", ".safetensors", ".task", ".ckpt", ".npy", ".npz", ".zip"}
 )
@@ -63,15 +21,6 @@ MODEL_SUFFIX: Final[frozenset[str]] = frozenset(
 
 @dataclass
 class Observation:
-    """One artifact a run actually resolved.
-
-    No load COUNT. How many times a process opened a file is a property of
-    this process's caching -- a warm corpus cache, a memoised pack, a shard
-    boundary -- exactly as wall-clock is a property of the machine, and
-    `attack` compares two runs of this evidence byte for byte. The claim the
-    reconciler needs is THAT the artifact was resolved and by which loader.
-    """
-
     loader: str
     identity: str
     path: str = ""
@@ -80,8 +29,6 @@ class Observation:
 
 @dataclass
 class Recorder:
-    """Everything one run resolved, keyed on (loader, identity)."""
-
     active: bool = False
     seen: dict[tuple[str, str], Observation] = field(default_factory=dict)
 
@@ -96,24 +43,11 @@ class Recorder:
         return [asdict(one) for one in sorted(self.seen.values(), key=lambda one: (one.loader, one.identity))]
 
 
-#: One recorder for the process. An audit hook cannot be removed, so the hook
-#: is installed once and reads this; `recording()` turns it on and off.
 _RECORDER: Final[Recorder] = Recorder()
 _INSTALLED: list[bool] = []
 
 
 def model_roots() -> tuple[Path, ...]:
-    """Directories under which an opened file is a MODEL rather than noise.
-
-    Derived from the manifest's own weight roots plus the hub cache, never a
-    typed list: a root this misses makes its artifacts invisible, which is the
-    silent pass the observer exists to prevent.
-
-    Suffix alone is not enough. `.zip` is here because ReActor ships
-    `buffalo_l.zip`, and the interpreter's own `python313.zip` was recorded
-    seventy times in the control run -- real opens, of something that is not a
-    model.
-    """
     from compat.harness import provenance
 
     found: set[Path] = set()
@@ -144,25 +78,15 @@ def _under_a_model_root(name: str) -> bool:
     return False
 
 
-#: Symbols that open a file without CPython's `open` event ever firing. A C
-#: extension resolving one of these can read a model the audit hook cannot see.
 NATIVE_OPENERS: Final[frozenset[str]] = frozenset(
     {"fopen", "fopen_s", "_wfopen", "_wfopen_s", "_open", "_wopen", "open", "CreateFileA", "CreateFileW"}
 )
 
-#: A native opener resolved but not yet called. `ctypes.dlsym` is audited, so
-#: arming one is recorded even where the call itself is not reachable.
+
 NATIVE_UNSEEN: Final[str] = "native_open_unseen"
 
 
 class _Watched:
-    """One native function, recording the path it is handed.
-
-    A proxy rather than a plain wrapper because a caller configures the symbol
-    it gets back -- `restype`, `argtypes` -- and those must reach the real
-    function or the call returns the wrong type.
-    """
-
     def __init__(self, func: Any, name: str) -> None:
         object.__setattr__(self, "_func", func)
         object.__setattr__(self, "_name", name)
@@ -185,10 +109,7 @@ class _Watched:
 
 
 def _audit(event: str, args: tuple[Any, ...]) -> None:
-    """CPython's own events: a file open, and a native opener being armed."""
     if event == "ctypes.dlsym" and len(args) >= 2:
-        # A symbol armed and never called: the call is intercepted below, and
-        # this records the arming, so a resolve with no call still shows up.
         symbol = str(args[1])
         if symbol in NATIVE_OPENERS:
             _RECORDER.note(NATIVE_UNSEEN, symbol, str(args[0])[:120])
@@ -201,7 +122,6 @@ def _audit(event: str, args: tuple[Any, ...]) -> None:
 
 
 def install() -> None:
-    """Install the audit hook once, for the life of the process."""
     if _INSTALLED:
         return
     sys.addaudithook(_audit)
@@ -209,7 +129,6 @@ def install() -> None:
 
 
 def _argument(args: tuple[Any, ...], kwargs: dict[str, Any], index: int, name: str) -> str:
-    """One argument, whether it arrived positionally or by keyword."""
     if name in kwargs and isinstance(kwargs[name], (str, os.PathLike)):
         return str(kwargs[name])
     if len(args) > index and isinstance(args[index], (str, os.PathLike)):
@@ -221,17 +140,6 @@ Identify = Callable[[tuple[Any, ...], dict[str, Any]], None]
 
 
 def wrap_recording(stack: contextlib.ExitStack, owner: Any, name: str, identify: Identify) -> None:
-    """Record what one loader was asked for, without changing what it does.
-
-    A CLASSMETHOD replaced by a plain function loses its `cls` binding, and
-    every subclass then runs the base class's implementation:
-    `Sam3VideoModel.from_pretrained` became `PreTrainedModel`'s and raised
-    "PreTrainedModel does not define `config_class`" -- four cases failing on
-    the observer rather than on anything they measure.
-
-    Module level so `observe_attack` can hold this exact mechanism to a
-    control rather than a copy of it.
-    """
     original = getattr(owner, name, None)
     if original is None:
         return
@@ -241,7 +149,7 @@ def wrap_recording(stack: contextlib.ExitStack, owner: Any, name: str, identify:
         underlying = declared.__func__
 
         def observed_classmethod(cls: Any, *args: Any, **kwargs: Any) -> Any:
-            # Recording may never change what the run does.
+
             with contextlib.suppress(TypeError, ValueError, AttributeError, IndexError, KeyError):
                 identify(args, kwargs)
             return underlying(cls, *args, **kwargs)
@@ -260,30 +168,17 @@ def wrap_recording(stack: contextlib.ExitStack, owner: Any, name: str, identify:
 
 
 def _wrap_hub_apis(stack: contextlib.ExitStack) -> None:
-    """Wrap the loaders whose identity is a repository rather than a file.
-
-    Signatures read at their pins:
-        hf_hub_download(repo_id, filename, *, revision=...)
-            huggingface/huggingface_hub src/huggingface_hub/file_download.py:757
-        snapshot_download(repo_id, *, revision=...)
-            huggingface/huggingface_hub src/huggingface_hub/_snapshot_download.py
-    """
 
     def wrap(owner: Any, name: str, identify: Identify) -> None:
         wrap_recording(stack, owner, name, identify)
 
-    # No `open` event fires for a native open, but ctypes resolves symbols
-    # through `CDLL.__getattr__` in PYTHON, so the call is reachable and its
-    # first argument is the path.
     original_getattr = ctypes.CDLL.__getattr__
 
     def observed_getattr(self: Any, name: str) -> Any:
         found = original_getattr(self, name)
         if name in NATIVE_OPENERS:
             found = _Watched(found, name)
-            # ctypes caches the resolved symbol on the instance, so the cache
-            # has to hold the wrapper or the second access returns the raw
-            # function and every later call is invisible again.
+
             object.__setattr__(self, name, found)
         return found
 
@@ -293,9 +188,6 @@ def _wrap_hub_apis(stack: contextlib.ExitStack) -> None:
     with contextlib.suppress(ImportError):
         import onnxruntime
 
-        # NATIVE: ORT opens the graph in C++, so no Python `open` fires and
-        # the audit hook cannot see it. `InferenceSession(path_or_bytes, ...)`
-        # -- microsoft/onnxruntime onnxruntime_inference_collection.py:476.
         original_session_init = onnxruntime.InferenceSession.__init__
 
         def observed_session_init(self: Any, *args: Any, **kwargs: Any) -> Any:
@@ -335,9 +227,6 @@ def _wrap_hub_apis(stack: contextlib.ExitStack) -> None:
 
         def observed_init(self: Any, *args: Any, **kwargs: Any) -> Any:
             with contextlib.suppress(TypeError, ValueError, AttributeError, IndexError):
-                # The PACK is the variant. `FaceAnalysis()` is buffalo_l and
-                # `FaceAnalysis(name="antelopev2")` is a different embedding
-                # space, so the default is recorded as itself, not as absence.
                 _RECORDER.note("FaceAnalysis", str(kwargs.get("name") or (args[0] if args else "buffalo_l(default)")))
             return original_init(self, *args, **kwargs)
 
@@ -369,15 +258,6 @@ def _wrap_hub_apis(stack: contextlib.ExitStack) -> None:
 
 @contextlib.contextmanager
 def recording(extra_roots: tuple[Path, ...] = ()) -> Generator[Recorder]:
-    """Record every artifact resolved inside the block.
-
-    `extra_roots` widens the scope for a caller that owns a directory the
-    manifest does not name. It exists for the observer's own controls: a probe
-    written into a REAL model pack is loaded by the next consumer that globs
-    that directory, and one did -- insightface tried to parse a dummy
-    `_observer_probe.onnx` as a graph and the run died. A control may never
-    write where production reads.
-    """
     install()
     _ROOTS.clear()
     _ROOTS.extend(model_roots())
@@ -392,22 +272,10 @@ def recording(extra_roots: tuple[Path, ...] = ()) -> Generator[Recorder]:
         _RECORDER.active = False
 
 
-#: Prepended to a child's PYTHONPATH so CPython imports it at startup.
 CHILD_DIR: Final[Path] = Path(__file__).resolve().parent / "childobserve"
 
 
 def child_env(out: Path, extra_roots: tuple[Path, ...] = ()) -> dict[str, str]:
-    """Environment that makes a PYTHON child record its own opens.
-
-    An audit hook is per-process, so the parent's cannot see a child's. The
-    child gets its own, installed by `sitecustomize` before any user code --
-    the only moment early enough for a load that happens at import time.
-
-    Only a python child records. `git` and `taskkill` are the other things
-    this repository spawns and neither opens a model, but that is a claim
-    about those two programs and not a property of this mechanism, so
-    `absorb` reports what came back rather than assuming it was everything.
-    """
     roots = [*model_roots(), *(one.resolve() for one in extra_roots)]
     held = dict(os.environ)
     existing = held.get("PYTHONPATH", "")
@@ -418,7 +286,6 @@ def child_env(out: Path, extra_roots: tuple[Path, ...] = ()) -> dict[str, str]:
 
 
 def absorb(out: Path, recorder: Recorder | None = None) -> int:
-    """Fold a child's recording into this process's, returning how many."""
     into = recorder if recorder is not None else _RECORDER
     if not out.is_file():
         return 0

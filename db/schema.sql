@@ -1520,7 +1520,7 @@ CREATE TABLE derived_face_instance (
     -- pipeline filters on; the space row is the identity that survives
     -- upgrades without relabeling.
     space_id INTEGER REFERENCES similarity_space(id) ON DELETE RESTRICT,
-    source_sha256 TEXT NOT NULL, computed_at REAL NOT NULL, attributes TEXT,
+    source_sha256 TEXT NOT NULL, computed_at REAL NOT NULL, native BLOB,
     -- `dim` describes `embedding`, so it has to agree with it. A length that
     -- disagrees with the bytes unpacks into noise, and a clustering pass
     -- comparing a 512-d vector against a mislabelled 128-d one groups
@@ -1538,29 +1538,30 @@ CREATE TABLE derived_face_instance (
 -- keyed yaw/pitch/roll and REFUSES a bare triple by name -- the shape that
 -- carries no axis names is the shape that carries the bug.
 --
--- derived_face_instance.attributes: everything else the detector produced,
--- as JSON, complete and unfiltered. `age`, `sex` and the three pose axes
--- above are projections OUT of this for the values a facet filters on; this
--- is the record they were projected FROM, and it is the reason a capability
--- nobody planned for does not cost a re-detect.
+-- derived_face_instance.native: the producer's COMPLETE output for this
+-- face, one `vision/facestore.py` envelope -- every key the producer's
+-- record held, captured by iteration with dtype, shape, byte order and
+-- container structure intact. This is the canonical record; every other
+-- face column here is a projection out of it for the values a facet
+-- filters on or a page renders. Replay and export (`db/faces_native.py`)
+-- read THIS column and nothing else, so a value nobody thought to name a
+-- column for still comes back bit-exact, without rerunning the pass and
+-- without the original file.
 --
 -- The pass is expensive and the bytes are not: antelopev2 loads a 143 MB
--- 1k3d68 session to produce landmark_2d_106, landmark_3d_68 and the pose it
--- derives from them, and `db/detect.py` used to copy two keys off that and
--- drop the rest. Keeping all of it is ~3.7 KB per face, against re-reading
--- and re-inferring every file in the library -- which is only possible at
--- all while the originals are still on disk.
+-- 1k3d68 session per worker, and its whole record is ~3.8 KB per face --
+-- against re-reading and re-inferring every file in the library, which is
+-- only possible at all while the originals are still on disk.
 --
--- JSON, not packed floats, and not a column per landmark set: the point
--- count travels IN the value. A 106-point buffer read as 68 points yields
--- plausible garbage rather than an error, and a column named for one
--- producer is a column the next producer cannot use.
+-- NULL when the backend handed over no native record -- the test stub is
+-- the one shipped backend that may not. A replay of such a row refuses by
+-- name; nothing guesses.
 --
 -- LAST in the column list, on the same line as `computed_at`, and OUTSIDE
 -- the table like feedback.model_id below: `ALTER TABLE ADD COLUMN` appends
 -- at SQLite's addColOffset -- the end of the final column, ahead of the
 -- table constraints -- and it writes no comment. A migrated file therefore
--- reads `computed_at REAL NOT NULL, attributes TEXT,` with nothing between,
+-- reads `computed_at REAL NOT NULL, native BLOB,` with nothing between,
 -- so a comment placed there exists only in a fresh build and
 -- `test_the_built_database_matches_the_ddl` reports drift on the table.
 -- Every future column added to this table by ALTER goes the same way.
@@ -2545,7 +2546,7 @@ CREATE TRIGGER answer_moved_watched_folder_del AFTER DELETE ON watched_folder BE
 
 
 PRAGMA application_id = 0x53474C59;
-PRAGMA user_version   = 46;
+PRAGMA user_version   = 47;
 
 -- ============ the entity registry must agree with its subtypes ============
 -- The foreign key proves the entity row exists; nothing tied entity.kind to the

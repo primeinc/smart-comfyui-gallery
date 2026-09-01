@@ -1,21 +1,3 @@
-"""Every declared thing that did not produce a proof, from the CURRENT tree.
-
-Derived from the declared population in the manifest, never from the cases that
-survived construction. A report built by filtering results reports on whatever
-ran; this starts from what was promised and subtracts what was executed, so a
-lane that died before writing evidence leaves its whole population unresolved
-rather than absent.
-
-STALENESS IS UNRESOLVED. Every artifact read here is checked against
-`identity.identity()`. Evidence recorded against a different tree is not
-evidence for this one, so a stale `cases.json` resolves nothing and every
-consumer it covered is reported unproven.
-
-There is no status meaning "did not run but does not count". Anything that is
-not a current executed proof is unresolved, and one unresolved row is a red
-lane.
-"""
-
 from __future__ import annotations
 
 import json
@@ -29,8 +11,7 @@ from compat.harness import provenance
 ROOT: Final[Path] = Path(__file__).resolve().parent.parent
 GENERATED: Final[Path] = ROOT / "generated"
 
-#: The lanes `compat.just run` chains, in order. A lane that never ran leaves
-#: every lane after it unrun too, which is why the stage is reported.
+
 LANES: Final[tuple[str, ...]] = (
     "check",
     "pins",
@@ -50,19 +31,13 @@ LANES: Final[tuple[str, ...]] = (
 
 @dataclass
 class Unresolved:
-    """One declared thing with no current executed proof."""
-
     subject: str
-    """What was promised: a consumer id, a case name, an input, a weight."""
 
     kind: str
-    """consumer | case | input | weight | primitive | artifact | lane"""
 
     stage: str
-    """The lane that should have proved it, or the one that stopped first."""
 
     reason: str
-    """What was observed, from this run. Never a declaration."""
 
 
 @dataclass
@@ -84,7 +59,6 @@ def _read(name: str) -> dict[str, Any] | None:
 
 
 def _current(held: dict[str, Any] | None, now: str) -> bool:
-    """Whether an artifact was produced by the tree as it stands."""
     if held is None:
         return False
     recorded = held.get("identity")

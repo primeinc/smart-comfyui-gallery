@@ -2,34 +2,55 @@
 
 A face pass is the expensive thing in this application: antelopev2 loads a
 143 MB 1k3d68 session to derive head pose and two dense landmark sets, and
-keeping all of it costs a few kilobytes per face. Anything `db/detect.py`
-drops on the line that reads the attribute dict can only come back by
-reading the whole library off disk again.
+keeping all of it costs a few kilobytes per face. Anything dropped between
+the producer and the row can only come back by reading the whole library off
+disk again.
 
-These hold the storage contract: the record is complete
-and unfiltered, the promoted columns are promotions OUT of it rather than a
-filter in front of it, and pose lands on the axis it names.
+These hold the storage contract: the canonical thing persisted is `native` --
+the producer's complete record, frozen by `vision/facestore.py` -- and the
+promoted columns are promotions OUT of it rather than a filter in front of
+it, with pose landing on the axis it names.
 """
-
-import json
 
 import numpy as np
 import pytest
 from PIL import Image
 
-from db import authored, derived, detect, library, scan
+from db import authored, derived, detect, faces_native, library, scan
 from tests.staging import NOW, fresh_schema
+from vision import facestore
 
-#: One InsightFace detection, as `vision/faces.py` builds it. Pose is keyed here
-#: because upstream returns [pitch, yaw, roll] as an array and these columns are
-#: yaw-first (deepinsight/insightface model_zoo/landmark.py:111).
+#: The promoted per-face values, keyed the way `vision/faces.py` promotes
+#: them. Pose is keyed because upstream returns [pitch, yaw, roll] as an
+#: array and the columns are yaw-first (insightface model_zoo/landmark.py:111).
 TRAITS = {
     "age": 27,
     "sex": "male",
     "pose": {"pitch": -3.5, "yaw": 12.25, "roll": 1.0},
-    "landmark_2d_106": [[0.10, 0.20]] * 106,
-    "landmark_3d_68": [[0.10, 0.20, 4.5]] * 68,
 }
+
+#: A producer's record as the InsightFace backend captures it: the
+#: producer's own dtypes and shapes, keys iterated rather than named.
+RECORD = {
+    "bbox": np.array([12.5, -3.0, 200.25, 240.0], dtype=np.float32),
+    "kps": np.arange(10, dtype=np.float32).reshape(5, 2),
+    "det_score": np.float32(0.99),
+    "landmark_2d_106": np.linspace(0.1, 300.7, 212, dtype=np.float32).reshape(106, 2),
+    "landmark_3d_68": np.linspace(-40.0, 250.3, 204, dtype=np.float32).reshape(68, 3),
+    "pose": np.array([-3.5, 12.25, 1.0], dtype=np.float32),
+    "embedding": np.linspace(-1.0, 1.0, 512, dtype=np.float32),
+    "gender": np.int64(1),
+    "age": np.int64(27),
+}
+
+
+def frozen(record) -> bytes:
+    return facestore.freeze(
+        dict(record),
+        producer="insightface/antelopev2",
+        producer_version="scrfd10g+glintr100-v1",
+        container="insightface.app.common.Face",
+    )
 
 
 @pytest.fixture
@@ -56,11 +77,11 @@ def a_library(db, tmp_path):
     return {"root": root_id, "path": root, "folder": folder_id, "file": file_id}
 
 
-def _record(db, file_id, traits):
+def _record(db, file_id, traits, native=None):
     """One face carrying `traits`, written the way `db/detect.py` writes it.
 
     `dict[str, object]`, because that is what a detection record is: an id,
-    a score, packed bytes, a keyed pose and the producer's whole output. The
+    a score, packed bytes, a keyed pose and the producer's frozen output. The
     value type is not a column type -- the record is what crosses into
     `record_faces`, and `_insert_face` is where it fans out into columns.
     """
@@ -69,8 +90,9 @@ def _record(db, file_id, traits):
         "det_score": 0.99,
         "embedding": np.ones(512, dtype=np.float32).tobytes(),
     }
+    if native is not None:
+        record["native"] = native
     if traits:
-        record["attributes"] = traits
         if "age" in traits:
             record["age"] = int(traits["age"])
         if "sex" in traits:
@@ -85,35 +107,49 @@ def _record(db, file_id, traits):
 
 
 def test_every_value_the_detector_produced_reaches_the_row(db, a_library):
-    """The dense sets are the point: they are what the 143 MB session is for,
-    and they are what had nowhere to land."""
-    face_id = _record(db, a_library["file"], TRAITS)
+    """The dense sets are the point: they are what the 143 MB session is
+    for, and the whole reason the record is kept whole. The row hands back
+    every key in the producer's own dtype and shape, bit for bit."""
+    face_id = _record(db, a_library["file"], TRAITS, native=frozen(RECORD))
 
-    (stored,) = db.execute("SELECT attributes FROM derived_face_instance WHERE id = ?", (face_id,)).fetchone()
-    held = json.loads(stored)
+    native = faces_native.native_of(db, face_id)
 
-    assert set(held) == set(TRAITS), "the row holds a different set of values than the detector produced"
-    assert len(held["landmark_2d_106"]) == 106
-    assert len(held["landmark_3d_68"]) == 68
-    assert held["landmark_3d_68"][0] == [0.10, 0.20, 4.5], "the z component is not carried"
+    assert native.producer == "insightface/antelopev2"
+    assert list(native.record) == list(RECORD), "the row holds a different set of values than the detector produced"
+    for key, want in RECORD.items():
+        held = native.record[key]
+        assert np.asarray(held).dtype == np.asarray(want).dtype, key
+        assert np.asarray(held).shape == np.asarray(want).shape, key
+        assert np.asarray(held).tobytes() == np.asarray(want).tobytes(), f"{key} did not survive bit-for-bit"
 
 
 def test_a_value_nothing_was_written_for_survives(db, a_library):
     """The storage boundary is not an allowlist.
 
-    An allowlist is what produced the defect: two named keys copied, three
-    values dropped. A second allowlist would only move the next re-detect
-    further out -- a backend emitting something nobody thought to name has
-    to keep it anyway, because the alternative is reading the library again.
+    An allowlist is what produced the original defect: named keys copied,
+    the rest dropped. A backend emitting something nobody thought to name --
+    with a dtype and shape no column mentions -- has to keep it anyway,
+    because the alternative is reading the library again.
     """
-    unheard_of = dict(TRAITS, expression_coefficients=[0.4, 0.1, 0.9], mask_score=0.02)
-    face_id = _record(db, a_library["file"], unheard_of)
+    big_endian = np.array([0.4, 0.1, 0.9], dtype=">f8")
+    unheard_of = dict(
+        RECORD,
+        expression_coefficients=big_endian,
+        mask={"kind": "occlusion", "score": np.float16(0.02), "cells": np.arange(6, dtype=np.uint8).reshape(2, 3)},
+    )
+    face_id = _record(db, a_library["file"], TRAITS, native=frozen(unheard_of))
 
-    (stored,) = db.execute("SELECT attributes FROM derived_face_instance WHERE id = ?", (face_id,)).fetchone()
-    held = json.loads(stored)
+    held = faces_native.native_of(db, face_id).record
 
-    assert held["expression_coefficients"] == [0.4, 0.1, 0.9]
-    assert held["mask_score"] == 0.02
+    coeffs = held["expression_coefficients"]
+    assert coeffs.dtype.str == ">f8", "the unheard-of key lost its byte order"
+    assert coeffs.tobytes() == big_endian.tobytes()
+    mask = held["mask"]
+    assert mask["kind"] == "occlusion"
+    assert type(mask["score"]) is np.float16
+    assert mask["score"].tobytes() == np.float16(0.02).tobytes()
+    assert mask["cells"].shape == (2, 3)
+    assert mask["cells"].dtype == np.uint8
 
 
 def test_pose_lands_on_the_axis_it_names(db, a_library):
@@ -161,39 +197,43 @@ def test_the_promoted_columns_agree_with_the_record_they_came_from(db, a_library
     """`age`, `sex` and the three pose columns exist because a facet filters
     on them. They are a second spelling of values the record already holds,
     so a row where the two disagree is a row whose facet lies about it."""
-    face_id = _record(db, a_library["file"], TRAITS)
+    face_id = _record(db, a_library["file"], TRAITS, native=frozen(RECORD))
 
-    age, sex, yaw, pitch, roll, stored = db.execute(
-        "SELECT age, sex, pose_yaw, pose_pitch, pose_roll, attributes FROM derived_face_instance WHERE id = ?",
+    age, sex, yaw, pitch, roll = db.execute(
+        "SELECT age, sex, pose_yaw, pose_pitch, pose_roll FROM derived_face_instance WHERE id = ?",
         (face_id,),
     ).fetchone()
-    held = json.loads(stored)
+    held = faces_native.native_of(db, face_id).record
 
-    assert age == held["age"]
-    assert sex == held["sex"]
-    assert yaw == pytest.approx(held["pose"]["yaw"])
-    assert pitch == pytest.approx(held["pose"]["pitch"])
-    assert roll == pytest.approx(held["pose"]["roll"])
+    assert age == int(held["age"])
+    assert sex == ("male" if int(held["gender"]) == 1 else "female")
+    # The record's pose is upstream's [pitch, yaw, roll] array; the columns
+    # are yaw-first.
+    assert pitch == pytest.approx(float(held["pose"][0]))
+    assert yaw == pytest.approx(float(held["pose"][1]))
+    assert roll == pytest.approx(float(held["pose"][2]))
 
 
 def test_a_backend_that_says_nothing_writes_no_record(db, a_library):
-    """The OpenCV backends attach no attributes at all -- `vision/faces.py`
-    assigns them only inside the InsightFace block -- so NULL here means the
-    detector had nothing to say, not that a value was dropped. Writing "{}"
-    instead would make those two states one."""
+    """The stub backend hands over no native record at all -- NULL here means
+    the backend had nothing to say, and replaying such a row refuses by name
+    instead of serving an empty record as if it were the producer's."""
     face_id = _record(db, a_library["file"], {})
 
-    (stored,) = db.execute("SELECT attributes FROM derived_face_instance WHERE id = ?", (face_id,)).fetchone()
-
+    (stored,) = db.execute("SELECT native FROM derived_face_instance WHERE id = ?", (face_id,)).fetchone()
     assert stored is None
 
+    with pytest.raises(faces_native.NativeMissing, match="no native record"):
+        faces_native.native_of(db, face_id)
 
-def test_harvest_promotes_out_of_the_record_it_keeps(db, a_library):
+
+def test_harvest_persists_the_record_and_promotes_out_of_it(db, a_library):
     """The producer's own contract, not the fixture's imitation of it.
 
     `_record` above mirrors what `db/detect.py` does; this asserts the two
     have not drifted, by driving the real thing with a stub backend.
     """
+    envelope = frozen(RECORD)
 
     class OneFace:
         model_id = "insightface/antelopev2"
@@ -209,19 +249,20 @@ def test_harvest_promotes_out_of_the_record_it_keeps(db, a_library):
                     det_score=0.99,
                     embedding=np.ones(512, dtype=np.float32),
                     attributes=dict(TRAITS),
+                    native=envelope,
                 )
             ]
 
     written = detect.harvest(db, OneFace(), a_library["file"], None, NOW, image=Image.new("RGB", (64, 64)))
 
     (face_id,) = written
-    age, yaw, pitch, roll, stored = db.execute(
-        "SELECT age, pose_yaw, pose_pitch, pose_roll, attributes FROM derived_face_instance WHERE id = ?",
+    age, yaw, pitch, roll = db.execute(
+        "SELECT age, pose_yaw, pose_pitch, pose_roll FROM derived_face_instance WHERE id = ?",
         (face_id,),
     ).fetchone()
-    held = json.loads(stored)
+    held = faces_native.native_of(db, face_id)
 
-    assert set(held) == set(TRAITS), "harvest filtered the detector's output"
+    assert set(held.record) == set(RECORD), "harvest filtered the detector's output"
     assert age == 27
     assert yaw == pytest.approx(12.25)
     assert pitch == pytest.approx(-3.5)

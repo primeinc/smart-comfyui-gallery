@@ -1,40 +1,3 @@
-"""Reference-set semantics, executed rather than declared.
-
-The manifest declares a `combine` per consumer -- stack, mean, concat, none --
-and nothing ran any of them. These cases run the declared combiners over the
-vendors' OWN reference sets and separate the four possibilities that a
-single-reference case cannot:
-
-    order       A,B against B,A          -- ordered sequence or a set?
-    arity       A against A,B against A,A -- variable N or fixed?
-    duplication A,A against A            -- is a set deduplicated?
-    identity    A,B mixed-identity       -- negative control
-
-FIXTURES ARE THE VENDORS' OWN, per-identity folders at the pinned commits:
-
-    TencentARC/PhotoMaker@060b4fcb10b7
-        examples/newton_man/            4 images, one man
-        examples/scarletthead_woman/    4 images, one woman
-
-Two identities is what makes the negative control possible; four images per
-identity is what makes A,A distinguishable from A.
-
-WHAT COMBINE MEANS, from first-party sources
---------------------------------------------
-    stack   TencentARC/PhotoMaker@060b4fcb10b7 -- `input_id_images` is a LIST
-            and the ID embedding is stacked per image, so N and order are
-            both carried.
-    mean    Gourieff/Assets@606558ed08f16b99a29ef30b0df0b4622164c524
-            comfyui-reactor-node/workflows/ReActor--Build-Blended-Face-Model--v2.json
-            -- ReActorBuildFaceModel widgets [True, True, 'test', 'Mean'];
-            its Note node lists Mean / Median / Mode. An average discards
-            order and cannot distinguish A,A from A.
-
-The boundary here is the COMBINED VECTOR, before any generator: that is the
-last deterministic artifact, and it is where order and arity either survive or
-do not.
-"""
-
 from __future__ import annotations
 
 import hashlib
@@ -63,7 +26,7 @@ from compat.storage import precision
 
 CONSUMER_ID: Final[str] = "reference_sets"
 
-#: Vendor identity folders, at the pinned commit of the repo that ships them.
+
 IDENTITIES: Final[dict[str, tuple[str, ...]]] = {
     "newton_man": (
         "examples/newton_man/newton_0.jpg",
@@ -79,8 +42,7 @@ IDENTITIES: Final[dict[str, tuple[str, ...]]] = {
     ),
 }
 
-#: The set shapes under test. `A` and `B` index into one identity's images;
-#: `X` is the OTHER identity, the negative control.
+
 ARRANGEMENTS: Final[dict[str, tuple[str, ...]]] = {
     "single_A": ("A",),
     "pair_AB": ("A", "B"),
@@ -90,14 +52,12 @@ ARRANGEMENTS: Final[dict[str, tuple[str, ...]]] = {
     "mixed_AX": ("A", "X"),
 }
 
-#: Declared combiners this module knows how to execute.
+
 COMBINERS: Final[tuple[str, ...]] = ("stack", "mean")
 
 
 @dataclass(frozen=True)
 class Reference:
-    """One vendor reference image, by content."""
-
     identity: str
     path: str
     sha256: str
@@ -113,11 +73,6 @@ def _repo_root(consumer_id: str) -> tuple[Path, str]:
 
 
 def references() -> dict[str, list[Reference]]:
-    """The vendor's own images, extracted from the pinned commit to a cache.
-
-    Written outside the repository and never committed: these are third-party
-    media under the vendor's own terms.
-    """
 
     root, commit = _repo_root("photomaker_v2")
     cache = Path(__file__).resolve().parent.parent.parent.parent / "sg-vendor-fixtures" / "photomaker_v2"
@@ -129,9 +84,6 @@ def references() -> dict[str, list[Reference]]:
                 ["git", "-C", str(root), "cat-file", "blob", f"{commit}:{path}"], timeout=proc.LOCAL_SECONDS
             )
             if code != 0:
-                # A missing blob silently shrank an identity, and `_slots`
-                # then raised IndexError, which `run_case` recorded as
-                # UNSUPPORTED -- an absent-runtime verdict for an absent file.
                 note_skip(CONSUMER_ID, path, f"not at {commit[:12]}: {why.decode('utf-8', 'replace')[:120]}")
                 continue
             target = cache / Path(path).name
@@ -144,12 +96,6 @@ def references() -> dict[str, list[Reference]]:
 
 
 def embed(path: Path) -> Float32Array:
-    """One reference image to one raw 512-d vector, our producer's own.
-
-    The per-image vector is the unit a combiner combines. Which recognition
-    space it comes from is a separate question from how N of them are folded
-    together, and this module answers only the second.
-    """
     frame, _ = producer.decode(path)
     found = producer.analysis().get(frame)
     if not found:
@@ -159,12 +105,6 @@ def embed(path: Path) -> Float32Array:
 
 
 def combine(vectors: list[Float32Array], how: str) -> Float32Array:
-    """The declared combiners, executed.
-
-    `stack` keeps every vector and their order. `mean` averages them, which
-    is where order and duplication stop being recoverable -- and that is the
-    property these cases exist to demonstrate rather than assert.
-    """
     if how == "stack":
         return np.asarray(np.stack(vectors), dtype=np.float32)
     if how == "mean":
@@ -173,38 +113,6 @@ def combine(vectors: list[Float32Array], how: str) -> Float32Array:
 
 
 def _reversal_observable(how: str, arrangement: str) -> bool:
-    """Whether reversing THIS set is CLAIMED to change THIS combiner's output.
-
-    A stated rule, not a measurement. It was documented as "Measured, not
-    assumed" while taking two strings, touching no vector and never calling
-    `combine` -- and `measure` computed the real answer two screens down and
-    put it in a detail string.
-
-    It stays a rule on purpose. Deriving the expectation from the same vectors
-    the ablation then runs on would make the case unfalsifiable, which is the
-    defect `face_family.embedding_ablations` has. So the rule predicts, the
-    measurement observes, and `answer.corroboration` reds when they disagree.
-
-    Three cases where the naive "a stack is ordered, a mean is not" gives the
-    wrong prediction:
-
-    N == 1          reversal is the identity, so a stack cannot notice it.
-    all-equal set   `duplicate_AA` reverses to itself elementwise, so no
-                    combiner can notice. A stack of duplicates carries no
-                    order information at all.
-    mean, N >= 3    float32 addition is commutative but NOT associative:
-                    (a+b)+c and (c+b)+a differ in the last bits, which is what
-                    an exact_bytes case compares. So a mean IS order-sensitive
-                    from three references up, and storing "the centroid" is
-                    not well defined unless the summation order is fixed too.
-
-                    A worst absolute difference of 0.0 over differing
-                    elements is not sub-precision: widening float32 through
-                    int64 truncates every difference under 1 to zero
-                    (`compat/assertions/arrays.py`). The claim
-                    holds; the number quoted for it was destroyed, and is
-                    re-derivable now that the comparator widens by kind.
-    """
     slots = ARRANGEMENTS[arrangement]
     if len(slots) < 2 or len(set(slots)) == 1:
         return False
@@ -214,8 +122,6 @@ def _reversal_observable(how: str, arrangement: str) -> bool:
 
 
 class ReferenceSetRunner:
-    """Every arrangement, through every declared combiner."""
-
     consumer_id = CONSUMER_ID
 
     def __init__(self) -> None:
@@ -234,7 +140,6 @@ class ReferenceSetRunner:
         return self._vectors[reference.path]
 
     def _slots(self, arrangement: str) -> list[Reference]:
-        """Resolve A/B/C/X to actual vendor images."""
         primary, other = self._identity_pair()
         mine = self._references[primary]
         theirs = self._references[other]
@@ -252,9 +157,6 @@ class ReferenceSetRunner:
         return Fixture(
             name=f"refset_{arrangement}",
             path=";".join(one.path for one in chosen),
-            # The SET is the fixture, so its identity is the ordered digest of
-            # its members: A,B and B,A are different fixtures and must hash
-            # differently, or the order case could not exist.
             sha256=hashlib.sha256(joined).hexdigest(),
             kind="vendor_reference_set",
             note=f"{len(chosen)} vendor images: {', '.join(one.sha256[:8] for one in chosen)}",
@@ -282,16 +184,12 @@ class ReferenceSetRunner:
                     retained=("reference_vectors",),
                     ablations=(
                         Ablation(primitive="reference_vectors", expect_breaks=True),
-                        # Width, not presence: halving the float asks
-                        # how wide the column has to be.
                         Ablation(
                             primitive="reference_vectors",
                             swap="half_precision",
                             expect_breaks=True,
                             kind="substitution",
                         ),
-                        # Whether reversal is observable at all depends on the
-                        # combiner AND the set: see `_reversal_observable`.
                         Ablation(
                             primitive="reference_vectors",
                             swap="order_reversed",
@@ -332,14 +230,6 @@ class ReferenceSetRunner:
         return retained.without(ablation.primitive)
 
     def _reversal_observed(self, case: Case, retained: RetainedState) -> Measurement:
-        """Whether reversing this set ACTUALLY changed this combiner's output.
-
-        The fact `_reversal_observable` predicts. Recorded as a number so a
-        gate can read it: 1.0 observable, 0.0 not. It was already being
-        computed inside `set_semantics` and spent on a detail string, so the
-        suite held the measurement that would have falsified its own truth
-        table and never compared the two.
-        """
         how, arrangement = self._parts(case)
         held = np.asarray(retained.array("reference_vectors"), dtype=np.float32)
         folded = combine(list(held), how)
@@ -358,7 +248,6 @@ class ReferenceSetRunner:
         )
 
     def measure(self, case: Case, retained: RetainedState, name: str) -> Measurement:
-        """What this arrangement costs, and whether the combiner kept its shape."""
         if name == "reversal_observed":
             return self._reversal_observed(case, retained)
         if name != "set_semantics":

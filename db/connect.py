@@ -21,7 +21,7 @@ SCHEMA = pathlib.Path(__file__).resolve().parent / "schema.sql"
 #: Must equal the `PRAGMA user_version` stamped at the end of schema.sql
 #: (test_the_database_states_its_version). A bump needs a db/migrate.py step off
 #: the version left behind (test_every_version_left_behind_has_a_step_off_it).
-USER_VERSION = 46
+USER_VERSION = 47
 #: "SGLY" -- distinguishes our file from any other SQLite database.
 APPLICATION_ID = 0x53474C59
 #: Page cache per connection, in KiB. See `connect` for what it is worth.

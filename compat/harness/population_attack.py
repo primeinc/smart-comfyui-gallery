@@ -1,27 +1,3 @@
-"""Attack static discovery itself, before any count it produces is believed.
-
-`population.py` reported 102 variants over 947 edges, and 678 of those edges
-were manufactured: it attached every artifact literal found anywhere in a FILE
-to every loader call in that file, so one call site in `eva_clip/pretrained.py`
-was credited with fourteen different artifacts. A larger population is not a
-better proof, and an oracle that can invent an edge may not decide what must be
-proved.
-
-Six controls, each a real git repository built and committed here, discovered
-through the same entrypoint-rooted path production uses:
-
-    A deep_call_chain         a loader four calls down MUST be found
-    B unreachable_loader      an imported but never-called loader must NOT be required
-    C two_loaders_one_file    each loader binds ONLY its own artifact
-    D parameter_default       a default flowing into the call binds that artifact
-    E unrelated_slash_string  "images/output" is NOT a hub repository
-    F unresolved_dispatch     `config.model_name` is UNRESOLVED, never DEFAULT
-
-Every control states what the population MUST contain AND what it must not. A
-control asserting only presence would pass an algorithm that returns
-everything, which is the defect under attack.
-"""
-
 from __future__ import annotations
 
 import ast
@@ -37,9 +13,7 @@ from compat.harness import population
 
 ROOT: Final[Path] = Path(__file__).resolve().parent.parent
 
-#: What a control may raise without the harness itself being broken. Bare
-#: `Exception` would need a linter suppression, and this tree bans them; naming
-#: the failures keeps a defect in the control from reading as a finding.
+
 CONTROL_FAILURES: Final[tuple[type[BaseException], ...]] = (
     OSError,
     SyntaxError,
@@ -63,24 +37,12 @@ class Control:
 
 
 def _git(where: Path, *args: str) -> str:
-    """One git call in the fixture repository, argv bound before the call.
-
-    The list is a name rather than a literal at the call site, which is the
-    shape `provenance.py` and `citations.py` already use.
-    """
     argv: list[str] = ["git", "-C", str(where), *args]
     _, out, _ = proc.text(argv, timeout=proc.LOCAL_SECONDS)
     return out.strip()
 
 
 def fixture(refs_root: Path, files: dict[str, str]) -> str:
-    """A real committed repository at `refs_root/control/repo`, and its sha.
-
-    Real, not simulated: discovery reads `git cat-file blob <sha>:<path>`, so a
-    fixture that was only a directory would exercise a path production never
-    takes. Built where `provenance.clone_dir` will look for
-    `https://github.com/control/repo.git`.
-    """
     where = refs_root / "control" / "repo"
     where.mkdir(parents=True, exist_ok=True)
     for name, body in files.items():
@@ -97,7 +59,6 @@ def fixture(refs_root: Path, files: dict[str, str]) -> str:
 
 
 def discovered(root: Path, files: dict[str, str], entrypoint: str) -> list[dict[str, Any]]:
-    """Run production discovery over one fixture and return its edges."""
     refs_root = root / "refs"
     commit = fixture(refs_root, files)
     consumer = {
@@ -108,8 +69,7 @@ def discovered(root: Path, files: dict[str, str], entrypoint: str) -> list[dict[
         "entrypoint": entrypoint,
         "boundary": ["control_boundary"],
     }
-    # The caches are keyed on (clone, commit) and every fixture reuses one
-    # path, so a stale entry would answer for the previous control.
+
     population._TREES.clear()
     population._BLOBS.clear()
     return [vars(one) for one in population.discover(consumer, {}, refs_root)]
@@ -127,7 +87,6 @@ def _by_site(edges: list[dict[str, Any]]) -> dict[str, set[str]]:
 
 
 def control_deep_call_chain(root: Path) -> Control:
-    """A loader four calls down must be found. This kills the DEPTH=2 bug."""
     edges = discovered(
         root,
         {
@@ -144,7 +103,6 @@ def control_deep_call_chain(root: Path) -> Control:
 
 
 def control_unreachable_loader(root: Path) -> Control:
-    """An imported but never-called loader must NOT be required."""
     edges = discovered(
         root,
         {
@@ -160,9 +118,7 @@ def control_unreachable_loader(root: Path) -> Control:
     required = {
         str(one["artifact_logical_identity"]) for one in edges if str(one.get("discovery_status")) == "REQUIRED"
     }
-    # NON-VACUOUS: `required=[]` satisfies "the unreachable one is absent"
-    # against an algorithm that finds nothing, so the reachable loader must be
-    # REQUIRED here for the absence to mean anything.
+
     reached = "org/reached" in required
     excluded = "fake/unreachable" not in required
     return Control(
@@ -173,7 +129,6 @@ def control_unreachable_loader(root: Path) -> Control:
 
 
 def control_two_loaders_one_file(root: Path) -> Control:
-    """Each loader binds only its own artifact. No Cartesian product."""
     edges = discovered(
         root,
         {
@@ -196,7 +151,6 @@ def control_two_loaders_one_file(root: Path) -> Control:
 
 
 def control_parameter_default(root: Path) -> Control:
-    """A parameter default flowing into the call binds that artifact."""
     edges = discovered(
         root,
         {
@@ -209,9 +163,7 @@ def control_parameter_default(root: Path) -> Control:
         "entry.py::main",
     )
     found = "facebook/sam3" in _artifacts(edges)
-    # PROVE THE MECHANISM, not the presence. The same fixture with a different
-    # default must produce a different edge; if the artifact does not follow
-    # the default, it was not bound by dataflow.
+
     moved = discovered(
         root,
         {
@@ -232,13 +184,9 @@ def control_parameter_default(root: Path) -> Control:
 
 
 def control_unrelated_slash_string(root: Path) -> Control:
-    """`images/output` is a path, not a hub repository."""
     edges = discovered(
         root,
         {
-            # The slash string is PASSED TO A LOADER, so the hub rule decides
-            # it: `torch.load` is not a hub API, which makes `images/output` a
-            # path under every correct rule and a model only under guessing.
             "entry.py": (
                 "from transformers import AutoModel\n"
                 "import torch\n\n"
@@ -255,7 +203,6 @@ def control_unrelated_slash_string(root: Path) -> Control:
 
 
 def control_unresolved_dispatch(root: Path) -> Control:
-    """An unresolved selection is UNRESOLVED, never DEFAULT."""
     edges = discovered(
         root,
         {
@@ -276,11 +223,6 @@ def control_unresolved_dispatch(root: Path) -> Control:
 
 
 def control_relative_import(root: Path) -> Control:
-    """`from .helpers import used` must resolve against the importing package.
-
-    Read as a top-level `helpers` it resolves nowhere, and ID-V2V's whole ONNX
-    estimator stack sat behind four files that appeared to import nothing.
-    """
     edges = discovered(
         root,
         {
@@ -297,7 +239,6 @@ def control_relative_import(root: Path) -> Control:
 
 
 def control_src_layout(root: Path) -> Control:
-    """A module under `src/` must resolve. ID-V2V ships one."""
     edges = discovered(
         root,
         {
@@ -314,7 +255,6 @@ def control_src_layout(root: Path) -> Control:
 
 
 def control_shell_python_module(root: Path) -> Control:
-    """A shell entrypoint's `python -m` targets are the real entry roots."""
     edges = discovered(
         root,
         {
@@ -333,7 +273,6 @@ def control_shell_python_module(root: Path) -> Control:
 
 
 def control_imported_alias(root: Path) -> Control:
-    """`from x import y as z` then `z()` must follow to y."""
     edges = discovered(
         root,
         {
@@ -349,12 +288,6 @@ def control_imported_alias(root: Path) -> Control:
 
 
 def control_branch_specific_selection(root: Path) -> Control:
-    """Two mutually exclusive model loaders stay two visible variants.
-
-    Collapsing them to one default is how a whole embedding space disappears.
-    Both must be discovered, and both must read CONDITIONAL rather than
-    REQUIRED, because neither runs unconditionally.
-    """
     edges = discovered(
         root,
         {
@@ -383,23 +316,8 @@ def control_branch_specific_selection(root: Path) -> Control:
 
 
 def control_pinned_git_submodule(root: Path) -> Control:
-    """A loader inside a gitlink, at the commit the parent pins.
-
-    A submodule's contents are NOT in the parent tree: every path under it
-    reads as absent, so a scanner that stops at the boundary reports the
-    consumer as loading nothing. UMO reaches its entire pipeline through
-    `projects/UNO` this way and discovered zero loaders until the crossing
-    existed.
-
-    Two-sided. The parent pins an OLD commit of the inner repository, and the
-    inner repository then moves on to a different model. Discovery must read
-    the pinned commit -- finding `org/moved` would mean it read HEAD, which is
-    the silent-drift failure the pins exist to prevent.
-    """
     refs_root = root / "refs"
 
-    # The inner repository, committed twice: the pinned state, then a later
-    # state naming a different model.
     inner = refs_root / "control" / "inner"
     inner.mkdir(parents=True, exist_ok=True)
     (inner / "deep.py").write_text(
@@ -422,7 +340,6 @@ def control_pinned_git_submodule(root: Path) -> Control:
     _git(inner, "add", "-A")
     _git(inner, "commit", "-q", "-m", "moved on")
 
-    # The parent, with the inner repository as a real gitlink at `pinned`.
     where = refs_root / "control" / "repo"
     where.mkdir(parents=True, exist_ok=True)
     (where / "entry.py").write_text(
@@ -461,8 +378,6 @@ def control_pinned_git_submodule(root: Path) -> Control:
     )
 
 
-#: Paired with a label: a `Callable` carries no `__name__`, so a control that
-#: raises could not name itself.
 CONTROLS: Final[tuple[tuple[str, Callable[[Path], Control]], ...]] = (
     ("A deep_call_chain", control_deep_call_chain),
     ("B unreachable_loader", control_unreachable_loader),
@@ -488,13 +403,6 @@ def run_all() -> list[Control]:
             except CONTROL_FAILURES as problem:
                 out.append(Control(label, False, f"{type(problem).__name__}: {problem}"))
     return out
-
-
-# --- negative controls over the DISCOVERY MECHANISM -------------------------
-
-# A control that has never failed is not known to discriminate. Each mutation
-# below reintroduces one defect through the seam that encodes that decision,
-# and its control must go red and then green again on restore.
 
 
 @dataclass
@@ -523,34 +431,24 @@ def _run(control: Callable[[Path], Control]) -> Control:
 
 
 def _file_wide_arguments(node: ast.Call) -> list[ast.expr]:
-    """The defect: every string constant in the enclosing MODULE.
-
-    This is what credited one call site in `eva_clip/pretrained.py` with
-    fourteen artifacts, and what made 678 of 947 edges fan-out.
-    """
     del node
     return list(_MODULE_STRINGS)
 
 
 def _slash_is_a_model(text: str, loader: str) -> bool:
-    """The defect: `org/name` shape alone means a hub repository."""
     del loader
     return text.lower().endswith(population.ARTIFACT_SUFFIX) or text.count("/") == 1
 
 
 def _collapse_to_default(where: str) -> str:
-    """The defect: every unresolved selection becomes one invented default."""
     del where
     return "from_pretrained:DEFAULT"
 
 
-#: Held module-level so the file-wide mutation has something to hand back
-#: without re-parsing; populated by the mutation that installs it.
 _MODULE_STRINGS: list[ast.expr] = []
 
 
 def mutation_depth_cutoff() -> Mutation:
-    """Reintroduce `DEPTH = 2`. Control A must stop finding the deep loader."""
     population.MAX_EXPANSIONS = 2
     try:
         under = _run(control_deep_call_chain)
@@ -567,7 +465,6 @@ def mutation_depth_cutoff() -> Mutation:
 
 
 def mutation_file_wide_literals() -> Mutation:
-    """Bind every module string to every loader. Control C must see fan-out."""
     original = population.call_arguments
     _MODULE_STRINGS.clear()
     _MODULE_STRINGS.extend([ast.Constant(value="org/alpha"), ast.Constant(value="beta.pth")])
@@ -587,7 +484,6 @@ def mutation_file_wide_literals() -> Mutation:
 
 
 def mutation_slash_shape_hub() -> Mutation:
-    """Classify by slash shape. Control E must accept `images/output`."""
     original = population.is_artifact
     population.is_artifact = _slash_is_a_model
     try:
@@ -605,7 +501,6 @@ def mutation_slash_shape_hub() -> Mutation:
 
 
 def mutation_unresolved_becomes_default() -> Mutation:
-    """Collapse unresolved to DEFAULT. Control F must accept the fake."""
     original = population.unresolved_variant
     population.unresolved_variant = _collapse_to_default
     try:

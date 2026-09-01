@@ -1,19 +1,3 @@
-"""The union of what every available producer emits.
-
-`inventory.py` measures one pack. This measures every producer in the
-registry over the same corpus photographs and reports the UNION of their keys,
-because that union -- not one pack's nine keys -- is what a storage contract
-has to answer for.
-
-Output: `compat/generated/producer_union.json`.
-
-A producer that cannot run here is recorded with its reason and its keys are
-marked unknown rather than absent. The distinction matters: "this backend
-emits nothing" and "this backend did not run" are different facts, and folding
-them together is how a vocabulary quietly shrinks to whatever happened to be
-installed.
-"""
-
 from __future__ import annotations
 
 import json
@@ -22,13 +6,12 @@ from pathlib import Path
 from typing import Any, Final
 
 from compat.corpus.loaded import CORPUS_IMAGES, shots
+from compat.harness import failfast
 from compat.producers.registry import Availability, Emission, every_producer
 
 ROOT: Final[Path] = Path(__file__).resolve().parent.parent
 
-#: How many corpus photographs each producer sees. The same ones for every
-#: producer, or a key difference could be a photograph difference; and the same
-#: ones the CASE lanes use, or the byte total describes a different slice.
+
 PHOTOGRAPHS: Final[int] = CORPUS_IMAGES
 
 
@@ -74,9 +57,7 @@ def survey() -> dict[str, Any]:
             except (ImportError, ValueError, TypeError, RuntimeError, OSError) as problem:
                 row["ready"] = False
                 row["reason"] = f"{type(problem).__name__}: {problem}"
-                # Whatever it emitted before failing is discarded: keys left on
-                # the row would list fields for a producer reported not-ready,
-                # and merge a byte cost for an unfinished pass.
+
                 for key in row["keys"]:
                     if producer.name in emitters.get(key, []):
                         emitters[key].remove(producer.name)
@@ -103,6 +84,7 @@ def survey() -> dict[str, Any]:
 
 
 def main() -> int:
+    failfast.arm()
     out = survey()
     for row in out["producers"]:
         mark = "ok " if row["ready"] else "!! "

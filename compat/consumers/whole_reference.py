@@ -1,67 +1,3 @@
-"""Consumers that take the whole framed picture, not a face.
-
-Seven of the population never detect a face at all. They accept a reference
-image and condition on it, so the storage question flips: instead of asking
-which measurements survive, it asks whether the picture itself has to.
-
-WHAT THE REPLAY IS ALLOWED TO SEE
---------------------------------
-The retained picture is not the decoded frame. It is that frame after a
-lossless full-resolution encode and a decode back through this application's
-own reader (`compat/storage/derivatives.lossless`), because a store holds
-bytes and not objects -- and because a replay handed the same array the
-baseline was computed from can only ever reproduce itself, which is a fact
-about `numpy.copy` and not about storage. The encoded size is recorded, so the
-answer can state what the minimum state COSTS.
-
-Two substitutions carry the finding, and both are things this application can
-already produce:
-
-    face_patch_substituted
-                the bounded region the arcface family is proven to reproduce
-                from. The most a face-only store could ever offer.
-    preview_derivative_substituted
-                what the derived-image cache returns TODAY -- `vision/thumbs`
-                `preview`, longest side 1440, WebP at quality 82. The most the
-                store can serve without reopening the source file.
-
-Both are expected to break, and when they do they establish something no
-amount of face evidence could: neither a face-only store nor this
-application's existing derivatives can serve this half of the population.
-
-Vendor preprocessing is theirs, not ours:
-
-    uno, umo    `preprocess_ref` from uno/flux/pipeline.py, loaded out of the
-                pinned blob -- LANCZOS to the long edge, then a //16*16 centre
-                crop. 512 for a single reference, 320 for several. UMO adds
-                `ImageOps.exif_transpose` first; UNO's own inference.py does
-                not, which is a real difference between two consumers sharing
-                one function.
-    uso         its OWN `preprocess_ref`, uso/flux/pipeline.py:72-87 --
-                LANCZOS to a long edge, called from inference.py:147. This was
-                recorded as `rgb_only` until the pinned source was read, which
-                made every USO case compare a bare array against a resample
-                the consumer really performs.
-    instantcharacter
-                pipeline.py:379 squares the reference to its longer edge, then
-                :64-65 resamples to 384 and 768 for two encoder paths. Also
-                recorded as `rgb_only` until the source was read.
-    omnigen2    max_pixels 1024*1024 and max_input_image_side_length 1024,
-                applied per reference at pipeline_omnigen2.py:265 and computed
-                at image_processor.py:121-133, then floored to a multiple of
-                16. Recorded as `rgb_only` until the source was read.
-    qwen, anystory
-                `Image.open(...).convert("RGB")` and nothing else. Qwen is
-                worth naming: the file this manifest cites for it is prose
-                with no code, and the runnable entrypoint hands a PIL image
-                straight to the pipeline, so the vendor performs no reference
-                preprocessing whatsoever.
-
-Comparison is byte-exact on the RGB array. These transforms are deterministic
-resamples with no model in them, so anything short of equality is a real
-difference rather than numerical drift.
-"""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -85,16 +21,11 @@ from compat.harness import provenance
 from compat.producers import insightface_pass as producer
 from compat.storage import derivatives
 
-#: The face size used when substituting a patch for the whole picture. 336 is
-#: the largest crop any face-native consumer asks for, so the substitution is
-#: the most generous face-only state the store could offer.
 SUBSTITUTE_CROP: Final[int] = 336
 
 
 @dataclass(frozen=True)
 class WholeSetup:
-    """One vendor's reference preprocessing, as committed at its pin."""
-
     consumer_id: str
     commit: str
     repo: str
@@ -110,12 +41,6 @@ class WholeSetup:
 
 
 def _required(setup: dict[str, Any], consumer_id: str, field: str) -> str:
-    """A vendor_setup field that changes what the baseline computes.
-
-    Absent is an error, not a default. A default here is indistinguishable
-    from a declaration, so a row nobody has finished reading compares a bare
-    array against a resample the consumer really performs -- and passes.
-    """
     held = setup.get(field)
     if held is None:
         raise KeyError(f"{consumer_id}: vendor_setup declares no {field!r}, and it decides what the baseline computes")
@@ -134,14 +59,8 @@ def whole_setups() -> dict[str, WholeSetup]:
             commit=row["commit"],
             repo=row["repo"],
             cited=tuple(setup.get("cited", [])),
-            # `preprocess` decides what the baseline computes, so it is
-            # REQUIRED: a default of `rgb_only` makes an omitted field and a
-            # declared one the same input.
             preprocess=_required(setup, row["id"], "preprocess"),
             preprocess_path=str(setup.get("preprocess_path") or "uno/flux/pipeline.py"),
-            # `or` would turn a DECLARED 0 into 1 MP silently. `.get(k, d)`
-            # only defaults when the key is absent, which is the difference
-            # between "upstream imposes no cap" and "nobody looked yet".
             max_pixels=int(setup.get("max_pixels", 1024 * 1024)),
             max_side_length=int(setup.get("max_side_length", 1024)),
             vae_scale_factor=int(setup.get("vae_scale_factor", 16)),
@@ -153,13 +72,6 @@ def whole_setups() -> dict[str, WholeSetup]:
 
 
 def loaded_preprocess_ref(setup: WholeSetup) -> Any:
-    """That vendor's own `preprocess_ref`, executed from the pinned blob.
-
-    UMO imports UNO's rather than reimplementing it, so both resolve to one
-    source; USO ships its OWN copy at `uso/flux/pipeline.py`. `preprocess_from`
-    names the clone the bytes come out of and `preprocess_path` the file inside
-    it, so the evidence records the commit that actually supplied the code.
-    """
     from PIL import Image
 
     from compat.harness import pinned_source
@@ -182,29 +94,21 @@ _preprocessors: dict[tuple[str, str, str], Any] = {}
 
 
 def to_pil(bgr: UInt8Array) -> Any:
-    """A BGR frame as the RGB PIL image every one of these vendors opens."""
     from PIL import Image
 
     return Image.fromarray(bgr[:, :, ::-1])
 
 
 def vendor_preprocess(setup: WholeSetup, bgr: UInt8Array) -> UInt8Array:
-    """This vendor's reference preprocessing, over the pixels it is handed."""
     from PIL import ImageOps
 
     image = to_pil(bgr)
     if setup.exif_transpose:
-        # UMO does this and UNO does not, on the same preprocess_ref. Applied
-        # here for completeness: the arrays reaching this suite are already
-        # upright, so it is a no-op and recorded as one rather than skipped.
         image = ImageOps.exif_transpose(image)
 
     if setup.preprocess == "preprocess_ref":
         image = loaded_preprocess_ref(setup)(image, setup.long_size_single)
     elif setup.preprocess == "omnigen2_max_pixels":
-        # OmniGen2@18e6f9d5271b pipeline_omnigen2.py:265 preprocesses EVERY
-        # reference (max_pixels 1024*1024, side length 1024, :481-482);
-        # image_processor.py:121-133 never upscales.
         image = image.convert("RGB")
         width, height = image.size
         by_side = setup.max_side_length / max(width, height)
@@ -215,9 +119,6 @@ def vendor_preprocess(setup: WholeSetup, bgr: UInt8Array) -> UInt8Array:
         new_h = int(height * ratio) // step * step
         image = image.resize((new_w, new_h))
     elif setup.preprocess == "square_then_dual_resize":
-        # InstantCharacter@5f5c49a98ba1 pipeline.py:379 squares the reference
-        # to its LONGER edge, then :64-65 resamples it to 384 and 768. The
-        # boundary is the squared image, the last artifact before both.
         image = image.convert("RGB")
         longest = max(image.size)
         image = image.resize((longest, longest))
@@ -237,8 +138,6 @@ def _artifact(name: str, values: UInt8Array) -> Artifact:
 
 
 class WholeReferenceRunner:
-    """One whole-reference consumer, whole picture against face patch."""
-
     def __init__(self, setup: WholeSetup, found: list[Shot] | None = None) -> None:
         self.setup = setup
         self.consumer_id = setup.consumer_id
@@ -260,13 +159,9 @@ class WholeReferenceRunner:
                 retained=("whole_reference_image",),
                 ablations=(
                     Ablation(primitive="whole_reference_image", expect_breaks=True),
-                    # The finding. A face patch is the most a face-only store
-                    # could ever offer, and it must fail here.
                     Ablation(
                         primitive="whole_reference_image", swap="face_patch", expect_breaks=True, kind="substitution"
                     ),
-                    # And the store's EXISTING durable artifact, which is what
-                    # "without reopening the source" means for a picture.
                     Ablation(
                         primitive="whole_reference_image",
                         swap="preview_derivative",
@@ -284,18 +179,11 @@ class WholeReferenceRunner:
         return self._shots[case.boundary.partition("|")[2]]
 
     def _face_patch(self, shot: Shot) -> UInt8Array:
-        """The bounded region the face-native consumers are served from."""
         kps = np.asarray(our_face(shot).kps, dtype=np.float32)
         box = analytic_footprint(kps, SUBSTITUTE_CROP, shot.frame_wh)
         return shot.frame[box.y0 : box.y1, box.x0 : box.x1].copy()
 
     def _durable(self, shot: Shot) -> tuple[UInt8Array, int]:
-        """The picture off a lossless artifact, memoised per shot.
-
-        One encode per picture rather than one per case: seven consumers ask
-        the same question of the same frame, and a 36 MB frame encodes in
-        about a second.
-        """
         if shot.label not in self._durables:
             self._durables[shot.label] = derivatives.lossless(shot.frame)
         return self._durables[shot.label]
@@ -307,8 +195,7 @@ class WholeReferenceRunner:
 
     def retained_for(self, case: Case) -> RetainedState:
         pixels, encoded = self._durable(self._shot(case))
-        # The lossless artifact's own byte count, not the decoded array's.
-        # This is what a store would hold to return this picture.
+
         return RetainedState(whole_reference_image=pixels).priced({"whole_reference_image": encoded})
 
     def baseline(self, case: Case) -> Artifact:

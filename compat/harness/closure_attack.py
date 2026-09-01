@@ -1,27 +1,3 @@
-"""Attack the closure gate. A gate that has never gone red is not a gate.
-
-`closure.py` is the only command that may report green, so it is the only one
-whose failure modes matter absolutely. Seven mutations, each removing exactly
-one piece of proof, and each must turn the gate red:
-
-    attestation_removed      a weight loses its only attestation
-    attested_digest_altered  an attestation names bytes we do not have
-    source_proof_deleted     a consumer loses its declared source proof
-    producer_prevented       a consumer's producer never ran
-    stored_field_dropped     a durable read-back cell fails
-    input_skipped            one input produced no case
-    shard_killed             one shard did not complete
-
-Every mutation is applied to a GREEN fixture set and then reverted, and the
-gate must read green again after each revert. Both halves are necessary: a
-gate stuck on red passes every mutation and proves nothing, which is the same
-error as a gate stuck on green.
-
-The fixture is synthetic ON PURPOSE. The real tree is red, and a mutation
-applied to something already red cannot show that the mutation caused it. This
-never reads or writes `compat/generated/`.
-"""
-
 from __future__ import annotations
 
 import copy
@@ -39,7 +15,6 @@ CONSUMERS: Final[tuple[str, ...]] = ("alpha", "beta")
 
 
 def green_fixture() -> dict[str, Any]:
-    """One evidence set in which every closure condition holds."""
     return {
         "provenance.json": {
             "provenance_ok": True,

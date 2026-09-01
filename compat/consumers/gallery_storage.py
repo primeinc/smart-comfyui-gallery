@@ -1,25 +1,3 @@
-"""Storage candidates against the producer's own record, key by key.
-
-One case per (candidate, key, photograph). Keys come from
-`Observation.of(face)`, which iterates the producer's record; no field is
-named here.
-
-    BASELINE   the producer's value, its own dtype
-    REPLAY     the same key after the candidate's round trip
-
-`rtol` and `atol` are 0 and `exact_bytes` is False. Zero because the claim is
-conservation. Not `exact_bytes` because that path casts through int64
-(compat/assertions/arrays.py:78-81) and reports sub-unit float error as zero.
-
-A key the candidate does not return is retained as an empty array in the
-producer's dtype, so it compares as a shape divergence. An omitted key would
-raise inside `replay`, and `run_case` classifies a raise as UNSUPPORTED
-(compat/harness/run.py:130-140), which means absent runtime, not lost data.
-
-Tier is PRIMITIVE. This is not consumer-tier coverage: a key surviving storage
-says nothing about whether any consumer reproduces from it.
-"""
-
 from __future__ import annotations
 
 from typing import Final
@@ -35,19 +13,17 @@ from compat.contracts.case import (
     Tier,
 )
 from compat.corpus.loaded import Shot, our_face, shots
-from compat.storage import gallery_v45
+from compat.storage import gallery
 from compat.storage.contract import Observation, StorageContract, emitted_keys
 
 CONSUMER_ID: Final[str] = "gallery_storage"
 
 
 def candidates() -> tuple[StorageContract, ...]:
-    return gallery_v45.candidates()
+    return gallery.candidates()
 
 
 class GalleryStorageRunner:
-    """Every storage candidate, over every key the producer emitted."""
-
     consumer_id = CONSUMER_ID
 
     def __init__(self) -> None:
@@ -61,16 +37,11 @@ class GalleryStorageRunner:
         return candidate, key, self._shots[label]
 
     def emitted(self, shot: Shot) -> Observation:
-        """The producer's record for one photograph."""
         if shot.label not in self._emitted:
             self._emitted[shot.label] = Observation.of(our_face(shot))
         return self._emitted[shot.label]
 
     def stored(self, candidate: str, shot: Shot) -> Observation:
-        """One round trip per (candidate, photograph), shared by its keys.
-
-        Deterministic: fixed clock, fixed detection, fixed model ids.
-        """
         memo = (candidate, shot.label)
         if memo not in self._stored:
             self._stored[memo] = self._candidates[candidate].round_trip(our_face(shot), shot.frame, shot.fixture.sha256)
@@ -92,9 +63,6 @@ class GalleryStorageRunner:
                         atol=0.0,
                         exact_bytes=False,
                         retained=(key,),
-                        # No ablation: with one key retained, removing and
-                        # reading it back can only come out "broke". This lane
-                        # measures conservation, which the verdict carries.
                         measurements=("stored_form",),
                         note=candidate.described,
                     )
@@ -103,7 +71,6 @@ class GalleryStorageRunner:
         return tuple(out)
 
     def retained_for(self, case: Case) -> RetainedState:
-        """What the candidate gave back."""
         candidate, key, shot = self._parts(case)
         stored = self.stored(candidate, shot)
         held = stored.get(key)
@@ -121,23 +88,14 @@ class GalleryStorageRunner:
         )
 
     def baseline(self, case: Case) -> Artifact:
-        """The producer's value, before any candidate saw it."""
         _, key, shot = self._parts(case)
         return self._artifact(case.boundary, self.emitted(shot)[key])
 
     def replay(self, case: Case, retained: RetainedState) -> Artifact:
-        """The stored value. Nothing here opens the photograph."""
         _, key, _ = self._parts(case)
         return self._artifact(case.boundary, np.asarray(retained.array(key)))
 
     def measure(self, case: Case, retained: RetainedState, name: str) -> Measurement:
-        """dtype and shape as the candidate returned them.
-
-        A value that survives numerically in another width has still changed:
-        ReActor builds `torch.tensor(face["age"])`
-        (Gourieff/comfyui-reactor-node reactor_utils.py::save_face_model), so
-        the dtype is part of the file it writes.
-        """
         if name != "stored_form":
             raise KeyError(f"{CONSUMER_ID} does not measure {name!r}")
         _, key, shot = self._parts(case)
@@ -153,11 +111,6 @@ class GalleryStorageRunner:
 
 
 def unlisted_keys() -> frozenset[str]:
-    """Producer keys the generated inventory does not record.
-
-    Non-empty means `compat/generated/producer_inventory.json` is stale
-    against the live pass.
-    """
     recorded = emitted_keys()
     if not recorded:
         return frozenset()

@@ -1,16 +1,3 @@
-"""Run the real pass over real photographs and write down what came out.
-
-This is the observation half of the storage question. The consumer lane asks
-what downstream code needs; this asks what the producer actually hands over,
-which is the set anything downstream could possibly be served from.
-
-The corpus is sampled rather than exhausted -- every identity, both capture
-paths, on CPU -- because the inventory is about the SHAPE of what a pass
-emits, and 105 images of the same shapes cost twenty minutes to say the same
-thing. The sample is deterministic and the images are named by digest, so the
-evidence points at exactly which files produced it.
-"""
-
 from __future__ import annotations
 
 import json
@@ -19,24 +6,17 @@ from pathlib import Path
 from typing import Any
 
 from compat.corpus import index as corpus
+from compat.harness import failfast
 from compat.producers import insightface_pass as producer
 
 HERE: Path = Path(__file__).resolve().parent
 GENERATED: Path = HERE.parent / "generated"
 
-#: Images per identity, per capture role. A WIDER SLICE than
-#: `corpus.loaded.CORPUS_IMAGES` on purpose, because this lane answers which
-#: keys the producer ever emits; the slice is recorded in the artifact.
+
 PER_ROLE: int = 2
 
 
 def sample(samples: list[corpus.Sample], per_role: int = PER_ROLE) -> list[corpus.Sample]:
-    """A deterministic slice: `per_role` of each role, for every identity.
-
-    Sorted by digest rather than by filename so the choice does not move when
-    a directory listing does, and so the same slice comes back on any machine
-    holding the same corpus.
-    """
     buckets: dict[tuple[str, str], list[corpus.Sample]] = {}
     for one in samples:
         buckets.setdefault((one.identity, one.role), []).append(one)
@@ -63,8 +43,6 @@ def run(per_role: int = PER_ROLE) -> dict[str, Any]:
     worst_normed = max((face.normed_max_abs_diff or 0.0) for face in faces) if faces else 0.0
 
     return {
-        # The photographs this inventory saw, by content: three lanes select a
-        # corpus slice and this one does not share the others' selector.
         "corpus_slice": {
             "per_role": per_role,
             "images": len(chosen),
@@ -96,9 +74,6 @@ def run(per_role: int = PER_ROLE) -> dict[str, Any]:
                 "rule": "raw / linalg.norm(raw), float32",
             }
         },
-        # `seconds` is dropped for the same reason the case evidence drops it:
-        # a fact about this machine, not the observation, and the only thing
-        # that changes between consecutive runs.
         "images": [{key: value for key, value in asdict(one).items() if key != "seconds"} for one in reports],
     }
 
@@ -130,6 +105,7 @@ def report(out: dict[str, Any]) -> None:
 
 
 def main() -> int:
+    failfast.arm()
     out = run()
     report(out)
 

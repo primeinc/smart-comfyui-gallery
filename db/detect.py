@@ -8,18 +8,20 @@ pair-F1 from 0.946 to 1.000. Leaving orientation to each caller means the
 next caller forgets, so the rule is structural: model-facing code does not
 open image files, it calls this.
 
-The backend contract is `detect(PIL.Image) -> list[FaceDetection]` with
-normalized boxes (vision/faces.py:118-139): `bbox` (x, y, w, h) in
-0..1, `det_score` in 0..1, `embedding` float32 or None, `landmarks` a list
-of (x, y) pairs, `attributes` an optional dict of whatever else the model
-produced -- open, not a fixed set, and recorded whole.
+The backend contract is `detect(PIL.Image) -> list[FaceDetection]`: `native`
+is the producer's COMPLETE output, frozen whole by `vision/facestore.py` at
+the producer boundary -- captured by iterating the producer's own record,
+never by naming fields -- and it is the canonical thing this module
+persists. `bbox`/`det_score`/`embedding`/`landmarks`/`attributes` are the
+backend's normalized projections of that record for the application's own
+browsing and clustering.
 
 A detection pass is the expensive thing in this application and the bytes
 it produces are not: antelopev2 loads a 143 MB session per worker to derive
 head pose and two dense landmark sets, and what it emits is kilobytes per
 face to keep. Anything dropped here can only be recovered by reading the whole
 library again, and only while the originals are still on disk. So the rule
-is: whatever a backend emits is persisted, and columns are promotions out
+is: the producer's record is persisted whole, and columns are promotions out
 of that record rather than a filter in front of it.
 """
 
@@ -102,12 +104,12 @@ def harvest(
             # a reader multiplies by the frame size, and float32 loses up to
             # 2.4e-4 source pixels (compat/consumers/gallery_storage.py).
             record["landmarks"] = np.asarray(found.landmarks, dtype=np.float64).tobytes()
-        # Everything the backend said, then promotions out of it. Not an
-        # allowlist: what a backend emits and nobody thought to name is
-        # recoverable only by reading the whole library again.
+        # The canonical record first, then promotions out of it -- never an
+        # allowlist. Attribute reads, not getattr defaults: tolerating a
+        # detection without the fields hides exactly the omission that matters.
+        if found.native is not None:
+            record["native"] = found.native
         traits = found.attributes or {}
-        if traits:
-            record["attributes"] = traits
         # Promoted because a facet filters on them and JSON extraction is not an
         # index. `pose` unpacks by key: the source array is [pitch, yaw, roll]
         # and the columns are yaw-first, so a positional copy swaps two of three.

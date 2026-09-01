@@ -1,24 +1,3 @@
-"""Check the pins before anything claims to have proved a replay.
-
-A commit hash in a manifest is an assertion until something executes against
-it. This resolves every consumer and upstream in `manifest.toml` against the
-clone on disk and answers four questions per row:
-
-    is the clone at the commit the manifest names?
-    is its working tree clean, so that commit describes what is actually there?
-    does every declared path exist AT THAT COMMIT -- `git show <sha>:<path>`,
-        not at HEAD, not on disk?
-    what are the bytes of each declared path at that commit?
-
-The last one is load-bearing. A path that exists at HEAD says nothing about
-the commit the evidence claims, and a reviewer recomputing
-`git show <sha>:<path>` has to land on the same hash recorded here or the
-evidence is wrong.
-
-Refs are read-only mirrors: nothing here fetches, checks out, or writes to
-them. A harness that repairs its own inputs cannot report on them.
-"""
-
 from __future__ import annotations
 
 import ast
@@ -46,20 +25,6 @@ MANIFEST: Path = ROOT / "manifest.toml"
 
 @dataclass
 class PathProof:
-    """One declared path, as it exists at the pinned commit.
-
-    `symbol_present` is the part that makes this a contract rather than a
-    locator. A path that exists proves only that somebody typed a filename;
-    the claim being recorded is that a NAMED symbol is defined in those bytes,
-    so the symbol is resolved out of the blob's AST.
-
-    `locator_only` marks a row that cannot be checked that way -- a markdown
-    quickstart, or a script whose contract is its `__main__` body. Those are
-    honest locators and are reported as such; they are never counted as a
-    verified symbol, because a harness that grades its own weakest rows as
-    passes is the failure it exists to prevent.
-    """
-
     path: str
     symbol: str
     present: bool
@@ -71,8 +36,6 @@ class PathProof:
 
 @dataclass
 class RepoProof:
-    """One upstream repository, checked against its pin."""
-
     key: str
     repo: str
     pinned_commit: str
@@ -91,12 +54,6 @@ class RepoProof:
 
 
 def _git(where: Path | None, *args: str) -> tuple[int, str]:
-    """One git call, with stderr kept rather than dropped.
-
-    stdout and stderr are joined because a probe whose failure reports nothing
-    reads as an empty result, and that is how a broken check becomes a passing
-    one. `check=False` because a non-zero exit is data here, not an exception.
-    """
     argv: list[str] = ["git"]
     if where is not None:
         argv += ["-C", str(where)]
@@ -108,14 +65,6 @@ def _git(where: Path | None, *args: str) -> tuple[int, str]:
 
 
 def _git_bytes(where: Path, *args: str) -> tuple[int, bytes]:
-    """One git call whose output is bytes, untouched.
-
-    Separate from `_git` on purpose. That one decodes with universal newlines
-    and STRIPS -- fine for a status line, wrong for a blob: stripping removes
-    the trailing newline that every real file ends with, so a byte comparison
-    against an installed file would fail on every row and the check would read
-    as "nothing matches its pin" rather than as its own bug.
-    """
     argv: list[str] = ["git", "-C", str(where), *args]
     code, out, err = proc.run(argv, timeout=proc.LOCAL_SECONDS)
     if code == proc.TIMED_OUT:
@@ -124,15 +73,6 @@ def _git_bytes(where: Path, *args: str) -> tuple[int, bytes]:
 
 
 def defines_symbol(source: str, symbol: str) -> bool:
-    """Is `symbol` defined in this Python source, at any nesting depth?
-
-    Parsed with `ast`, never matched textually. A substring search finds the
-    name in a comment, a docstring, an import, or a call site, and would
-    happily confirm a symbol the file does not define -- which is the exact
-    class of false pass this whole harness exists to refuse.
-
-    `A.b` walks: the class must be defined, and the method inside it.
-    """
     try:
         tree = ast.parse(source)
     except SyntaxError:
@@ -143,8 +83,7 @@ def defines_symbol(source: str, symbol: str) -> bool:
         for node in body:
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and node.name == head:
                 return not rest or defined_in(node.body, rest)
-            # Module-level constants and assignments are contracts too: a
-            # template array is as load-bearing as the function using it.
+
             if not rest and isinstance(node, (ast.Assign, ast.AnnAssign)):
                 targets = node.targets if isinstance(node, ast.Assign) else [node.target]
                 if any(isinstance(one, ast.Name) and one.id == head for one in targets):
@@ -155,22 +94,12 @@ def defines_symbol(source: str, symbol: str) -> bool:
 
 
 def clone_dir(refs_root: Path, repo_url: str) -> Path:
-    """`https://github.com/<org>/<name>.git` -> `<refs>/<org>/<name>`.
-
-    The mirror is org-scoped, so a flat `<refs>/<name>` lookup finds nothing
-    and would be reported as an absent repository rather than a bad guess.
-    """
     tail: str = repo_url.removeprefix("https://github.com/").removesuffix(".git")
     org, _, name = tail.partition("/")
     return refs_root / org / name
 
 
 def declared_paths(entry: dict[str, Any]) -> list[tuple[str, str]]:
-    """Every `path::symbol` a row declares, entrypoint first.
-
-    `read` and `also_read` carry the same spelling, so a reviewer sampling any
-    claim in the manifest lands on a row this checked.
-    """
     out: list[tuple[str, str]] = []
     spellings: list[Any] = [entry.get("entrypoint"), *entry.get("also_read", []), *entry.get("read", [])]
     for spelling in spellings:
@@ -189,7 +118,6 @@ def verify_repo(
     *,
     paths_from: dict[str, Any] | None = None,
 ) -> RepoProof:
-    """One repository against its pin. Never fetches; never checks out."""
     repo_url: str = entry["repo"]
     pinned: str = entry["commit"]
     where: Path = clone_dir(refs_root, repo_url)
@@ -218,8 +146,6 @@ def verify_repo(
         if lines:
             proof.failures.append(f"{len(lines)} uncommitted path(s): the commit does not describe the tree")
 
-    # Paths are read AT THE PINNED COMMIT, not from the working tree: a file
-    # deleted upstream but still sitting on disk would otherwise verify.
     source: dict[str, Any] = paths_from if paths_from is not None else entry
     for path, symbol in declared_paths(source):
         code, blob = _git(where, "show", f"{pinned}:{path}")
@@ -229,9 +155,6 @@ def verify_repo(
             continue
         digest: str = hashlib.sha256(blob.encode("utf-8", errors="surrogateescape")).hexdigest()
 
-        # Only Python carries a checkable symbol. A markdown quickstart or a
-        # `__main__` body is a locator: recorded, hashed, and NEVER counted as
-        # a verified contract.
         locator = not path.endswith(".py") or symbol in {"", "__main__", "quickstart", "preprocess"}
         found: bool | None = None
         if not locator:
@@ -253,9 +176,6 @@ def verify_repo(
     return proof
 
 
-#: Packages whose version changes results and whose source CAN be hashed the
-#: ordinary way, so they are recorded by version here and pinned by blob in
-#: `[[runtimes]]` where a consumer actually executes them.
 LIBRARIES: tuple[str, ...] = (
     "onnx",
     "numpy",
@@ -268,33 +188,11 @@ LIBRARIES: tuple[str, ...] = (
     "face-alignment",
 )
 
-#: The modules whose arithmetic decides pixel values, by the version the
-#: IMPORT resolves to rather than by a distribution name: two distributions can
-#: supply one module, so metadata describes what was installed.
+
 IMPORTED: tuple[str, ...] = ("cv2", "numpy", "skimage", "torch", "PIL")
 
 
 def backend_identity() -> dict[str, Any]:
-    """What computed the numbers, as opposed to what code was cited.
-
-    onnxruntime is a BACKEND, not a library: the arithmetic lives in compiled
-    kernels, so hashing a `.py` file certifies nothing about what produced an
-    embedding. It reports its own identity instead, and that is the only claim
-    that can honestly be made about it --
-
-        get_version_string()      the binary's version
-        get_build_info()          its git-commit-id and build type
-        get_available_providers() which engines this machine offers
-        get_device()              what the build was compiled to target
-
-    documented at onnxruntime `docs/python/api_summary.rst`, "Providers" and
-    "Build, Version". `get_build_info` is preferred over the wheel's metadata
-    version deliberately: metadata describes the package that was installed,
-    build info describes the binary that will run, and those can disagree.
-
-    The distinction matters because a reviewer comparing a float recorded here
-    against their own needs to know the engine, not the citation.
-    """
     out: dict[str, Any] = {}
     for name in LIBRARIES:
         try:
@@ -302,7 +200,6 @@ def backend_identity() -> dict[str, Any]:
         except importlib.metadata.PackageNotFoundError:
             out[name] = None
 
-    # What the IMPORT resolves to, which is what actually runs.
     imported: dict[str, Any] = {}
     for name in IMPORTED:
         try:
@@ -312,8 +209,6 @@ def backend_identity() -> dict[str, Any]:
             continue
         imported[name] = {
             "version": str(getattr(module, "__version__", "present")),
-            # Where it loaded FROM: two distributions can supply one module
-            # name, and the path is what says which won.
             "file": str(getattr(module, "__file__", "?")),
         }
     out["imported"] = imported
@@ -327,9 +222,6 @@ def backend_identity() -> dict[str, Any]:
         engine["available_providers"] = list(onnxruntime.get_available_providers())
         engine["device"] = onnxruntime.get_device()
     except (ImportError, OSError, AttributeError) as why:
-        # A DLL that will not load must not read as "no providers": one is a
-        # broken environment, the other a CPU box, and the difference is the
-        # reason every downstream UNSUPPORTED case reports.
         engine["error"] = f"{type(why).__name__}: {why}"
     out["onnxruntime"] = engine
     return out
@@ -344,17 +236,6 @@ def digest_file(path: Path) -> str:
 
 
 def _weight_root(row: dict[str, Any]) -> Path:
-    """Where a weight actually lives, resolved the way the run resolves it.
-
-    A row may name `root` outright, or name `root_package` -- the importable
-    package that owns the weights -- plus `root_subdir`.
-
-    The second spelling exists because the first drifted. `facexlib`'s weights
-    were declared under `.venv/...` while the suite runs from `.venv-compat`,
-    so the manifest named a directory no interpreter in this project uses and
-    the rows read ABSENT. A path typed into a manifest is a claim about an
-    environment; asking the interpreter removes the gap between the two.
-    """
     package = row.get("root_package")
     if package:
         found = importlib.util.find_spec(package)
@@ -364,25 +245,10 @@ def _weight_root(row: dict[str, Any]) -> Path:
     return Path(row["root"])
 
 
-#: Where the vendors' own checkpoints live. The same root
-#: `compat/vendor/acceptance.py` loads them from, named here so provenance can
-#: check the files that lane executes against.
 VENDOR_ROOT: Final[Path] = ROOT.parent.parent / "sg-vendor-fixtures"
 
 
 def vendor_weight_identity(manifest: dict[str, Any]) -> list[dict[str, Any]]:
-    """The vendors' own checkpoints, by content, against what was recorded.
-
-    30 rows carried a sha256 and a byte count and no code read any of them.
-    The acceptance lane loads exactly these files and reports `ran = True`
-    when the call did not raise, so a checkpoint swapped for another of the
-    same shape would have produced a different boundary under an unchanged
-    stamp.
-
-    ABSENT is reported and is not a failure -- most of these are the reason a
-    consumer is `not_attempted` on this machine. PRESENT with the wrong digest
-    is a failure.
-    """
     out: list[dict[str, Any]] = []
     for row in manifest.get("vendor_weights", []):
         where = VENDOR_ROOT / row["file"]
@@ -400,48 +266,38 @@ def vendor_weight_identity(manifest: dict[str, Any]) -> list[dict[str, Any]]:
                 "recorded_sha256": recorded,
                 "bytes": size,
                 "recorded_bytes": row.get("bytes"),
-                # None when there is nothing to compare: the file is not here.
                 "matches": None if not found else (measured == recorded and size == row.get("bytes")),
             }
         )
     return out
 
 
-#: What a weight row resolved to this run. Four states, and the three that are
-#: not VERIFIED say WHICH question is open rather than sharing one word.
 WEIGHT_VERIFIED: Final[str] = "VERIFIED"
 WEIGHT_UNATTESTED: Final[str] = "UNATTESTED"
 WEIGHT_MISMATCH: Final[str] = "MISMATCH"
 WEIGHT_MISSING: Final[str] = "MISSING"
 
-#: A weight whose attestations disagree WITH EACH OTHER, which is a question
-#: about which source to believe. MISMATCH is the other one: an attestation
-#: disagreeing with our local bytes.
+
 WEIGHT_CONTRADICTED: Final[str] = "CONTRADICTED"
 
-#: Bytes an independent immutable source agrees with, from nobody who can
-#: speak for the vendor. A mirror establishes that those bytes exist under
-#: that name, never that they are the bytes the vendor released.
+
 WEIGHT_CORROBORATED: Final[str] = "CORROBORATED"
 
-#: Authorities that can speak for what the vendor shipped. A mirror cannot.
+
 CANONICAL_AUTHORITY: Final[frozenset[str]] = frozenset({"canonical_vendor", "first_party_consumer_snapshot"})
 
-#: DERIVED by the resolvers, never declared. The manifest carries locators
-#: only, so an attestation cannot assert its own truth by naming a repository
-#: nobody has and supplying the digest it wants.
+
 EVIDENCE_PROVEN: Final[str] = "PROVEN"
 EVIDENCE_OBSERVED: Final[str] = "OBSERVED"
 EVIDENCE_UNRESOLVABLE: Final[str] = "UNRESOLVABLE"
 
-#: git-lfs pointer body: the content digest of a file the clone does not hold.
+
 _LFS_OID = re.compile(r"^oid sha256:([0-9a-f]{64})$", re.MULTILINE)
 _LFS_SIZE = re.compile(r"^size (\d+)$", re.MULTILINE)
 _SHA256 = re.compile(r"\b([0-9a-f]{64})\b")
 
 
 def _blob_at(where: Path, revision: str, path: str) -> str | None:
-    """One file's text at one revision, or None if either is absent here."""
     if not where.is_dir():
         return None
     code, out = _git(where, "show", f"{revision}:{path}")
@@ -449,12 +305,6 @@ def _blob_at(where: Path, revision: str, path: str) -> str | None:
 
 
 def _resolve_huggingface_snapshot(one: dict[str, Any], refs_root: Path) -> dict[str, Any]:
-    """Read the LFS pointer at revision:path and take its oid as the digest.
-
-    The pointer IS the content address: a Hugging Face revision is immutable
-    and the pointer names the bytes without holding them, so a clone with
-    smudge disabled is enough to attest a 260 MB weight.
-    """
     where = refs_root / one["repo_id"]
     body = _blob_at(where, one["revision"], one["path"])
     if body is None:
@@ -479,12 +329,6 @@ def _resolve_huggingface_snapshot(one: dict[str, Any], refs_root: Path) -> dict[
 
 
 def _resolve_git_published_checksum(one: dict[str, Any], refs_root: Path) -> dict[str, Any]:
-    """Read the checksum out of a pinned git blob, at the cited line.
-
-    `path` is `<file>:<line>`. The digest is taken from THAT line, so a
-    citation pointing at a line which does not carry one is unresolvable
-    rather than quietly satisfied by a digest elsewhere in the file.
-    """
     where = refs_root / one["repo_id"]
     file, _, line_no = one["path"].partition(":")
     revision = one["revision"] or "HEAD"
@@ -505,30 +349,23 @@ def _resolve_git_published_checksum(one: dict[str, Any], refs_root: Path) -> dic
     found = _SHA256.search(lines[int(line_no) - 1])
     if not found:
         return {"evidence": EVIDENCE_UNRESOLVABLE, "resolved_sha256": "", "detail": f"{one['path']} carries no sha256"}
-    # An unpinned revision is a moving target even when it resolves today.
+
     evidence = EVIDENCE_PROVEN if one["revision"] else EVIDENCE_OBSERVED
     return {"evidence": evidence, "resolved_sha256": found.group(1), "detail": f"read from {one['path']}"}
 
 
-#: GitHub's release-asset API, and the seconds one call may take. A 175 MB
-#: body over a slow link needs more than the git timeout.
 _GITHUB_API: Final[str] = "https://api.github.com"
 ASSET_SECONDS: float = 900.0
 
 
 def _release_asset_cache(refs_root: Path) -> Path:
-    """Where downloaded release assets live. A mirror, like the clones."""
     return refs_root / "_release_assets"
 
 
-#: Hosts this resolver will fetch from. A `browser_download_url` is a field in
-#: a response, so it is data: an API that returned `file:///` or a redirect to
-#: somewhere else would otherwise be hashed and reported as the vendor's bytes.
 ASSET_HOSTS: Final[frozenset[str]] = frozenset({"api.github.com", "github.com", "objects.githubusercontent.com"})
 
 
 def _checked(url: str) -> str:
-    """The url, if it is https on a host this resolver trusts."""
     parsed = urllib.parse.urlsplit(url)
     if parsed.scheme != "https" or parsed.hostname not in ASSET_HOSTS:
         raise ValueError(f"refusing to fetch {url!r}: not https on {sorted(ASSET_HOSTS)}")
@@ -536,12 +373,6 @@ def _checked(url: str) -> str:
 
 
 def _read_json(url: str) -> Any:
-    """One unauthenticated GitHub API read.
-
-    Unauthenticated on purpose: these are public releases, and a gate that
-    only resolves for someone holding a token reports a different verdict per
-    operator. The rate limit is 60/hour against three cached rows.
-    """
     answer = requests.get(
         _checked(url),
         headers={"Accept": "application/vnd.github+json", "User-Agent": "compat"},
@@ -552,11 +383,6 @@ def _read_json(url: str) -> Any:
 
 
 def _fetch_asset(url: str, into: Path) -> None:
-    """Stream one asset to disk. Never held whole in memory.
-
-    Written to `.partial` and renamed, so an interrupted download cannot leave
-    a short file that the next run finds, hashes and reports as the vendor's.
-    """
     into.parent.mkdir(parents=True, exist_ok=True)
     partial = into.with_suffix(into.suffix + ".partial")
     with requests.get(
@@ -573,25 +399,6 @@ def _fetch_asset(url: str, into: Path) -> None:
 
 
 def _resolve_github_release_asset(one: dict[str, Any], refs_root: Path) -> dict[str, Any]:
-    """Resolve a release asset to the digest of the bytes the VENDOR serves.
-
-    A vendor that publishes no checksum still publishes bytes, and this reads
-    them rather than giving up: the asset is fetched once into a local mirror
-    and hashed there. The digest is DERIVED from the canonical source, so it
-    carries the same standing as an lfs oid and the weight can reach VERIFIED
-    on the vendor's own authority instead of a third party's mirror.
-
-    A release asset is mutable where a Hugging Face revision is not, so the
-    locator pins the two fields that witness a replacement:
-
-        revision = "<asset_id>@<updated_at>"
-
-    Both are re-read from the API on every run and both must still match. An
-    asset id is never reused, and re-uploading under the same name moves
-    `updated_at` -- so a swap fails the gate rather than being hashed as if it
-    were the original. `size` is checked too, which catches a truncated
-    download that would otherwise hash cleanly to the wrong answer.
-    """
     tag, _, name = one["path"].rpartition("/")
     tag = tag.rsplit("/", 1)[-1]
     pinned_id, _, pinned_stamp = one["revision"].partition("@")
@@ -669,13 +476,6 @@ RESOLVERS: Final[dict[str, Any]] = {
 
 
 def _attestations(row: dict[str, Any], refs_root: Path) -> list[dict[str, Any]]:
-    """Every external artifact this row LOCATES, resolved against the source.
-
-    The manifest supplies the locator -- source class, repository, revision,
-    path, authority -- and nothing else. The digest and the evidence class are
-    read out of the artifact the locator names, so an attestation that cites
-    a repository nobody has cannot assert its own truth.
-    """
     out: list[dict[str, Any]] = []
     for one in row.get("attestations", []):
         located = {
@@ -701,13 +501,6 @@ def _attestations(row: dict[str, Any], refs_root: Path) -> list[dict[str, Any]]:
 
 
 def weight_state(measured: str | None, found: bool, attestations: list[dict[str, Any]]) -> str:
-    """Which state this weight is in, from RESOLVED attestations only.
-
-    Order matters. Attestations that disagree with each other are
-    CONTRADICTED and are reported as that rather than resolved by preferring
-    one source, because choosing between them is an authority question this
-    function has no standing to answer.
-    """
     if not found or measured is None:
         return WEIGHT_MISSING
     resolved = [one for one in attestations if one.get("resolved_sha256")]
@@ -719,29 +512,13 @@ def weight_state(measured: str | None, found: bool, attestations: list[dict[str,
     proven = [one for one in resolved if one["evidence"] == EVIDENCE_PROVEN]
     if not proven:
         return WEIGHT_UNATTESTED
-    # AUTHORITY decides, not just immutability. An immutable revision of a
-    # third-party mirror proves the bytes exist under that name at that
-    # revision; it does not prove the vendor shipped them.
+
     if any(one["authority"] in CANONICAL_AUTHORITY for one in proven):
         return WEIGHT_VERIFIED
     return WEIGHT_CORROBORATED
 
 
 def weight_identity(manifest: dict[str, Any], refs_root: Path) -> list[dict[str, Any]]:
-    """The model files themselves, by content, against external attestation.
-
-    The largest single determinant of every number in this evidence is not a
-    line of Python: it is `glintr100.onnx`. A suite that pins twenty
-    repositories to the commit and leaves the weights unnamed can reproduce
-    its own code exactly, produce different embeddings on the next machine,
-    and have nothing in the record able to say why.
-
-    `published_sha256` was a single nullable digest, and the gate read it
-    through `is not False` -- so a weight nothing published passed. It is
-    replaced by typed attestations and a four-state verdict: a row says
-    whether it is unattested, contradicted, or absent, and those are three
-    different pieces of work.
-    """
     out: list[dict[str, Any]] = []
     for row in manifest.get("weights", []):
         where = _weight_root(row) / row["file"]
@@ -765,16 +542,6 @@ def weight_identity(manifest: dict[str, Any], refs_root: Path) -> list[dict[str,
 
 
 def runtime_identity() -> dict[str, Any]:
-    """What ran this. Evidence from another machine is a different claim.
-
-    `platform.platform()` carries the Windows BUILD number, so an OS update
-    moves this string and every recorded run reads as taken elsewhere. That is
-    deliberate and it is the coarse answer, not an oversight: the evidence
-    here is byte-exactness of ONNX Runtime output, and which kernel that
-    picks is a function of the driver and the OS underneath it. A digest that
-    survived an OS update would be claiming those bytes are portable across a
-    boundary nothing here has tested them across.
-    """
     return {
         "python": sys.version.split()[0],
         "implementation": platform.python_implementation(),
@@ -791,20 +558,6 @@ def load_manifest(path: Path = MANIFEST) -> dict[str, Any]:
 
 @dataclass
 class RuntimeProof:
-    """An INSTALLED package's bytes against the commit the manifest pins.
-
-    Some consumers run from a wheel rather than from the clone -- facexlib's
-    detector, ConsisID's entrypoint inside diffusers -- and a wheel is not
-    automatically the commit it claims. Without this, the suite could cite a
-    commit and execute something else, which is the most expensive kind of
-    wrong evidence: it looks fully sourced.
-
-    Line endings are normalised before hashing. A wheel built on one platform
-    and a blob read through git on another can differ by nothing but CRLF,
-    and reporting that as a divergence would train everyone to ignore the
-    check.
-    """
-
     package: str
     path: str
     pinned_commit: str
@@ -816,7 +569,6 @@ class RuntimeProof:
 
 
 def installed_module_root(package: str) -> Path | None:
-    """Where an installed package's own directory lives, or None."""
     spec = importlib.util.find_spec(package)
     if spec is None or not spec.submodule_search_locations:
         return None
@@ -824,13 +576,6 @@ def installed_module_root(package: str) -> Path | None:
 
 
 def verify_runtime(package: str, repo: Path, commit: str, path: str, installed_path: str) -> RuntimeProof:
-    """One installed file against `git show <commit>:<path>`.
-
-    `installed_path` is declared rather than derived. Repositories lay their
-    package out under `src/`, under `python-package/`, or at the root, and a
-    rule that guesses would silently look in the wrong place and report a
-    missing file as a failed pin -- an absence dressed as a divergence.
-    """
     proof = RuntimeProof(package=package, path=path, pinned_commit=commit)
 
     root = installed_module_root(package)
@@ -849,9 +594,6 @@ def verify_runtime(package: str, repo: Path, commit: str, path: str, installed_p
         proof.note = f"git show failed: {blob.decode('utf-8', 'replace')[:200]}"
         return proof
 
-    # Line endings normalised on both sides. A wheel built on one platform and
-    # a blob read on another can differ by nothing but CRLF, and reporting
-    # that as a divergence would train everyone to ignore the check.
     proof.pinned_sha256 = hashlib.sha256(blob.replace(b"\r\n", b"\n")).hexdigest()
     proof.installed_sha256 = hashlib.sha256(where.read_bytes().replace(b"\r\n", b"\n")).hexdigest()
     proof.matches = proof.installed_sha256 == proof.pinned_sha256
@@ -861,7 +603,6 @@ def verify_runtime(package: str, repo: Path, commit: str, path: str, installed_p
 
 
 def verify_runtimes(manifest: dict[str, Any], refs_root: Path) -> list[RuntimeProof]:
-    """Every `[[runtimes]]` row: installed bytes against the pinned blob."""
     out: list[RuntimeProof] = []
     for row in manifest.get("runtimes", []):
         upstream = manifest["upstreams"][row["upstream"]]
@@ -878,7 +619,6 @@ def verify_runtimes(manifest: dict[str, Any], refs_root: Path) -> list[RuntimePr
 
 
 def verify_all(manifest: dict[str, Any], repo_root: Path) -> dict[str, Any]:
-    """Every upstream and every consumer, against its pin."""
     refs_root: Path = (repo_root / manifest["refs_root"]).resolve()
     proofs: list[RepoProof] = []
 
@@ -888,9 +628,6 @@ def verify_all(manifest: dict[str, Any], repo_root: Path) -> dict[str, Any]:
 
     consumers: list[dict[str, Any]] = manifest.get("consumers", [])
     for consumer in consumers:
-        # A consumer whose entrypoint lives in another upstream -- ConsisID in
-        # diffusers, ID-LoRA in ComfyUI -- has its paths checked against THAT
-        # repository, because that is where the contract is committed.
         host: str | None = consumer.get("entrypoint_in")
         if host:
             entry = dict(upstreams[host])
@@ -902,9 +639,6 @@ def verify_all(manifest: dict[str, Any], repo_root: Path) -> dict[str, Any]:
     weights: list[dict[str, Any]] = weight_identity(manifest, refs_root)
     vendor_weights: list[dict[str, Any]] = vendor_weight_identity(manifest)
 
-    # Imported here, not at module scope: `identity` imports this module. An
-    # artifact that names no tree cannot be checked for currency, and closure
-    # reads this one.
     from compat.harness import identity as evidence_identity
 
     return {
@@ -919,25 +653,18 @@ def verify_all(manifest: dict[str, Any], repo_root: Path) -> dict[str, Any]:
         "population": {
             "total": len(consumers),
         },
-        # Four checks, none excusing the others: a clone at the right commit,
-        # what the interpreter imports, which of OUR weights computed the
-        # numbers, and the VENDOR's own checkpoints.
         "vendor_weights": vendor_weights,
         "provenance_ok": (
             all(one.ok for one in proofs)
             and all(one.matches for one in runtimes)
             and all(one["present"] for one in weights)
             and all(one["matches"] is not False for one in vendor_weights)
-            # Off the typed state, not a boolean: no boolean separates
-            # "nothing attests this" from "an attestation contradicts this"
-            # from "the file is gone".
             and all(one["state"] == WEIGHT_VERIFIED for one in weights)
         ),
     }
 
 
 def report(out: dict[str, Any]) -> None:
-    """Say what was checked, per row, so a reader can re-run any line of it."""
     repos: list[dict[str, Any]] = out["repos"]
     for repo in repos:
         mark: str = "ok  " if not repo["failures"] else "FAIL"
@@ -987,16 +714,12 @@ def main() -> int:
 
     where: Path = ROOT / "generated" / "provenance.json"
     where.parent.mkdir(parents=True, exist_ok=True)
-    # newline="" so this file is byte-identical on every platform: Windows
-    # would translate the line endings and a reviewer hashing the evidence
-    # elsewhere would get a different digest for the same run.
+
     with where.open("w", encoding="utf-8", newline="") as handle:
         handle.write(json.dumps(out, indent=2, sort_keys=True))
         handle.write("\n")
     print(f"\nwrote {where}")
 
-    # Provenance passing is not the harness passing. The population gate is
-    # separate and stays red until every member is classified by execution.
     return 0 if out["provenance_ok"] else 1
 
 

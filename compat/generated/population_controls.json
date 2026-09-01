@@ -21,12 +21,12 @@
       "name": "D parameter_default"
     },
     {
-      "detail": "artifacts=['UNRESOLVED_ARTIFACT:control/repo@0427a121e44c5eb59fe167d1d39b746f3d9da795:entry.py:6', 'org/real']",
+      "detail": "artifacts=['UNRESOLVED_ARTIFACT:control/repo@99b216cc88ac545b0262b15f8a6303bc5d1c3838:entry.py:6', 'org/real']",
       "held": true,
       "name": "E unrelated_slash_string"
     },
     {
-      "detail": "variants=['UNRESOLVED_VARIANT:control/repo@a57af5a4a41e915ac4754ec7b32df41c95ab156f:entry.py:5']",
+      "detail": "variants=['UNRESOLVED_VARIANT:control/repo@85924d4717a14ad78ca38eceed2a93f3bc4d0583:entry.py:5']",
       "held": true,
       "name": "F unresolved_dispatch"
     },

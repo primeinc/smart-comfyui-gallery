@@ -1,34 +1,3 @@
-"""Attack the suite. A gate that has never gone red is not known to work.
-
-Every other module here tries to establish that something holds. This one
-tries to break the machinery that establishes it, because a harness reporting
-green has two possible causes and only one of them is good news.
-
-Seven attacks, each on a different load-bearing claim:
-
-    pin_mutated          change a pinned commit -> provenance must FAIL
-    blob_mutated         change a recorded blob digest -> must FAIL
-    weight_moved         point a weight row at an absent file -> must FAIL
-    necessary_removed    a primitive an ablation says is required ->
-                         that case must stop reproducing
-    population_shrunk    delete a consumer's cases -> the matrix must report
-                         it NOT EXERCISED rather than omitting it
-    evidence_not_reproducible
-                         run the whole executor again -> the evidence must
-                         serialise to the same bytes
-    positive_control     the unmodified suite must still pass, so a red
-                         result above is the attack and not a broken machine
-
-Nothing here writes to the repository. Manifests and evidence are copied to a
-scratch directory, mutated there, and the real checks are run against the
-copy -- an attack that damaged the tree to prove a point would be a worse
-failure than the one it was testing for.
-
-An attack that does NOT produce the failure it is aiming at is itself a red
-result: it means the gate cannot see that class of problem, and every green
-this suite has ever reported for that class was uninformative.
-"""
-
 from __future__ import annotations
 
 import json
@@ -47,8 +16,6 @@ GENERATED: Path = ROOT / "generated"
 
 @dataclass
 class Attack:
-    """One deliberate corruption, and whether the gate noticed."""
-
     name: str
     targets: str
     expected: str
@@ -62,7 +29,6 @@ class Attack:
 
 
 def _workspace() -> Path:
-    """A throwaway copy of the manifest and the evidence."""
     where = Path(tempfile.mkdtemp(prefix="compat_attack_"))
     shutil.copy2(ROOT / "manifest.toml", where / "manifest.toml")
     (where / "generated").mkdir()
@@ -78,7 +44,6 @@ def _manifest(where: Path) -> dict[str, Any]:
 
 
 def attack_pin_mutated(where: Path, repo_root: Path) -> Attack:
-    """A commit nobody has: provenance must refuse it."""
     out = Attack(
         name="pin_mutated",
         targets="manifest [[consumers]].commit",
@@ -102,7 +67,6 @@ def attack_pin_mutated(where: Path, repo_root: Path) -> Attack:
 
 
 def attack_weight_moved(where: Path, repo_root: Path) -> Attack:
-    """A weight file that is not there: provenance must refuse it."""
     out = Attack(
         name="weight_moved",
         targets="manifest [[weights]].file",
@@ -122,11 +86,6 @@ def attack_weight_moved(where: Path, repo_root: Path) -> Attack:
 
 
 def attack_blob_mutated(where: Path, repo_root: Path) -> Attack:
-    """A recorded blob digest that no longer matches the commit.
-
-    Recomputed rather than trusted: the check reads the blob from git every
-    run, so a doctored digest in the evidence must not survive a re-run.
-    """
     out = Attack(
         name="blob_mutated",
         targets="generated/provenance.json blob_sha256",
@@ -160,20 +119,6 @@ def attack_blob_mutated(where: Path, repo_root: Path) -> Attack:
 
 
 def attack_necessary_removed(where: Path) -> Attack:
-    """Something, somewhere, must be shown necessary. Otherwise nothing is.
-
-    The property is unchanged and the evidence for it moved. This counted
-    REMOVALS that broke, which was right while a removal was the necessity
-    test -- and every removal in this suite now ends INCONCLUSIVE, because
-    taking away the one key a replay indexes shows only that the replay
-    indexes it. Necessity is established by SUBSTITUTION instead: the same
-    value offered in a cheaper storable form, with the consumer's own boundary
-    measured under it.
-
-    So both are counted, and they are counted SEPARATELY -- a suite where only
-    removals broke and a suite where only substitutions did are different
-    suites, and one number would hide which one this is.
-    """
     out = Attack(
         name="necessary_removed",
         targets="a primitive whose removal or degradation broke the replay",
@@ -205,7 +150,6 @@ def attack_necessary_removed(where: Path) -> Attack:
 
 
 def attack_population_shrunk(where: Path) -> Attack:
-    """Delete a consumer's results; the matrix must still list it."""
     out = Attack(
         name="population_shrunk",
         targets="generated/cases.json results",
@@ -233,18 +177,6 @@ def attack_population_shrunk(where: Path) -> Attack:
 
 
 def attack_evidence_not_reproducible() -> Attack:
-    """Two runs of the same inputs must produce the same evidence bytes.
-
-    Not a corruption like the others. It requires wall clocks to stay out of
-    `cases.json`: a file rewritten with fresh timings on every run makes "the
-    evidence is unchanged" uncheckable and a diff between two runs noise.
-
-    Re-runs the case executor in-process, with `COMPAT_CACHE=0` so the
-    producer and the decoder actually run, and compares the serialisation it
-    would write against the serialisation on disk. A difference here means
-    something in the pipeline is not deterministic, and every byte-exact
-    claim this suite makes rests on that not being true.
-    """
     from compat.harness import run as case_runner
 
     out = Attack(
@@ -254,9 +186,6 @@ def attack_evidence_not_reproducible() -> Attack:
     )
     on_disk = (GENERATED / "cases.json").read_text(encoding="utf-8")
 
-    # The rebuild runs with the persistent store OFF: a rebuild that could
-    # read `corpus/cache.py` would be handed the first run's answers and
-    # re-execute neither cv2.imdecode nor the ONNX pass.
     was = os.environ.get("COMPAT_CACHE")
     os.environ["COMPAT_CACHE"] = "0"
     try:
@@ -286,7 +215,6 @@ def attack_evidence_not_reproducible() -> Attack:
 
 
 def attack_positive_control(repo_root: Path) -> Attack:
-    """The untouched suite must still pass, or the reds above prove nothing."""
     out = Attack(
         name="positive_control",
         targets="the real manifest and the real evidence",
@@ -294,9 +222,7 @@ def attack_positive_control(repo_root: Path) -> Attack:
     )
     result = provenance.verify_all(provenance.load_manifest(), repo_root)
     built = matrices.build(matrices.Evidence.load())
-    # Through `matrices.blocking`, the same function the matrix lane gates on.
-    # A control re-implementing one of its conditions cannot fail while that
-    # lane passes, and does not follow the lane when it gains more.
+
     bad = matrices.blocking(built)
     out.detected = bool(result["provenance_ok"]) and not bad
     out.observed = (
@@ -308,15 +234,6 @@ def attack_positive_control(repo_root: Path) -> Attack:
 
 
 def attack_producer_inventory_stale() -> Attack:
-    """The recorded producer inventory must name every key the pass emits.
-
-    `gallery_storage.unlisted_keys()` exists for exactly this and had no
-    caller anywhere in the tree. Its docstring says a non-empty result means
-    `generated/producer_inventory.json` is stale against the live pass -- and
-    `storage/contract.emitted_keys()` reads that file to decide which keys the
-    storage lane builds cases for, so a producer that gained a key would be
-    measured as though it had not.
-    """
     from compat.consumers.gallery_storage import unlisted_keys
 
     out = Attack(

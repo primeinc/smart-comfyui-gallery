@@ -301,7 +301,7 @@ def _insert_face(
     age=None,
     sex=None,
     pose=None,
-    attributes=None,
+    native=None,
 ) -> int:
     """One detected face. The region is required: a detection with no
     location cannot be shown, cropped, checked, or asserted against.
@@ -315,9 +315,10 @@ def _insert_face(
     positional unpack would write pitch into pose_yaw with no CHECK able to
     see it: three REAL columns holding plausible degrees either way.
 
-    `attributes` is the detector's whole output, stored as JSON. `age`,
-    `sex` and `pose` above are promotions out of it for the values a facet
-    filters on; this is the record they were promoted from.
+    `native` is the producer's complete output as a `vision/facestore.py`
+    envelope -- the canonical record. Every other value in this signature
+    is a promotion out of it for the values a facet filters on or a page
+    renders; none of them decides what survives.
     """
     if pose is None:
         yaw = pitch = roll = None
@@ -333,10 +334,6 @@ def _insert_face(
             f"detector's array is [pitch, yaw, roll] and these columns are yaw-first, "
             f"so the swap it invites is invisible once written."
         )
-    if attributes is not None and not isinstance(attributes, str):
-        import json
-
-        attributes = json.dumps(attributes, separators=(",", ":"), sort_keys=True)
     # `dim` describes `embedding`, so it is taken from it rather than trusted from a
     # caller, and the schema checks the two agree. The space id travels with the
     # embedding for the same reason: a vector of unknown space compares with nothing.
@@ -350,7 +347,7 @@ def _insert_face(
     cursor = conn.execute(
         "INSERT INTO derived_face_instance(file_id, sample_id, region_id,"
         " landmarks, embedding, det_score, dim, age, sex, pose_yaw, pose_pitch,"
-        " pose_roll, attributes, model_id, model_version, space_id, source_sha256,"
+        " pose_roll, native, model_id, model_version, space_id, source_sha256,"
         " computed_at)"
         " VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         tuple(
@@ -368,7 +365,7 @@ def _insert_face(
                 yaw,
                 pitch,
                 roll,
-                attributes,
+                native,
                 model_id,
                 model_version,
                 space_id,
@@ -514,10 +511,11 @@ def record_faces(
 
     `faces` is a sequence of mappings, one per detection: `region` (an id
     from `region()`) is required; `det_score`, `landmarks`, `dim`, `age`,
-    `sex`, `pose` and `attributes` are optional. `attributes` is the
-    detector's whole output and the others are promotions out of it --
-    `db/detect.py` fills both, and the promotions exist because a facet
-    filters on them, not because they are the part worth keeping.
+    `sex`, `pose` and `native` are optional. `native` is the producer's
+    complete output (a `vision/facestore.py` envelope) and the others are
+    promotions out of it -- `db/detect.py` fills both, and the promotions
+    exist because a facet filters on them, not because they are the part
+    worth keeping.
 
     A score outside 0..1 is refused here, by name, rather than left to the
     CHECK. Run over sixty real photographs, OpenCV's cascade reported reject
@@ -574,7 +572,7 @@ def record_faces(
             age=face.get("age"),
             sex=face.get("sex"),
             pose=face.get("pose"),
-            attributes=face.get("attributes"),
+            native=face.get("native"),
         )
         for face in faces
     ]

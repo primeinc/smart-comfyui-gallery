@@ -1,29 +1,3 @@
-"""Deterministic inputs for the PRIMITIVE tier only.
-
-This is not the corpus. A primitive case tests one transform -- `norm_crop` at
-a size, `draw_kps` onto a canvas -- and a transform needs pixels with known
-geometry, not a photograph. Generated from a fixed seed so every machine
-produces byte-identical bytes, which is what lets a baseline hash recorded
-here mean anything on another machine.
-
-`compat/corpus/` is the different thing and must not be confused with this
-one. A consumer case runs a detector, so it needs real faces spanning real
-axes -- frontal/profile, expression, face size, occlusion, accessories,
-resolution, one reference against many, same identity against mixed as a
-negative control, and stills against video. Those are fetched, hashed the same
-way, and never generated: synthetic pixels prove a warp and prove nothing
-about a detector.
-
-One axis belongs there that is easy to miss: the same identity through a
-DIFFERENT capture and decode path. What the detector sees is `db/oriented.py`
-`for_model` -- EXIF-turned and UNCAPPED, because that module states the rule
-outright at :137-142: "a detector or an embedder is owed the real pixels,
-because changing what a model sees changes what it records". The 1600 cap
-belongs to `for_derivatives`, which serves thumbnails. So detections are at
-full source resolution, and a corpus built only from our own downscaled
-renderings would be measuring a decode path the producer never takes.
-"""
-
 from __future__ import annotations
 
 import json
@@ -36,15 +10,11 @@ from compat.assertions.arrays import digest
 
 HERE: Path = Path(__file__).resolve().parent
 
-#: One frame size for every generated fixture, not square and larger than any
-#: crop the consumers ask for (336 arcface, 512 facexlib), so a crop never runs
-#: off the edge and tests the border-fill instead of the warp.
+
 FRAME_WIDTH: int = 900
 FRAME_HEIGHT: int = 1200
 
-#: Five points in source pixels, in insightface's order:
-#: right eye, left eye, nose, right mouth, left mouth. Placed off-centre and
-#: slightly rotated so an alignment that ignores rotation still fails.
+
 KEYPOINTS: tuple[tuple[float, float], ...] = (
     (352.0, 471.0),
     (528.0, 455.0),
@@ -57,13 +27,6 @@ SEED: int = 20260828
 
 
 def frame() -> npt.NDArray[np.uint8]:
-    """A deterministic BGR frame with structure at every scale.
-
-    Noise alone would let a wrong-but-plausible warp pass by landing on
-    statistically identical pixels, so this carries a coarse gradient, a fine
-    checker and seeded noise together: a crop taken from the wrong place
-    differs in all three.
-    """
     rng = np.random.default_rng(SEED)
     ys, xs = np.mgrid[0:FRAME_HEIGHT, 0:FRAME_WIDTH]
 
@@ -73,8 +36,7 @@ def frame() -> npt.NDArray[np.uint8]:
 
     plane = np.clip(gradient + checker + noise, 0, 255)
     out = np.zeros((FRAME_HEIGHT, FRAME_WIDTH, 3), dtype=np.uint8)
-    # Distinct per channel, so a BGR/RGB swap anywhere in a pipeline shows up
-    # as a divergence rather than passing silently.
+
     out[:, :, 0] = plane.astype(np.uint8)
     out[:, :, 1] = np.clip(plane * 0.6 + 40.0, 0, 255).astype(np.uint8)
     out[:, :, 2] = np.clip(255.0 - plane, 0, 255).astype(np.uint8)
@@ -86,7 +48,6 @@ def keypoints() -> npt.NDArray[np.float32]:
 
 
 def manifest() -> dict[str, object]:
-    """What was generated, by content, so a reviewer can rebuild and compare."""
     pixels = frame()
     return {
         "seed": SEED,
@@ -109,9 +70,6 @@ def main() -> int:
     out = HERE / "fixtures.json"
     body = json.dumps(manifest(), indent=2, sort_keys=True) + "\n"
 
-    # Diffed against the committed copy rather than overwritten: no module
-    # reads this file, so as a drift check it asserts the claim that every
-    # machine builds byte-identical fixtures.
     was = out.read_text(encoding="utf-8") if out.is_file() else ""
     moved = bool(was) and was != body
 

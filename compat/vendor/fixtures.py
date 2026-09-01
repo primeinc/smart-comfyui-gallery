@@ -1,14 +1,3 @@
-"""First-party sample inputs, per consumer, read out of each pinned clone.
-
-Every row below was established by reading that repository's own README or
-example script at the pinned commit, not by scanning for filenames. Each row
-names the entrypoint that consumes the fixture and cites where upstream says
-so.
-
-A consumer with no row, or a row whose paths are absent at the pinned commit,
-is VENDOR_BASELINE_UNAVAILABLE. Corpus photographs are never substituted.
-"""
-
 from __future__ import annotations
 
 import hashlib
@@ -22,37 +11,22 @@ from compat.harness import provenance
 
 ROOT: Final[Path] = Path(__file__).resolve().parent.parent
 
-#: Every git call here is bounded. `pinned_source.py:44` and
-#: `provenance.py:44` already were, with the reason: a hang turns a red
-#: gate into a run that never finishes, which reports nothing at all.
 
-#: Where run-time-downloaded vendor inputs are cached. Beside the repository,
-#: never inside it: these are third-party media under their own licences.
 FETCHED: Final[Path] = ROOT.parent.parent / "sg-vendor-fixtures"
 
 
 @dataclass(frozen=True)
 class VendorSample:
-    """One consumer's first-party example and the inputs it names."""
-
     consumer_id: str
     entrypoint: str
     cited: str
     inputs: tuple[str, ...]
     role: str = "single_reference"
     from_upstream: str = ""
-    """Resolve `inputs` against this `[upstreams.<key>]` instead of the
-    consumer's own repo. A wrapper that ships workflows but not the media they
-    name has its fixture in the project it wraps."""
 
     urls: tuple[tuple[str, str], ...] = ()
-    """(url, sha256) the upstream example downloads at run time. Cached under
-    `FETCHED`, outside the repository, and verified against the recorded
-    digest. Never vendored."""
 
 
-#: Read from each repository at its pinned commit. `cited` is where upstream
-#: states the binding.
 SAMPLES: Final[tuple[VendorSample, ...]] = (
     VendorSample(
         consumer_id="instantid_upstream",
@@ -68,15 +42,6 @@ SAMPLES: Final[tuple[VendorSample, ...]] = (
     ),
     VendorSample(
         consumer_id="ipadapter_upstream",
-        # The FACEID notebook, which is the boundary this consumer declares:
-        # `ip_adapter/ip_adapter_faceid.py::IPAdapterFaceID.get_image_embeds`.
-        # This row used to name `ip_adapter-plus-face_demo.ipynb`, which
-        # constructs no FaceAnalysis at all at the pin -- it is the CLIP
-        # image-encoder path -- and to carry that demo's `ai_face.png`. So a
-        # detector the vendor never points at that file was being asked to
-        # find a face in it, at the single 640 this consumer sweeps, and the
-        # failure was recorded against our adapter. buffalo_l does find that
-        # face, at 448.
         entrypoint="visualization_attnmap_faceid.ipynb",
         cited=(
             'visualization_attnmap_faceid.ipynb:72-73 FaceAnalysis(name="buffalo_l"), '
@@ -302,34 +267,16 @@ SAMPLES: Final[tuple[VendorSample, ...]] = (
 
 @dataclass
 class Resolved:
-    """One fixture, hashed from the clone's own bytes at the pinned commit.
-
-    `present` carried two different meanings and one name. For a committed
-    blob it meant "git handed the bytes back"; for a cached URL it meant "the
-    bytes match the digest the manifest declares". `conformance.py` consumed
-    one boolean for both, so a cached download that failed its digest and a
-    file that is simply absent were the same row. `origin` names which kind of
-    row this is and `matches_expected` carries the second question separately.
-    """
-
     consumer_id: str
     entrypoint: str
     cited: str
     role: str
     path: str
     present: bool
-    """The bytes are available AND are the ones the pin or the manifest names.
-    A row is usable if and only if this is true, whichever `origin` it has."""
 
     origin: str = "git_blob"
-    """`git_blob` -- read out of the clone at the pinned commit, where the blob
-    IS the expectation. `url_cache` -- fetched by hand into `FETCHED`, where
-    the manifest's declared digest is the expectation."""
 
     matches_expected: bool | None = None
-    """For a `url_cache` row, whether the cached bytes hash to the declared
-    digest. None for a `git_blob` row, which has no separate expectation to
-    compare against."""
 
     sha256: str = ""
     bytes: int = 0
@@ -355,9 +302,6 @@ def resolve() -> dict[str, Any]:
             continue
         holder = row
         if sample.from_upstream:
-            # An `[upstreams.<key>]` or another consumer's row: a ComfyUI
-            # wrapper's media lives in the project it wraps, which may be
-            # pinned either way.
             holder = upstreams.get(sample.from_upstream) or pinned[sample.from_upstream]
         clone = provenance.clone_dir(refs_root, holder["repo"])
         for path in sample.inputs:
@@ -371,10 +315,6 @@ def resolve() -> dict[str, Any]:
                     path=path,
                     present=blob is not None,
                     origin="git_blob",
-                    # `if blob` is False for a zero-byte committed file, so an
-                    # empty blob recorded present=True with an EMPTY digest --
-                    # and `conformance.py` deduplicates on the digest, so every
-                    # such row collapsed into one.
                     sha256=hashlib.sha256(blob).hexdigest() if blob is not None else "",
                     bytes=len(blob) if blob is not None else 0,
                 )
@@ -382,8 +322,7 @@ def resolve() -> dict[str, Any]:
         for url, expected in sample.urls:
             cached = FETCHED / sample.consumer_id / url.rsplit("/", 1)[-1]
             got = cached.read_bytes() if cached.is_file() else None
-            # The digest is the identity, not the URL: a file replaced at the
-            # same address is a different fixture and must not pass.
+
             actual = hashlib.sha256(got).hexdigest() if got else ""
             rows.append(
                 Resolved(
@@ -400,9 +339,6 @@ def resolve() -> dict[str, Any]:
                 )
             )
 
-    # `entrypoint_only` resolved a runnable example and NO input media. It is
-    # not vendor-fixture coverage: there is nothing to feed the entrypoint, so
-    # adapter conformance on vendor data cannot be established.
     with_media = {one.consumer_id for one in rows if one.present and one.role != "entrypoint_only"}
     entrypoint_only = {one.consumer_id for one in rows if one.present and one.role == "entrypoint_only"} - with_media
     declared = set(pinned)

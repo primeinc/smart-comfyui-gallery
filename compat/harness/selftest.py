@@ -1,64 +1,3 @@
-"""Corrupt the harness deliberately and assert it notices.
-
-A gate that has never gone red is not known to work. `attack.py` covers pins,
-blobs, weights and evidence bytes; these cover the mechanisms added since:
-
-    positive_control            change NOTHING           -> no drift
-    missing_consumer            drop a declared consumer -> population INCOMPLETE
-    changed_pin                 mutate a commit          -> identity drift
-    changed_weight              mutate a weight digest   -> identity drift
-    changed_manifest            mutate the manifest      -> identity drift
-    changed_runner_source       edit a runner's bytes    -> identity drift
-    changed_application_source  edit vision/ or db/      -> identity drift
-    changed_corpus              re-hash a photograph     -> identity drift
-    dropped_persisted_primitive remove a stored value    -> replay breaks
-    changed_selection_rule      swap first/largest       -> different face
-    changed_reference_order     reverse a stacked set    -> different artifact
-    stale_evidence              old identity vs current  -> drift reported
-    changed_vendor_fixture      same path, other bytes   -> different sha256
-    vendor_acceptance_not_faked accepted set must equal the set that RAN
-    vendor_round_trip_lossless  plant one lost key       -> aggregate goes red
-    vendor_boundary_repeats     plant a second digest    -> stability goes red
-    vendor_pack_declaration_checked  contradict the declared pack -> disagreement
-    cache_never_crosses_identity     entry under another identity -> not served
-    cache_preserves_every_value_type round-trip a Face            -> types survive
-
-The positive control is not decoration. Every other row asserts a mutation IS
-seen; without a row asserting an unmutated tree is seen as clean, a detector
-that returned "changed" unconditionally would pass every one of them.
-
-WHAT EACH ROW ACTUALLY EXERCISES
---------------------------------
-Stated because it was not, and the difference decides what a green here is
-worth.
-
-    through the production function
-        missing_consumer                 matrices.build
-        dropped_persisted_primitive      RetainedState._require + run_ablation
-        vendor_pack_declaration_checked  acceptance.declared_against_observed
-        changed_selection_rule           the selection rules themselves
-        changed_reference_order          reference_sets.combine
-        cache_never_crosses_identity     corpus.cache read and write paths
-        cache_preserves_every_value_type the same, over a real Face
-        changed_vendor_fixture           re-reads the bytes and re-hashes them
-
-    through `evidence.compare_to`, over a mutated copy of `identity()`
-        positive_control, changed_pin, changed_weight, changed_manifest,
-        changed_runner_source, changed_application_source, changed_corpus,
-        stale_evidence
-        -- the drift checker is real; no file is touched and no lane is run.
-
-    over the RECORDED ARTIFACT only, re-implementing the aggregation
-        vendor_acceptance_not_faked, vendor_round_trip_lossless,
-        vendor_boundary_repeats
-        -- these assert the artifact is internally consistent. They do NOT
-        call `acceptance.py`'s aggregation, so a hardcoded aggregate would
-        pass them. `determinism` now re-runs each vendor in a fresh
-        interpreter, which a selftest cannot afford to call; the honest
-        position is that these three are artifact checks and are labelled as
-        such rather than counted as gate coverage.
-"""
-
 from __future__ import annotations
 
 import copy
@@ -82,36 +21,18 @@ ROOT: Final[Path] = Path(__file__).resolve().parent.parent
 
 @dataclass
 class Attack:
-    """One deliberate corruption and whether the harness saw it."""
-
     name: str
     mechanism: str
     detected: bool
     detail: str
     applicable: bool = True
-    """False when the attack could not be mounted HERE -- the cache is off, a
-    corpus is absent -- as opposed to mounted and missed.
-
-    It does NOT excuse the row. An attack that did not run proved nothing, and
-    a lane that exits 0 over it reports coverage it does not have: six of the
-    twenty rows can set this, so a run with `COMPAT_CACHE=0` and no corpus
-    wrote `undetected: []` while a quarter of the suite never executed. That is
-    the same shape as a test lane selecting zero tests and reporting green.
-    """
 
     @property
     def ok(self) -> bool:
-        """Detected, and nothing else. An unmounted attack is not a pass."""
         return self.detected
 
 
 def _tampered(mutate: Callable[[dict[str, Any]], None]) -> tuple[bool, str]:
-    """Apply `mutate` to a copy of the current identity and diff it back.
-
-    The digest is recomputed through `evidence.digest_of`, the same function
-    `identity()` uses. Leaving the honest digest in place would make every row
-    "detect" a mismatch it did not cause.
-    """
     tampered = copy.deepcopy(evidence.identity())
     mutate(tampered)
     tampered["digest"] = evidence.digest_of(tampered)
@@ -120,12 +41,6 @@ def _tampered(mutate: Callable[[dict[str, Any]], None]) -> tuple[bool, str]:
 
 
 def positive_control() -> Attack:
-    """Change nothing. Drift MUST be empty.
-
-    `detected` is inverted here on purpose: it is True when the checker
-    reports CLEAN, because a checker that cries wolf on an untouched tree is
-    as broken as one that sleeps through a real change.
-    """
     drift = evidence.compare_to(evidence.identity())
     return Attack(
         name="positive_control",
@@ -172,7 +87,6 @@ def changed_runner_source() -> Attack:
 
 
 def stale_evidence() -> Attack:
-    """Evidence recorded before a harness edit must read as stale."""
 
     def mutate(held: dict[str, Any]) -> None:
         key = next(one for one in held["sources"] if one.startswith("harness/") and not one.endswith("__init__.py"))
@@ -183,12 +97,6 @@ def stale_evidence() -> Attack:
 
 
 def missing_consumer() -> Attack:
-    """Drop a declared consumer and re-derive the population.
-
-    Reads the generated evidence rather than re-running: the claim under test
-    is that `unexercised` is computed from the FROZEN manifest, not from
-    whatever happened to run.
-    """
     cases = ROOT / "generated" / "cases.json"
     if not cases.is_file():
         return Attack("missing_consumer", "no cases.json", False, "run the case lane first")
@@ -198,9 +106,7 @@ def missing_consumer() -> Attack:
     if not covered:
         return Attack("missing_consumer", "no consumer-tier coverage", False, "nothing to drop")
     dropped = min(covered)
-    # Through `matrices.build`, not set arithmetic: asserting
-    # `declared - (covered - {dropped})` non-empty holds for any non-empty
-    # `covered` and calls none of the code under test.
+
     from compat.harness import matrices
 
     thinned = copy.deepcopy(held)
@@ -228,19 +134,6 @@ def missing_consumer() -> Attack:
 
 
 def dropped_persisted_primitive() -> Attack:
-    """A replay that merely INDEXES a removed key must not read as necessity.
-
-    The old row asserted that a dict raises on a missing key. That is a
-    property of dicts, and asserting it is how 22 of 23 primitives came to
-    report `survives: 0`: `run_ablation` caught the KeyError and recorded it
-    as a break, so `answer.json` listed pose, age, gender, bbox, det_score,
-    kps and landmark_2d_106 as durable state on the strength of a dict lookup.
-
-    The assertion that matters now is the one that replaced it: `_require`
-    raises the typed `MissingPrimitive`, and `run_ablation` turns THAT into
-    INCONCLUSIVE rather than into evidence. Both halves are checked, because a
-    typed exception nobody special-cases is the same bug with a longer name.
-    """
     from compat.contracts.case import (
         Ablation,
         Artifact,
@@ -267,14 +160,6 @@ def dropped_persisted_primitive() -> Attack:
         return Artifact(name="out", dtype=str(values.dtype), shape=values.shape, sha256="x", values=values)
 
     class IndexesTheKey:
-        """The shape found in twelve consumer modules, reduced to its essence.
-
-        Every member of `Ablating` is present because the executor's own
-        protocol is what this row is testing against; a stub that satisfied
-        only the two methods it uses would be checked against a weaker
-        contract than a real runner is.
-        """
-
         consumer_id = "selftest"
 
         def cases(self) -> tuple[Case, ...]:
@@ -324,20 +209,12 @@ def dropped_persisted_primitive() -> Attack:
 
 
 def changed_selection_rule() -> Attack:
-    """Swap first for largest-bbox-area on a two-face detection.
-
-    Synthetic HERE and only here: the claim is about the rules' arithmetic,
-    not about a detector. `face_selection.py` runs the same two rules over
-    real group photographs; this asserts they are distinguishable at all,
-    which is the precondition for that lane meaning anything.
-    """
     from compat.consumers.face_selection import select
 
     class Found:
         def __init__(self, bbox: tuple[float, float, float, float]) -> None:
             self.bbox = np.asarray(bbox, dtype=np.float32)
 
-    # First is deliberately the SMALLER box, so the rules must disagree.
     found = [Found((0.0, 0.0, 10.0, 10.0)), Found((0.0, 0.0, 100.0, 100.0))]
     first = select(found, "first").bbox
     largest = select(found, "largest_bbox_area").bbox
@@ -350,11 +227,6 @@ def changed_selection_rule() -> Attack:
 
 
 def changed_reference_order() -> Attack:
-    """Reverse a set through both combiners.
-
-    Asserts BOTH directions: a stack must change under reversal and a mean
-    must not. Checking only one would accept a combiner that is neither.
-    """
     from compat.consumers.reference_sets import combine
 
     rng = np.random.default_rng(20260828)
@@ -370,13 +242,6 @@ def changed_reference_order() -> Attack:
 
 
 def changed_vendor_fixture() -> Attack:
-    """Different bytes under the same fixture path must not pass.
-
-    The vendor lane resolves every fixture by sha256 out of a pinned commit,
-    so a file swapped at the same address is a different fixture. Asserted on
-    the recorded evidence rather than by touching the corpus: the media is
-    third-party and this suite never rewrites it.
-    """
     held = ROOT / "generated" / "vendor_fixtures.json"
     if not held.is_file():
         return Attack("changed_vendor_fixture", "no vendor_fixtures.json", False, "run the vendor lane first")
@@ -385,9 +250,7 @@ def changed_vendor_fixture() -> Attack:
     if not present:
         return Attack("changed_vendor_fixture", "no resolved fixtures", False, "nothing to corrupt")
     one = present[0]
-    # Re-hashed for real: this fetches the bytes the index points at through
-    # the same reader the conformance lane uses, checks the recorded digest
-    # against them, then flips one byte and requires the digest to move.
+
     from compat.vendor import conformance
 
     blob = conformance._read(one)
@@ -410,18 +273,6 @@ def changed_vendor_fixture() -> Attack:
 
 
 def vendor_acceptance_not_faked() -> Attack:
-    """A consumer may not read as vendor-accepted without an executed run.
-
-    The layer this checks is the one most worth faking: `ran` is the only
-    thing separating "the vendor's own entrypoint produced this" from "our
-    adapter produced something and we called it a reference".
-
-    Over the RECORDED rows. `vendor_accepted` means "reproduced the shape
-    upstream declares" rather than "ran and produced a boundary", so an
-    accepted vendor must carry an `against_upstream` row that AGREES -- and a
-    vendor that ran without such a row is VENDOR_BASELINE_UNAVAILABLE and must
-    not appear in the accepted set.
-    """
     held = ROOT / "generated" / "vendor_acceptance.json"
     if not held.is_file():
         return Attack("vendor_acceptance_not_faked", "no vendor_acceptance.json", False, "run the acceptance lane")
@@ -439,18 +290,6 @@ def vendor_acceptance_not_faked() -> Attack:
 
 
 def vendor_round_trip_lossless() -> Attack:
-    """A vendor's own storage losing a key must not read as a clean round trip.
-
-    ReActor is the one vendor here that persists a face, so its acceptance is
-    the only place a real storage answer is measured rather than reasoned
-    about. `every_key_survives` is the aggregate that would be quoted; this
-    plants a lost key into the recorded per-key flags and asserts the
-    aggregate follows, so a hardcoded True cannot survive.
-
-    Over the RECORDED rows, not through `acceptance.py`'s aggregation: a
-    hardcoded aggregate would pass this. It asserts the artifact is
-    internally consistent, which is weaker than exercising the gate.
-    """
     held = ROOT / "generated" / "vendor_acceptance.json"
     if not held.is_file():
         return Attack("vendor_round_trip_lossless", "no vendor_acceptance.json", False, "run the acceptance lane")
@@ -473,20 +312,6 @@ def vendor_round_trip_lossless() -> Attack:
 
 
 def vendor_boundary_repeats() -> Attack:
-    """A boundary that moves between identical runs must not read as stable.
-
-    This is the load-bearing one under every "our adapter matches" claim in
-    the suite: an unstable vendor boundary is a moving reference, and a
-    comparison against a moving reference proves nothing. The mechanism is
-    real -- two ConsisID runs once produced different id_cond bytes from the
-    same fixture, weights and code under onnxruntime's EXHAUSTIVE convolution
-    search -- so the aggregate is asserted to follow a planted disagreement
-    rather than trusted.
-
-    Over the RECORDED rows. `determinism` now re-runs every vendor in a
-    fresh interpreter, so calling it here would cost eight model loads;
-    this checks the artifact it wrote rather than the function.
-    """
     held = ROOT / "generated" / "vendor_acceptance.json"
     if not held.is_file():
         return Attack("vendor_boundary_repeats", "no vendor_acceptance.json", False, "run the acceptance lane")
@@ -507,23 +332,6 @@ def vendor_boundary_repeats() -> Attack:
 
 
 def vendor_pack_declaration_checked() -> Attack:
-    """A manifest pack that contradicts the run must not read as agreement.
-
-    The gate this proves exists because four `pack` values in this manifest
-    were wrong and NOTHING caught them. The citations lane passed -- each was
-    cited to a line that really does construct a FaceAnalysis. The
-    substitution ablation passed too, because it derives `expect_breaks` FROM
-    `pack`: with the wrong pack it expects no break and observes none. Both
-    checks are satisfied by a well-formed claim rather than a true one.
-
-    Run through `acceptance.declared_against_observed` itself. The earlier
-    version copied a recorded row, flipped its `declared` field and asserted
-    `planted["declared"] == planted["observed"]` was False -- a tautology by
-    construction that never called the function it claimed to exercise. The
-    rows are rehydrated into `Acceptance` objects and the production
-    aggregation decides, so a change to how `pack` is compared is caught here
-    rather than agreed with.
-    """
     from compat.vendor.acceptance import Acceptance, declared_against_observed
 
     held = ROOT / "generated" / "vendor_acceptance.json"
@@ -551,9 +359,6 @@ def vendor_pack_declaration_checked() -> Attack:
         )
     clean = all(one["agrees"] for one in observed)
 
-    # Contradict the RUN, then re-run the production comparison. The pack is
-    # planted into the boundary the analyser reported, which is the side the
-    # function reads as fact.
     victim = min((one for one in rows if one.boundary.get("observed_pack")), key=lambda one: one.consumer_id)
     planted = copy.deepcopy(rows)
     for one in planted:
@@ -576,7 +381,6 @@ def vendor_pack_declaration_checked() -> Attack:
 
 
 def was_dict(pack: str, row: Any) -> dict[str, Any]:
-    """The observed-pack record, with its other fields kept."""
     held = dict(row.boundary.get("observed_pack") or {})
     held.setdefault("pack", pack)
     held.setdefault("modules", {})
@@ -584,17 +388,6 @@ def was_dict(pack: str, row: Any) -> dict[str, Any]:
 
 
 def cache_never_crosses_identity() -> Attack:
-    """An entry written under another identity must never be served.
-
-    This is the only property that makes a persistent memo safe here. The
-    store is namespaced by `identity()["digest"]`, which covers the manifest,
-    every pinned commit, every weight sha256, the runtime and the sha256 of
-    every compat source file -- so an entry computed before any of that moved
-    lives in a directory the current run does not look in.
-
-    Asserted both ways. A store that returned None unconditionally would pass
-    the negative half and be useless, so the positive half runs too.
-    """
     from compat.corpus import cache
 
     if not cache.enabled():
@@ -632,19 +425,6 @@ def cache_never_crosses_identity() -> Attack:
 
 
 def cache_preserves_every_value_type() -> Attack:
-    """A held face must come back with every value's TYPE, not just its bytes.
-
-    `producers/insightface_pass._describe` branches on `isinstance(value,
-    np.ndarray)` before it looks at anything else, so an np.float32 returning
-    as a 0-d array would be inventoried as an ndarray of 4 bytes where the
-    producer reported a float of 8. The storage evidence is a byte-cost table
-    over those fields: a cache that lost the distinction would not be slow,
-    it would be wrong.
-
-    An unreadable entry is checked in the same pass. It must read as a miss,
-    because a store that can raise can fail a run it was only meant to speed
-    up.
-    """
     from insightface.app.common import Face
 
     from compat.corpus import cache
@@ -676,8 +456,7 @@ def cache_preserves_every_value_type() -> Attack:
             and (np.array_equal(face[key], back[key]) if isinstance(face[key], np.ndarray) else face[key] == back[key])
             for key in face
         )
-        # The same entry, truncated. A reader must return None rather than
-        # raise: the caller can always recompute.
+
         body.write_bytes(b"PK not a zip")
         survived = cache.face_get(sha) is None
     finally:
@@ -693,14 +472,6 @@ def cache_preserves_every_value_type() -> Attack:
 
 
 def changed_application_source() -> Attack:
-    """The storage lane runs `vision.faces` and `db.*`; editing them must drift.
-
-    `storage/gallery_v45.py` is the only lane that reaches out of `compat/`,
-    and it reaches into the code under test. Until the identity covered them,
-    an edit to `vision/faces.py` changed the headline answer with every pin,
-    weight and compat source unmoved, and the staleness lane reported
-    "evidence is current".
-    """
     if not evidence.identity()["application"]:
         return Attack(
             "changed_application_source",
@@ -718,12 +489,6 @@ def changed_application_source() -> Attack:
 
 
 def changed_corpus() -> Attack:
-    """A corpus photograph swapped must invalidate the evidence.
-
-    `corpus/loaded.shots()` selects four by min-sha256 within each
-    (identity, role) bucket, so adding or editing one changes WHICH
-    photographs every baseline was computed from.
-    """
     if not evidence.identity()["corpus"]:
         return Attack(
             "changed_corpus",
@@ -741,16 +506,6 @@ def changed_corpus() -> Attack:
 
 
 def retained_bytes_cannot_be_asserted() -> Attack:
-    """A durable size the array does not encode to must be refused.
-
-    `sizes()` prefers `_durable` over `ndarray.nbytes`, and `answer.py`
-    publishes the result as the storage cost of a primitive. Before `priced()`
-    validated, a runner naming any integer decided that cost.
-
-    Two-sided through `RetainedState.priced` itself: the encoded length is
-    accepted and a planted one is refused. A one-sided check passes against a
-    function that accepts everything.
-    """
     import numpy as np
 
     from compat.contracts.case import RetainedState
@@ -783,7 +538,6 @@ def retained_bytes_cannot_be_asserted() -> Attack:
 
 
 def _facexlib_asset() -> dict[str, Any] | None:
-    """The first canonical release-asset locator the manifest carries."""
     for row in provenance.load_manifest().get("weights", []):
         for one in row.get("attestations", []):
             if one.get("source_class") == "github_release_asset" and one.get("revision"):
@@ -792,17 +546,6 @@ def _facexlib_asset() -> dict[str, Any] | None:
 
 
 def vendor_asset_swap_detected() -> Attack:
-    """Re-upload the asset under the same name; the pin must stop being met.
-
-    A GitHub release asset is mutable where a Hugging Face revision is not, so
-    the whole reason this source class can reach PROVEN is that the locator
-    pins `<asset_id>@<updated_at>` and both are re-read every run. If a
-    mismatch there did not refuse, the resolver would hash whatever the vendor
-    is serving today and report it as the bytes the manifest cited.
-
-    Simulated by moving the PIN rather than the release: the comparison is the
-    same one, and it does not require an upstream re-upload to exercise.
-    """
     located = _facexlib_asset()
     if located is None:
         return Attack("vendor_asset_swap", "no release-asset attestation declared", False, "nothing to attack")
@@ -824,12 +567,6 @@ def vendor_asset_swap_detected() -> Attack:
 
 
 def vendor_asset_size_checked() -> Attack:
-    """A short mirror must not be hashed as if it were the whole asset.
-
-    An interrupted download leaves bytes that hash perfectly well to the wrong
-    answer, and the digest alone cannot tell that apart from the real file:
-    only the release's own byte count can.
-    """
     located = _facexlib_asset()
     if located is None:
         return Attack("vendor_asset_size", "no release-asset attestation declared", False, "nothing to attack")
@@ -855,11 +592,6 @@ def vendor_asset_size_checked() -> Attack:
 
 
 def vendor_asset_host_checked() -> Attack:
-    """`browser_download_url` is a field in a response, so it is data.
-
-    An API that answered with `file:///` or a host of its choosing would
-    otherwise have its bytes fetched, hashed and reported as the vendor's.
-    """
     refused: list[str] = []
     for url in (
         "file:///C:/Windows/System32/drivers/etc/hosts",
@@ -937,8 +669,6 @@ def main() -> int:
         handle.write("\n")
     print(f"wrote {target}")
 
-    # An attack the harness does NOT see is a red result: every green ever
-    # reported for that mechanism was uninformative.
     return 0 if not missed else 1
 
 

@@ -1,43 +1,3 @@
-# ty, for compat/ only, from compat/'s own environment.
-#
-# compat/ is deliberately absent from the root pyproject's [tool.ty.src]
-# include list, because its runtimes live in .venv-compat rather than .venv --
-# see compat.just for why the two environments cannot be one. A checker run
-# from .venv cannot resolve facexlib, diffusers or torchaudio at all, so the
-# project-wide run neither checks this directory nor fails on it.
-#
-# This file is what checks it instead, and `just compat check` invokes it as
-# `ty check --config-file compat/ty.toml compat`, which is what compat.just
-# runs. Passing `compat/` as a path to the root project
-# does NOT work and fails in the worst way: `src.include` filters paths given
-# on the command line, so ty reported "WARN No python files found under the
-# given path(s)" followed by "All checks passed!" -- a green over zero files.
-#
-# The rules below are the root's, not a relaxed copy. Where this file differs
-# from `[tool.ty]` in pyproject.toml, the difference is scope or environment,
-# never severity.
-
-# BOTH paths below are relative to the WORKING DIRECTORY, not to this file,
-# and that is the single fact this config turns on. `just compat check` runs
-# from the repository root -- where a submodule recipe runs, just
-# README.md:3687-3688 -- so they read `compat` and `.venv-compat`.
-#
-# pyrefly is the OPPOSITE: compat/pyrefly.toml spells the same environment
-# `../.venv-compat/...` because it resolves from the config file's directory.
-# Two config files, two spellings, one environment.
-#
-# `include = ["."]` was tried first and is the trap. It made ty report
-#
-#     WARN No python files found under the given path(s)
-#     All checks passed!
-#
-# and exit 0 -- a green over zero files. Proven by planting
-# `def f() -> int: return "not an int"` in compat/primitives/build.py and
-# watching it pass. With `include = ["compat"]` the same plant is caught as
-# invalid-return-type and the run exits 1. Anything that changes these two
-# lines must be re-checked the same way: this gate has already been silently
-# blind once.
-
 [src]
 include = ["compat"]
 
@@ -45,14 +5,9 @@ include = ["compat"]
 python = ".venv-compat"
 
 [terminal]
-# A warning is an error, exactly as the root sets it.
 error-on-warning = true
 
 [rules]
-# The same seven the root turns on beyond ty's defaults, for the same reasons
-# recorded there. `possibly-unresolved-reference` is the one that matters
-# most: it is the possibly-unbound-name check, the half ruff cannot do, and it
-# ships off.
 possibly-unresolved-reference = "error"
 possibly-missing-import = "error"
 blanket-ignore-comment = "error"

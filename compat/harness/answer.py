@@ -1,38 +1,3 @@
-"""The answer, derived from evidence rather than argued.
-
-    What is the minimum canonical face/media evidence this application must
-    durably retain after an expensive observation pass so that every supported
-    downstream consumer can later be served without reopening the original
-    source media or repeating that expensive producer computation?
-
-Every other module produces evidence. This one reads it and states the answer,
-with the case name that proves each line. Nothing here decides anything: a
-primitive is in the minimum set because an ablation removed it and a replay
-broke, and it is out because one did not.
-
-DERIVED FROM, and nothing else:
-
-    cases.json              which primitives were ablated, and what broke
-    producer_union.json     every key any producer emits, and its byte cost
-    vendor_acceptance.json  which vendors reproduced their own example
-
-THE THREE RULES
----------------
-NECESSARY    an ablation removed it and the replay broke. It must be stored,
-             or the consumer that needed it cannot be served.
-DERIVABLE    an ablation removed it and the replay still reproduced. Storing
-             it is storing the same fact twice -- CONTRADICTED, and the
-             suite treats a passing necessity claim as a failure.
-SUBSTITUTED  a cheaper stored value was offered in its place and the replay
-             broke. That is not a claim about the primitive; it is a claim
-             that the cheap thing does not serve, and it is what rules a
-             storage strategy OUT rather than in.
-
-UNRETAINABLE is the fourth state and the one that matters most for schema
-work: a key some producer emits that the store demonstrably cannot give back.
-It is not a loss to fix by widening a column; there is no column.
-"""
-
 from __future__ import annotations
 
 import json
@@ -50,16 +15,13 @@ GENERATED: Final[Path] = ROOT / "generated"
 
 @dataclass
 class Primitive:
-    """One retained value, and what the evidence says about it."""
-
     name: str
     verdict: str
     consumers: list[str] = field(default_factory=list)
     proof: list[str] = field(default_factory=list)
     bytes_per_face: int = 0
     note: str = ""
-    #: Whether any recorded break weighed the consumer's output rather than
-    #: settling on shape, dtype or an exception.
+
     measured: bool = False
 
 
@@ -79,14 +41,6 @@ def _optional(name: str) -> dict[str, Any]:
 
 
 def swap_of(ablation: dict[str, Any]) -> str:
-    """The swap a substitution names, or a readable refusal.
-
-    NOT `.get("swap", "")`. An empty default would silently merge every
-    substitution in a consumer into one row keyed on the empty string, which
-    is the aggregation bug the field was added to remove. Evidence written
-    before the field exists is evidence under a different contract and says so
-    instead of being read as though it were current.
-    """
     held = ablation.get("swap")
     if not held:
         raise KeyError(
@@ -97,12 +51,6 @@ def swap_of(ablation: dict[str, Any]) -> str:
 
 
 def retained_cost(cases: dict[str, Any]) -> dict[str, int]:
-    """The LARGEST recorded size of each retained name, across every case.
-
-    Largest, not mean: the question is what a schema must budget for, and a
-    column sized to the average of a 1024-px vendor fixture and a 6528-px
-    photograph holds neither.
-    """
     out: dict[str, int] = {}
     for row in cases["results"]:
         for name, size in (row.get("retained_bytes") or {}).items():
@@ -115,31 +63,10 @@ def _quote(row: dict[str, Any], one: dict[str, Any]) -> str:
 
 
 def _shape_only(proof: list[str]) -> bool:
-    """Whether every quoted break is two arrays of different sizes.
-
-    Two arrays of unequal shape are unequal; that is arithmetic, not a
-    finding, and it was carrying the whole-reference claim that a face-only
-    store cannot serve those consumers.
-    """
     return bool(proof) and all(one.split(": ", 1)[-1].startswith("shape: ") for one in proof)
 
 
 def necessity() -> dict[str, Primitive]:
-    """Every REMOVED primitive, classified by what actually happened.
-
-    Removals only. A substitution asks whether a cheaper value serves, which
-    is a different question about the same name, and folding the two together
-    is what put `face_patch_substituted` in the durable set beside `kps`.
-    `substitutions()` is the other half.
-
-    `expect_breaks` is the CLAIM; `observed_break` is the fact. They are read
-    separately on purpose: a primitive whose removal was expected to break and
-    did not is the finding, not a mismatch to smooth over.
-
-    AGGREGATION IS BY WORST CASE, NOT BY LAST CASE. The first version let the
-    last row seen decide, which collapsed distinct cases into one verdict. A
-    primitive that is necessary ANYWHERE is necessary.
-    """
     cases = _read("cases.json")
     union = _optional("producer_union.json").get("union", {})
     measured = retained_cost(cases)
@@ -156,18 +83,14 @@ def necessity() -> dict[str, Primitive]:
             held = out.setdefault(name, Primitive(name=name, verdict="UNTESTED"))
             if row["consumer_id"] not in held.consumers:
                 held.consumers.append(row["consumer_id"])
-            # None is INCONCLUSIVE, not False: `bool(observed_break)` would
-            # fold "could not answer" into "survived" and publish an untested
-            # primitive as DERIVABLE.
+
             broke = one["observed_break"]
             if broke is None:
                 untested_somewhere[name] = True
             else:
                 broke_somewhere[name] = broke_somewhere.get(name, False) or broke
                 survived_somewhere[name] = survived_somewhere.get(name, False) or not broke
-            # Only a BREAK is quoted. The verdict that matters -- NECESSARY --
-            # rests on something breaking, so a quoted survival would read as
-            # evidence against the verdict beside it.
+
             if broke and len(held.proof) < 3:
                 held.proof.append(_quote(row, one))
 
@@ -178,9 +101,6 @@ def necessity() -> dict[str, Primitive]:
                 "which says nothing about whether the value carries the information"
             )
 
-        # The producer union prices the keys a PRODUCER emits; `retained_bytes`
-        # prices what a lane held. A name in neither is 0 because nothing
-        # measured it, which is not the same as free.
         held.bytes_per_face = int(union.get(name, {}).get("bytes", 0)) or measured.get(name, 0)
 
         broke = broke_somewhere.get(name, False)
@@ -194,9 +114,6 @@ def necessity() -> dict[str, Primitive]:
         elif survived:
             held.verdict = "DERIVABLE"
         else:
-            # Every ablation was INCONCLUSIVE: the replay indexed the key it
-            # had just been denied and nothing was learned. Not DERIVABLE,
-            # which would be a claim; the absence of one.
             held.verdict = "UNPROVEN"
             held.note = (
                 "every removal ended in MissingPrimitive: the replay indexes "
@@ -214,13 +131,6 @@ def necessity() -> dict[str, Primitive]:
 
 
 def substitutions() -> dict[tuple[str, str], Primitive]:
-    """Every (primitive, swap) pair, and whether the cheaper value served.
-
-    Keyed on the PAIR. Keying on the primitive alone merged two different
-    substitutes for one value; keying on the swap alone merged one substitute
-    across the several primitives it stood in for, and named a thing no store
-    holds as though it were a column.
-    """
     cases = _read("cases.json")
     union = _optional("producer_union.json").get("union", {})
     measured = retained_cost(cases)
@@ -242,8 +152,6 @@ def substitutions() -> dict[tuple[str, str], Primitive]:
                 broke_somewhere[key] = broke_somewhere.get(key, False) or broke
                 survived_somewhere[key] = survived_somewhere.get(key, False) or not broke
             if broke:
-                # Over EVERY row. `proof` is capped at three quotes for
-                # display, so a verdict read from it is a sample.
                 method = str(one.get("compare_method", ""))
                 methods.setdefault(key, set()).add(method)
                 held.measured = held.measured or settled_by_measurement(method)
@@ -277,19 +185,6 @@ def substitutions() -> dict[tuple[str, str], Primitive]:
 
 
 def store_returns() -> set[str]:
-    """Keys `gallery_storage` actually gave back, from its own case rows.
-
-    Read from the REPLAY artifact, which is the value the store returned. The
-    boundary name is the same string on both sides of the comparison, so
-    reading the baseline listed every key the lane TESTED -- and since
-    `gallery_storage.retained_for` fabricates a zero-length array for a key
-    the candidate did not return, a dropped key still produced a case and
-    still appeared here. `unretainable` is this set subtracted from the
-    producer union, so it could never be non-empty: the one state the answer
-    calls most important for schema work was undetectable.
-
-    A zero-length replay is the store returning nothing. That is the signal.
-    """
     cases = _read("cases.json")
     out: set[str] = set()
     for row in cases["results"]:
@@ -298,9 +193,7 @@ def store_returns() -> set[str]:
         parts = str(row.get("baseline", {}).get("name") or "").split("|")
         if len(parts) < 2:
             continue
-        # Size, not shape: a scalar returned faithfully has shape () and
-        # `np.prod(())` is 1, so only a zero-LENGTH array means nothing came
-        # back.
+
         size = 1
         for one in tuple(row.get("replay", {}).get("shape") or ()):
             size *= int(one)
@@ -310,18 +203,6 @@ def store_returns() -> set[str]:
 
 
 def unretainable() -> list[Primitive]:
-    """Keys a producer emits that the store has no column for.
-
-    Derived by SUBTRACTION -- the producer union minus what gallery_storage
-    returned -- rather than by a lane of its own.
-
-    There was such a lane. It compared `ones(1)` against
-    `ones(1) if key in a set else empty`, which executes nothing: it was a
-    bookkeeping assertion wearing a case's clothes, and it leaked its own
-    scaffolding variable `storable` into the MUST RETAIN list as though the
-    store needed to keep it. Subtraction over evidence two real lanes already
-    produced says the same thing and claims nothing extra.
-    """
     union = _optional("producer_union.json").get("union", {})
     returned = store_returns()
     out = [
@@ -340,20 +221,6 @@ def unretainable() -> list[Primitive]:
 
 
 def lossy() -> list[Primitive]:
-    """Keys the store keeps but does not return unchanged.
-
-    WIDENED is separated from LOSSY because they are different findings and
-    were being published as one. `det_score` leaves the producer float32,
-    lands in a SQLite REAL and returns float64 -- a widening
-    `storage/gallery_v45.py:244-245` makes deliberately -- and every value
-    survives it exactly, because float32 is representable in float64. It was
-    listed beside four keys that really do lose precision, under one label,
-    with a byte cost and a schema implication it does not have.
-
-    An unmeasured difference is also no longer printed as `worst 0`: the old
-    code skipped rows whose `max_abs_diff` was null and then defaulted to 0.0
-    at print time, so "not measured" and "measured, identical" read the same.
-    """
     cases = _read("cases.json")
     union = _optional("producer_union.json").get("union", {})
     worst: dict[str, float | None] = {}
@@ -408,31 +275,6 @@ def lossy() -> list[Primitive]:
 
 
 def corroboration() -> list[dict[str, Any]]:
-    """Substitution verdicts against the measurement that should carry them.
-
-    `face_family.embedding_ablations` derives `expect_breaks` from the
-    manifest's `embedding_model`, and then runs an experiment parameterised by
-    that same field. A wrong value is therefore self-consistent and green. The
-    `stored_vector_agreement` measurement is the independent fact: two vectors
-    that really differ have a cosine well below 1.
-
-    A break with near-identical vectors, or no break with vectors that
-    differ, is UNCORROBORATED -- the verdict and the measurement disagree, and
-    the manifest field they both depend on is the thing to suspect.
-
-    The `order_reversed` swap is checked the same way against
-    `reversal_observed`. Its
-    expectation comes from `reference_sets._reversal_observable`, a rule over
-    two strings that never touches a vector, and the observation it predicts
-    was already being computed and spent on a detail string.
-
-    The threshold is stated rather than tuned. Two runs of one model on one
-    crop are bit-identical here (CPU providers, fixed det_size), so "the same
-    vector" means cosine 1 to float32 precision; 0.999 is loose enough that no
-    numerical noise crosses it and tight enough that no two distinct
-    recognition models sit above it -- the measured spread between glintr100
-    and its neighbours is -0.06 to +0.06.
-    """
     same_vector = 0.999
     cases = _read("cases.json")
     out: list[dict[str, Any]] = []
@@ -460,9 +302,6 @@ def corroboration() -> list[dict[str, Any]]:
                     }
                 )
 
-            # `order_reversed` predicts from `_reversal_observable`, a rule over
-            # two strings that touches no vector; `reversal_observed` asks the
-            # same question of the arrays.
             if one.get("swap") == "order_reversed" and "reversal_observed" in held:
                 observed = bool(held["reversal_observed"])
                 out.append(
@@ -482,25 +321,6 @@ def corroboration() -> list[dict[str, Any]]:
 
 
 def declared_against_derived() -> dict[str, Any]:
-    """Per consumer: what its manifest row declares against what its cases ran.
-
-    REPORTED, NOT GATED. Both sides come from the same lanes: `exercised` is
-    the set of primitives the runners ablate, and the red direction
-    `exercised - declared` is cleared by copying those names into
-    `manifest.toml`. Measured 2026-08-29: 13 of 22 consumers have `retained`
-    exactly equal to the set their lane ablates, and `agrees` was true.
-
-    The docstring this replaces argued the opposite -- that one direction
-    could not be satisfied by transcription and so could gate. It can, and it
-    was: a check whose green is reachable by editing the file it checks is not
-    evidence, and gating on it published agreement between the evidence and a
-    copy of itself.
-
-    What the two columns are FOR is a comparison against `must_retain`, which
-    is what execution concluded, versus `retained`, which is a reading of
-    upstream. That comparison is not made here because `retained` no longer
-    holds an independent reading for those 13 rows.
-    """
     manifest = provenance.load_manifest()
     declared: dict[str, list[str]] = {
         one["id"]: sorted(set(one["retained"])) for one in manifest.get("consumers", []) if one.get("retained")
@@ -516,9 +336,7 @@ def declared_against_derived() -> dict[str, Any]:
     unexercised: dict[str, list[str]] = {}
     for consumer, names in declared.items():
         ran = exercised.get(consumer, set())
-        # `reference_pixels` is retained by NOTHING on purpose: `face_family`
-        # ablates it to show `draw_kps` never consults pixels, so it must not
-        # be reported as state the manifest forgot.
+
         extra = sorted(ran - set(names) - {"reference_pixels"})
         if extra:
             undeclared[consumer] = extra
@@ -529,9 +347,7 @@ def declared_against_derived() -> dict[str, Any]:
     return {
         "declared_by_consumer": declared,
         "exercised_by_consumer": {name: sorted(values) for name, values in sorted(exercised.items())},
-        # RED: a lane retains state its consumer's row does not name.
         "exercised_but_not_declared": undeclared,
-        # REPORTED: declared and not yet exercised. A gap, not a defect.
         "declared_but_not_exercised": unexercised,
         "agrees": not undeclared,
     }
@@ -550,9 +366,6 @@ def build() -> dict[str, Any]:
     for one in swapped.values():
         by_verdict[one.verdict].append(one)
 
-    # Removing the one key a replay indexes shows only that the replay indexes
-    # it, so what establishes that a value must be kept is that no cheaper form
-    # of it serves. `matrices._primitive_verdict` must agree.
     fails: dict[str, list[Primitive]] = defaultdict(list)
     serves: dict[str, set[str]] = defaultdict(set)
     for (primitive, swap), one in swapped.items():
@@ -581,14 +394,10 @@ def build() -> dict[str, Any]:
 
     keep = sorted(by_verdict["NECESSARY"] + by_width, key=lambda one: one.name)
     drop = sorted(by_verdict["DERIVABLE"], key=lambda one: one.name)
-    # Minus anything the substitutions settled: a primitive whose removal
-    # proved nothing and whose every cheaper form failed is proven, and must
-    # not appear as an open question too.
+
     settled = {one.name for one in keep}
     open_rows = sorted((one for one in by_verdict["UNPROVEN"] if one.name not in settled), key=lambda one: one.name)
-    # A primitive and a (primitive, swap) pair are different entities.
-    # `substitutions()` names a pair "<primitive> <- <swap>"; counting both
-    # under one key is why this file reported 7 where the matrix reported 5.
+
     unproven = [one for one in open_rows if " <- " not in one.name]
     unanswered_swaps = [one for one in open_rows if " <- " in one.name]
     ruled_out = sorted(by_verdict["SUBSTITUTE_FAILS"], key=lambda one: one.name)
@@ -608,19 +417,12 @@ def build() -> dict[str, Any]:
             "vendor_accepted": accepted,
         },
         "must_retain": [asdict(one) for one in keep],
-        # The manifest's own `retained` column beside what the ablations
-        # derived. Two answers to this suite's question, in one repository.
         "declared_against_derived": declared_against_derived(),
-        # Primitives whose every ablation was INCONCLUSIVE, held apart from
-        # both `must_retain` and `derivable` because the evidence supports
-        # neither.
         "unproven": [asdict(one) for one in unproven],
         "substitutions_that_could_not_answer": [asdict(one) for one in unanswered_swaps],
         "derivable": [asdict(one) for one in drop],
         "substitutes_that_fail": [asdict(one) for one in ruled_out],
         "substitutes_that_serve": [asdict(one) for one in cheaper_serves],
-        # A substitution verdict beside the independent measurement that
-        # should carry it. See `corroboration`.
         "substitution_corroboration": corroboration(),
         "unretainable_today": [asdict(one) for one in unretainable()],
         "lossy_today": [asdict(one) for one in lossy()],
@@ -711,15 +513,12 @@ def main() -> int:
         handle.write(json.dumps(out, indent=2, sort_keys=True, default=str))
         handle.write("\n")
     print(f"\nwrote {target}")
-    # A substitution whose verdict disagrees with its own measurement is a
-    # manifest field asserting something the vectors do not support.
+
     uncorroborated = [one for one in out["substitution_corroboration"] if not one["corroborated"]]
     bad: list[str] = []
     if uncorroborated:
         bad.append(f"{len(uncorroborated)} substitution verdict(s) uncorroborated by measurement")
-    # An empty durable set is this lane producing no answer, which is a
-    # different state from a small one. Exiting 0 on it is the shape the
-    # storage lane had at 36 UNSUPPORTED, 0 PASS and exit 0.
+
     if not out["must_retain"]:
         bad.append(
             f"MUST RETAIN is empty over {len(out['unproven'])} unproven primitive(s) and "

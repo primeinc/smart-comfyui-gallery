@@ -1,34 +1,3 @@
-"""ReActor's face model, written and read back by ReActor's own code.
-
-Every other consumer in the population is checked by comparing our replay
-against our baseline. This one is different and it is the reason it goes
-first: ReActor ships a LOADER. `load_face_model` is upstream code that takes
-a file and returns a `Face`, so the assertion here is not "our two functions
-agree" but "upstream accepted our bytes and got its object back".
-
-`save_face_model` (reactor_utils.py, ComfyUI-ReActor@6ad6b35a4df2) names nine
-keys and reads each with a bare subscript:
-
-    bbox  kps  det_score  landmark_3d_68  pose  landmark_2d_106
-    embedding  gender  age
-
-A missing one raises KeyError -- into a bare `except Exception` that PRINTS
-and returns, leaving no file behind. So the ablation evidence is the absence
-of the file, and this checks for that rather than for a raised exception: a
-runner that only watched for an exception would record every ablation as
-surviving, and report that nothing ReActor asks for is necessary.
-
-The retained set is EIGHT of those nine. `pose` is left out and derived,
-because `compat/consumers/producer_derivations.py` establishes by execution
-that upstream computes it from `landmark_3d_68` with no pixels and no second
-inference. If that claim were wrong this case would diverge, which is the
-point of running them in the same suite.
-
-The boundary is the safetensors file's bytes -- the actual artifact a ReActor
-user loads -- not a tensor-by-tensor comparison that could agree while the
-container differed.
-"""
-
 from __future__ import annotations
 
 import atexit
@@ -49,24 +18,11 @@ from compat.storage import precision
 
 CONSUMER_ID: Final[str] = "reactor"
 
-#: `pose` is the one key upstream names that this does NOT retain, because
-#: `producer_derivations` establishes by execution that upstream computes it
-#: from `landmark_3d_68` with no pixels and no second inference.
+
 DERIVED: Final[frozenset[str]] = frozenset({"pose"})
 
 
 def reactor_keys() -> tuple[str, ...]:
-    """The keys `save_face_model` requires, read out of its pinned AST.
-
-    NOT a typed-out list. Upstream states this contract by subscripting
-    `face["bbox"]`, `face["kps"]` and so on; retyping those into a constant
-    would make the contract something remembered rather than something
-    upstream says, and a tenth key added at a later commit would leave the
-    copy stale while every case kept passing.
-
-    Source order is preserved because it is also the order the vendor writes
-    into the safetensors container, and that file's header records key order.
-    """
     from compat.harness import pinned_source
 
     repo, commit = pinned_clone(CONSUMER_ID)
@@ -74,18 +30,11 @@ def reactor_keys() -> tuple[str, ...]:
 
 
 def retained_keys() -> tuple[str, ...]:
-    """What must be durably stored: everything upstream names, minus derived.
-
-    Necessity is not asserted here -- every one of these gets an ablation, and
-    a key that turns out not to be needed comes back CONTRADICTED.
-    """
     return tuple(one for one in reactor_keys() if one not in DERIVED)
 
 
 @dataclass(frozen=True)
 class FullObservation:
-    """One face with every key ReActor names, not just the derivable ones."""
-
     base: Observation
     bbox: npt.NDArray[np.float32]
     kps: npt.NDArray[np.float32]
@@ -93,16 +42,10 @@ class FullObservation:
     landmark_2d_106: npt.NDArray[np.float32]
     gender: npt.NDArray[np.int64]
     age: npt.NDArray[np.int64]
+    face: Any
 
 
 def pinned_clone(consumer_id: str) -> tuple[Path, str]:
-    """This consumer's clone directory and pinned commit, from the manifest.
-
-    Resolved through `provenance` rather than spelled out here. `refs/` is a
-    SIBLING of the repository, not a child, and a hand-built path got that
-    wrong once already -- pointing inside the working tree, where the clone
-    does not exist. One resolver means one place to be wrong.
-    """
     from compat.harness import provenance
 
     manifest = provenance.load_manifest()
@@ -114,20 +57,6 @@ def pinned_clone(consumer_id: str) -> tuple[Path, str]:
 
 
 def upstream_io() -> tuple[Any, Any, Any]:
-    """`save_face_model`, `load_face_model` and `Face`, as committed.
-
-    Loaded through `pinned_source` rather than imported, because
-    `reactor_utils` imports ComfyUI's `folder_paths` and `comfy.utils` at
-    module level. Standing ComfyUI up to answer a storage question would make
-    the suite depend on an application none of this is about; extracting the
-    symbols runs upstream's exact committed bytes instead and records which
-    names were supplied from outside.
-
-    `Face` is ReActor's OWN, from `reactor_core/face_objects.py` -- not
-    insightface's. Worth stating because getting it wrong is invisible: both
-    are dict subclasses, so the wrong one would work and would be testing a
-    container upstream never uses.
-    """
     import torch
     from safetensors.torch import safe_open, save_file
 
@@ -142,14 +71,6 @@ def upstream_io() -> tuple[Any, Any, Any]:
 
 
 def save_through_upstream(values: dict[str, Any], where: Path) -> bytes:
-    """Upstream's `save_face_model`, then the bytes it left behind.
-
-    The file is removed first and its existence checked after, because
-    upstream swallows every exception into a print. Without that, a save that
-    never happened is indistinguishable from one that did, and an ablation
-    would be recorded as surviving when it had actually failed outright --
-    which would report that nothing ReActor asks for is necessary.
-    """
     save, _load, face = upstream_io()
     keys = reactor_keys()
 
@@ -165,13 +86,11 @@ def save_through_upstream(values: dict[str, Any], where: Path) -> bytes:
 
 
 def load_through_upstream(where: Path) -> dict[str, npt.NDArray[np.generic]]:
-    """Upstream's own `load_face_model`, so the reader is theirs too."""
     _save, load, _face = upstream_io()
     return dict(load(str(where)))
 
 
 def full_observations(limit: int = 4) -> list[FullObservation]:
-    """Real faces carrying all nine keys, or an empty list."""
     from compat.corpus import index as corpus
 
     if not corpus.KYC.is_dir():
@@ -184,8 +103,7 @@ def full_observations(limit: int = 4) -> list[FullObservation]:
         faces = app.get(frame)
         if not faces:
             continue
-        # `loaded.best_face`, not highest det_score: two rules for "our
-        # producer's face" name different people on a multi-face photograph.
+
         best = best_face(faces)
         lmk106 = best.get("landmark_2d_106")
         if lmk106 is None or best.gender is None or best.age is None:
@@ -199,14 +117,13 @@ def full_observations(limit: int = 4) -> list[FullObservation]:
                 landmark_2d_106=np.asarray(lmk106, dtype=np.float32),
                 gender=np.asarray(best.gender, dtype=np.int64),
                 age=np.asarray(best.age, dtype=np.int64),
+                face=best,
             )
         )
     return out
 
 
 class ReactorFaceModelRunner:
-    """Nine tensors out of upstream's writer, through upstream's reader."""
-
     consumer_id: str = CONSUMER_ID
 
     def __init__(self, found: list[FullObservation] | None = None) -> None:
@@ -214,13 +131,11 @@ class ReactorFaceModelRunner:
             one.base.label: one for one in (found if found is not None else full_observations())
         }
         self._scratch = Path(tempfile.mkdtemp(prefix="compat_reactor_"))
-        # Removed when the interpreter exits. `tempfile.mkdtemp` has no
-        # owner, and one runner per consumer per run left a directory
-        # behind every time the suite ran.
+
         atexit.register(shutil.rmtree, self._scratch, True)
 
     def cases(self) -> tuple[Case, ...]:
-        return tuple(
+        replay_cases = tuple(
             Case(
                 name=f"reactor_face_model_{label}",
                 consumer_id=self.consumer_id,
@@ -231,9 +146,6 @@ class ReactorFaceModelRunner:
                 rtol=0.0,
                 atol=0.0,
                 retained=retained_keys(),
-                # Every retained key gets its own ablation. `pose` gets none:
-                # it is NOT retained, and the case reproducing at all is the
-                # evidence that deriving it was sufficient.
                 ablations=self._ablations(label),
                 measurements=("keys_upstream_returns",),
                 note="upstream writes and upstream reads; the comparison is the file it produced",
@@ -241,18 +153,26 @@ class ReactorFaceModelRunner:
             for label in self._by_label
         )
 
-    def _ablations(self, label: str) -> tuple[Ablation, ...]:
-        """One presence question and one WIDTH question per key.
+        export_cases = tuple(
+            Case(
+                name=f"reactor_face_model_app_export_{label}",
+                consumer_id=self.consumer_id,
+                tier=Tier.CONSUMER,
+                fixture=self._by_label[label].base.fixture,
+                boundary=f"face_model_safetensors_app|{label}",
+                exact_bytes=True,
+                rtol=0.0,
+                atol=0.0,
+                retained=(),
+                ablations=(),
+                measurements=(),
+                note="the application's export from its stored replay, against upstream's own writer",
+            )
+            for label in self._by_label
+        )
+        return (*replay_cases, *export_cases)
 
-        A removal shows only that the replay indexes the key --
-        `save_face_model` subscripts all of them, so every removal
-        ends the same way and separates nothing. The width question
-        does separate, where it separates at all: `expect_breaks` is
-        read off whether narrowing actually MOVES this value, not off a
-        typed-out list and not off its dtype alone -- a float whose
-        every element is exact in binary16 is unchanged by the swap and
-        `run_ablation` records that as INCONCLUSIVE.
-        """
+    def _ablations(self, label: str) -> tuple[Ablation, ...]:
         held = self._state(self._by_label[label])
         return (
             *(Ablation(primitive=one, expect_breaks=True) for one in retained_keys()),
@@ -265,18 +185,12 @@ class ReactorFaceModelRunner:
                 )
                 for one in retained_keys()
             ),
-            # `precision.half` cannot degrade an integer, so the width
-            # question is a no-op for `age`. A decade bucket is a coarser
-            # storable form of one.
             Ablation(
                 primitive="age",
                 swap="decade_bucket",
                 expect_breaks=True,
                 kind="substitution",
             ),
-            # A two-valued label has no narrower storable form, so the
-            # answerable question is whether the value reaches the boundary:
-            # offer the opposite label and see if the saved model changes.
             Ablation(
                 primitive="gender",
                 swap="opposite_label",
@@ -288,7 +202,12 @@ class ReactorFaceModelRunner:
     def _found(self, case: Case) -> FullObservation:
         return self._by_label[case.boundary.partition("|")[2]]
 
+    def _is_app_export(self, case: Case) -> bool:
+        return case.boundary.partition("|")[0] == "face_model_safetensors_app"
+
     def retained_for(self, case: Case) -> RetainedState:
+        if self._is_app_export(case):
+            return RetainedState()
         return self._state(self._found(case))
 
     def _state(self, found: FullObservation) -> RetainedState:
@@ -314,7 +233,6 @@ class ReactorFaceModelRunner:
         )
 
     def baseline(self, case: Case) -> Artifact:
-        """The producer's own nine values, through upstream's writer."""
         found = self._found(case)
         values = {
             "bbox": found.bbox,
@@ -331,24 +249,26 @@ class ReactorFaceModelRunner:
         return self._artifact(case.boundary, blob)
 
     def replay(self, case: Case, retained: RetainedState) -> Artifact:
-        """Eight retained values, pose derived, through the same writer.
-
-        Nothing here reads the fixture. A key the retained state does not
-        carry raises by name out of `RetainedState`, which is what makes an
-        ablation legible rather than a mysterious upstream print.
-        """
+        if self._is_app_export(case):
+            return self._artifact(case.boundary, self._app_export(case))
         values: dict[str, Any] = {}
         for key in retained_keys():
             values[key] = retained.points(key) if key not in {"gender", "age"} else retained.integers(key)
 
-        # Derived, not retained. Proven byte-identical to the producer's own
-        # pose in `producer_derivations`; if that stops holding, this case
-        # diverges rather than quietly storing a ninth column forever.
         values["pose"] = pose_from_landmarks(values["landmark_3d_68"])
 
         ordered = {key: values[key] for key in reactor_keys()}
         blob = save_through_upstream(ordered, self._scratch / f"{case.name}_replay.safetensors")
         return self._artifact(case.boundary, blob)
+
+    def _app_export(self, case: Case) -> bytes:
+        from compat.storage import gallery
+        from db import faces_native
+
+        found = self._found(case)
+        frame, sha = producer.decode(Path(found.base.fixture.path))
+        native = gallery.native_round_trip(found.face, frame, sha)
+        return faces_native.reactor_face_model_bytes(native)
 
     def ablate(self, case: Case, retained: RetainedState, ablation: Ablation) -> RetainedState:
         if ablation.swap == "decade_bucket":
@@ -356,16 +276,13 @@ class ReactorFaceModelRunner:
             return retained.replacing("age", np.asarray(np.rint(held / 10.0) * 10, dtype=held.dtype))
         if ablation.swap == "opposite_label":
             held = retained.integers("gender")
-            # `np.asarray`: `1 - <0-d array>` returns a numpy SCALAR, which
-            # `RetainedState._array` rejects, and the TypeError surfaces in
-            # `replay` where it reads as the consumer breaking.
+
             return retained.replacing("gender", np.asarray(1 - held, dtype=held.dtype))
         if ablation.swap == "half_precision":
             return retained.replacing(ablation.primitive, precision.half(retained.array(ablation.primitive)))
         return retained.without(ablation.primitive)
 
     def measure(self, case: Case, retained: RetainedState, name: str) -> Measurement:
-        """What upstream's reader actually hands a ReActor node back."""
         if name != "keys_upstream_returns":
             raise KeyError(f"{self.consumer_id} has no measurement called {name!r}")
 

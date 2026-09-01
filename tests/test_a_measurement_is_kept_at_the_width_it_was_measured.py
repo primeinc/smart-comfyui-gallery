@@ -134,20 +134,26 @@ def detections(path: pathlib.Path):
 @needs_the_real_thing
 @pytest.mark.parametrize("path", CORPUS, ids=lambda one: one.parent.name)
 def test_a_dense_landmark_keeps_every_digit_the_detector_gave_it(path):
-    """`round(x, 5)` is gone from the dense landmark sets.
+    """The captured record carries 2d106det's output in the producer's own
+    dtype and shape, with no rounding anywhere between the pass and it.
 
     Asserted on the VALUE, never on the absence of a call. A coordinate that
     happens to be exact at five places proves nothing either way, so this
     requires at least one that is not -- and says so if the photograph cannot
     separate a rounded write from an unrounded one.
     """
-    found, _ = detections(path)
-    dense = [
-        one.attributes["landmark_2d_106"] for one in found if one.attributes and "landmark_2d_106" in one.attributes
-    ]
-    assert dense, f"{path.name}: no detection carried landmark_2d_106"
+    from vision import facestore
 
-    values = np.asarray(dense[0], dtype=np.float64).ravel()
+    found, _ = detections(path)
+    records = [facestore.thaw(one.native).record for one in found if one.native is not None]
+    dense = [one["landmark_2d_106"] for one in records if "landmark_2d_106" in one]
+    assert dense, f"{path.name}: no captured record carried landmark_2d_106"
+
+    held = dense[0]
+    assert held.dtype == np.float32, f"{path.name}: the record narrowed {held.dtype} from the producer's float32"
+    assert held.shape == (106, 2), f"{path.name}: landmark_2d_106 is {held.shape}, expected (106, 2)"
+
+    values = held.astype(np.float64).ravel()
     moved = values[values != np.round(values, 5)]
     assert moved.size, (
         f"{path.name}: every stored coordinate is already exact at 5 decimal places, so this "
@@ -159,21 +165,25 @@ def test_a_dense_landmark_keeps_every_digit_the_detector_gave_it(path):
 @needs_the_real_thing
 @pytest.mark.parametrize("path", CORPUS, ids=lambda one: one.parent.name)
 def test_a_depth_landmark_keeps_every_digit_the_detector_gave_it(path):
-    """`round(x, 5)` on x/y and `round(z, 2)` on depth are gone from 1k3d68.
+    """1k3d68's x/y and depth reach the record unrounded, at float32.
 
-    Both halves, because they were two separate roundings at two separate
-    widths and a test covering only x/y passes with the depth one reinstated.
-    Depth is asserted on its own: z is not normalized -- it stays in the
-    model's pixel-scaled units (vision/faces.py:491-497) -- so it is the one
-    coordinate whose magnitude makes 2 decimal places a real loss.
+    Both halves, because the removed defect was two separate roundings at two
+    separate widths and a test covering only x/y passes with the depth one
+    reinstated. Depth is asserted on its own: z is in the model's
+    pixel-scaled units, so it is the one coordinate whose magnitude makes 2
+    decimal places a real loss.
     """
-    found, _ = detections(path)
-    dense = [one.attributes["landmark_3d_68"] for one in found if one.attributes and "landmark_3d_68" in one.attributes]
-    assert dense, f"{path.name}: no detection carried landmark_3d_68"
+    from vision import facestore
 
-    points = np.asarray(dense[0], dtype=np.float64)
-    assert points.ndim == 2, f"{path.name}: landmark_3d_68 is {points.shape}, expected (N, 3)"
-    assert points.shape[1] == 3, f"{path.name}: landmark_3d_68 is {points.shape}, expected (N, 3)"
+    found, _ = detections(path)
+    records = [facestore.thaw(one.native).record for one in found if one.native is not None]
+    dense = [one["landmark_3d_68"] for one in records if "landmark_3d_68" in one]
+    assert dense, f"{path.name}: no captured record carried landmark_3d_68"
+
+    held = dense[0]
+    assert held.dtype == np.float32, f"{path.name}: the record narrowed {held.dtype} from the producer's float32"
+    assert held.shape == (68, 3), f"{path.name}: landmark_3d_68 is {held.shape}, expected (68, 3)"
+    points = held.astype(np.float64)
 
     flat = points[:, :2].ravel()
     moved = flat[flat != np.round(flat, 5)]
@@ -480,6 +490,6 @@ def test_the_v46_step_leaves_a_row_with_no_keypoints_alone(db, tmp_path):
 
 
 def test_the_version_this_build_writes_has_a_step_off_the_one_before_it():
-    """v46 is reachable from v45. A bump with no step bricks every database."""
-    assert connect.USER_VERSION == 46
-    assert 45 in migrate.STEPS, "v45 has no step off it; a v45 database cannot be opened by this build"
+    """v47 is reachable from v46. A bump with no step bricks every database."""
+    assert connect.USER_VERSION == 47
+    assert 46 in migrate.STEPS, "v46 has no step off it; a v46 database cannot be opened by this build"

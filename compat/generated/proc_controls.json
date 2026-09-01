@@ -7,7 +7,7 @@
       "name": "1 old_shape_hangs"
     },
     {
-      "detail": "returned after 2.1s against a 60.0s ceiling",
+      "detail": "returned after 2.2s against a 60.0s ceiling",
       "held": true,
       "name": "2 returns_bounded"
     },
@@ -17,12 +17,12 @@
       "name": "3 reports_timed_out"
     },
     {
-      "detail": "child pid 6900: alive=False",
+      "detail": "child pid 36848: alive=False",
       "held": true,
       "name": "4 child_is_dead"
     },
     {
-      "detail": "grandchild pid 11048: alive=False",
+      "detail": "grandchild pid 12200: alive=False",
       "held": true,
       "name": "5 grandchild_is_dead"
     },

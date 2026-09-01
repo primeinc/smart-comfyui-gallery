@@ -1,37 +1,9 @@
-# The frozen consumer population, pinned.
-#
-# Every consumer here names the symbol that was READ, at the commit named here.
-# Nothing in this file asserts a replay works: `status` is `unproven` until a
-# runner executes and writes evidence, and `unclassified` where the contract
-# has not been established yet. The harness FAILS while any member is
-# unclassified, so adding a row is a commitment to prove it.
-#
-# TOML, not YAML: `tomllib` is stdlib from 3.11, so the manifest parses with a
-# real parser and no dependency. This tree forbids regex-parsing a structured
-# format, and a harness about proof should not begin by guessing at its own
-# input.
-#
-# Lives outside the application import graph on purpose. These upstreams pull
-# torch, onnxruntime, insightface, facexlib and diffusers; none of that may
-# reach `db/` or `sg_web/`.
-#
-# The boundary is always the EARLIEST deterministic consumer output, never a
-# generated image: sampling is nondeterministic across machines and would turn
-# a storage proof into a GPU lottery.
-
 version = 1
 recorded_at = "2026-08-28"
-refs_root = "../refs"          # relative to the repository root
+refs_root = "../refs"
 
 
-# Artifacts the suite REQUIRES that no repository vendors: they are downloaded
-# rather than committed. Declared here so `just compat weights` can fetch every
-# one, instead of a case raising "download it and the case runs" at whoever
-# happens to run the suite next.
 [provisioned]
-# Machine-local, so an env var overrides it. The default is what makes the
-# suite runnable on a clone: an unset variable used to leave every id_v2v case
-# raising FileNotFoundError with nothing naming where the file should go.
 root = "C:/ComfyUI/output/.AImodels/idv2v"
 override_env = "IDV2V_CHECKPOINTS"
 
@@ -59,22 +31,6 @@ file = "depth_anything_v2_vitl.pth"
 path = "depthv2/depth_anything_v2_vitl.pth"
 cited = "ID-V2V@33dd047835cf checkpoints/README.md: 'DepthAnything-V2 ViT-L' -> https://huggingface.co/depth-anything/Depth-Anything-V2-Large"
 
-
-[equivalence]
-# Default comparison for tensor boundaries. A runner may NARROW this; widening
-# it requires an `equivalence` block on the runner naming the first stage at
-# which exactness is lost and why.
-method = "exact_bytes"
-
-[equivalence.fallback]
-method = "allclose"
-rtol = 0.0
-atol = 1e-6
-why = "Permitted only where the same op runs on a device with unfixed reduction order."
-
-# --- shared upstreams -------------------------------------------------------
-# Named once, referenced by key. A dependency that participates in
-# preprocessing or conditioning belongs here, not in prose.
 
 [upstreams.insightface]
 repo = "https://github.com/deepinsight/insightface.git"
@@ -110,11 +66,6 @@ commit = "c1bf18c92c6285334adcaac7e75ef8946a227f49"
 repo = "https://github.com/Comfy-Org/ComfyUI.git"
 commit = "a9ab2b62dac17743c62fc1cab8468340496d302e"
 
-# The three producers ID-V2V's control streams come out of. Pinned as upstreams
-# rather than named in a note, because each one's revision changes the bytes of
-# a stream the storage question is about.
-# ComfyUI-ReActor@6ad6b35a4df2 tracks no media (git ls-tree at the pin, rc=1).
-# Its README links the official workflows here.
 [upstreams.reactor_assets]
 repo = "https://github.com/Gourieff/Assets.git"
 commit = "606558ed08f16b99a29ef30b0df0b4622164c524"
@@ -126,8 +77,6 @@ notes = [
   "The four LoadImage targets are not distributed in any Gourieff repository, so ReActor has an entrypoint but no first-party input media.",
 ]
 
-# The ComfyUI node ships workflows only; the sample inputs they name
-# (woman.jpg, man.jpg) live in the main repository.
 [upstreams.infiniteyou_main]
 repo = "https://github.com/bytedance/InfiniteYou.git"
 commit = "aaa6ea5f75ba2ff58b9025fa7df45e4a139ed717"
@@ -164,9 +113,6 @@ notes = [
   "Used ONLY by the alternate idv2v_with_normal_depth variant; supplies surface normals.",
 ]
 
-
-# Model and base-architecture upstreams reached through a consumer's path.
-# Cloned so a claim about any of them is a read rather than a memory.
 
 [upstreams.eva]
 repo = "https://github.com/baaivision/EVA.git"
@@ -248,8 +194,6 @@ notes = [
   "The original CLIP; IPAdapter's README notes its processor CENTRE-CROPS non-square inputs.",
 ]
 
-# Upstreams a pinned consumer's own README or code points at. Cloned so a
-# claim about any of them is a read rather than a memory.
 
 [upstreams.comfyui_original]
 repo = "https://github.com/comfyanonymous/ComfyUI.git"
@@ -388,17 +332,6 @@ notes = [
 ]
 
 
-# --- vendor checkpoints: what the ACCEPTANCE lane runs on -----------------
-# Published by each vendor, downloaded outside the repository, and hashed so
-# a swapped file is a different run. NOT the application's weights --
-# `[[weights]]` above is what the gallery loads; these are what the vendors'
-# own entrypoints open, which is a separate claim.
-#
-# inswapper_128.onnx is verified against the hash ReActor PUBLISHES:
-# ComfyUI-ReActor@6ad6b35a4df2 README.md:431 states
-# e4a3f08c753cb72d04e10aa0f7dbe3deebbf39567d4ead6dce08e98aa49e16af and the
-# downloaded bytes hash to exactly that, full string.
-
 [[vendor_weights]]
 consumer = "anystory"
 file = "anystory/anystory_flux.bin"
@@ -515,9 +448,6 @@ sha256 = "6ca9667da1ca9e0b0f75e46bb030f7e011f44f86cbfb8d5a36590fcd7507b030"
 consumer = "mediapipe"
 file = "mediapipe/face_landmarker.task"
 source = "storage.googleapis.com/mediapipe-models"
-# Google publishes this as a file at a URL rather than in any repository, so
-# there is no lfs pointer to read and the digest is taken from the bytes the
-# vendor serves. The URL must sit under `source`, which is the authority.
 url = "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task"
 bytes = 3758596
 sha256 = "64184e229b263107bc2b804c6625db1341ff2bb731874b0bcc2fe6544e0bc9ff"
@@ -599,10 +529,6 @@ source = "Junjie96/UniPortrait + h94/IP-Adapter"
 bytes = 226451570
 sha256 = "99f502791c138d90cde6512ba8cea994a4aa3244c9e5c4703bd8a6e6ab449908"
 
-# The image encoder's architecture, not its weights. `from_pretrained`
-# reads hidden_size from here and UniPortrait's resampler is built from
-# it (uniportrait_pipeline.py:84), so a changed config changes every
-# structure embedding while the .safetensors digest stays put.
 
 [[vendor_weights]]
 consumer = "ipadapter"
@@ -618,16 +544,6 @@ source = "h94/IP-Adapter models/image_encoder"
 bytes = 560
 sha256 = "625d37b31afbf2f0792a87846b3654ee23f20568409e35b78a1f795b04e1a7a1"
 
-# --- runtimes: what the interpreter will actually import --------------------
-# Some consumers run from an INSTALLED wheel rather than from the clone, and a
-# wheel is not automatically the commit it claims. Each row names a file that
-# exists in both places; `provenance.py` hashes the installed bytes against
-# `git show <commit>:<path>` and fails when they diverge.
-#
-# Without this the suite could cite a commit and execute something else, which
-# is the most expensive kind of wrong evidence -- it looks fully sourced.
-# Installed through `uv sync --group compat`; the group is NOT in
-# `default-groups`, so the application's environment never carries it.
 
 [[runtimes]]
 package = "facexlib"
@@ -647,22 +563,12 @@ upstream = "insightface"
 path = "python-package/insightface/utils/face_align.py"
 installed_path = "insightface/utils/face_align.py"
 
-# --- weights: what actually computed the numbers ----------------------------
-# Pinning twenty repositories to the commit and leaving the model files
-# unnamed would let this suite reproduce its own code exactly and still
-# produce different embeddings on another machine, with nothing in the record
-# able to explain it. These are hashed by content on every provenance run.
-#
-# Not vendored and not downloadable from here: `vision/weights.py` owns
-# provisioning, and the licence is non-commercial research
-# (deepinsight/insightface). A missing file makes cases UNSUPPORTED, which is
-# the honest outcome, and stays visible in the evidence.
 
 [[weights]]
 pack = "antelopev2"
 root = "C:/ComfyUI/output/.AImodels/insightface/models/antelopev2"
 file = "glintr100.onnx"
-role = "recognition -- the 512-d embedding every identity claim rests on"
+role = "recognition -- the antelopev2 512-d embedding space; w600k_r50 and facexlib arcface are separate spaces"
 
 [[weights.attestations]]
 source_class = "huggingface_snapshot"
@@ -747,16 +653,12 @@ path = "face_encoder/models/antelopev2/genderage.onnx"
 sha256 = "4fde69b1c810857b88c64a335084f1c3fe8f01246c9a191b48c7bb756d6652fb"
 authority = "first_party_consumer_snapshot"
 
-# buffalo_l: insightface's DEFAULT_MP_NAME. UniPortrait constructs
-# FaceAnalysis with no name=, so it gets THIS pack -- det_10g + w600k_r50,
-# different files from antelopev2's scrfd_10g_bnkps + glintr100. Different
-# detector means different keypoints, so antelopev2 kps cannot serve it.
 
 [[weights]]
 pack = "buffalo_l"
 root = "C:/ComfyUI/output/.AImodels/insightface/models/buffalo_l"
 file = "det_10g.onnx"
-role = "detection for UniPortrait; NOT the same detector as antelopev2"
+role = "detection for UniPortrait; byte-identical to antelopev2's scrfd_10g_bnkps.onnx per the attestations below"
 
 [[weights.attestations]]
 source_class = "git_published_checksum"
@@ -791,12 +693,6 @@ sha256 = "4c06341c33c2ca1f86781dab0e829f88ad5b64be9fba56e56bc9ebdefc619e43"
 authority = "canonical_vendor"
 note = "BUFFALO_L PackageFile"
 
-# ReActor's own persisted format (reactor_utils.py:184-200) names
-# landmark_3d_68, pose, landmark_2d_106, gender and age, and buffalo_l
-# produces none of them without these three. A run with `allowed_modules`
-# restricted -- which is what PhotoMaker does (inference_pmv2.py:13) -- returns
-# a Face missing exactly those keys, so which packs loaded is part of what the
-# evidence has to hold.
 
 [[weights]]
 pack = "buffalo_l"
@@ -840,19 +736,13 @@ path = "face_encoder/models/buffalo_l/genderage.onnx"
 sha256 = "4fde69b1c810857b88c64a335084f1c3fe8f01246c9a191b48c7bb756d6652fb"
 authority = "first_party_consumer_snapshot"
 
-# facexlib's own weights. PuLID, ConsisID and InfiniteYou re-detect with
-# retinaface_resnet50 rather than reusing insightface keypoints, and
-# InfiniteYou's embedding is facexlib's arcface -- not glintr100 at all.
-# Downloaded by facexlib itself into its package directory.
 
 [[weights]]
 pack = "facexlib"
-# Resolved from the interpreter, not typed: this row named `.venv` while
-# the suite runs from `.venv-compat`, so it read ABSENT against a
-# directory no interpreter here uses.
 root_package = "facexlib"
 root_subdir = "weights"
 file = "detection_Resnet50_Final.pth"
+role = "retinaface_resnet50 -- the detector in the loop for PuLID/ConsisID/InfiniteYou"
 
 [[weights.attestations]]
 source_class = "huggingface_snapshot"
@@ -861,8 +751,6 @@ revision = "4e89e896ebd0105472dc89669bcf0eafc0fdf87f"
 path = "face_encoder/detection_Resnet50_Final.pth"
 authority = "first_party_consumer_snapshot"
 note = "consisid ships facexlib's own weights; upstream facexlib publishes no digest"
-
-role = "retinaface_resnet50 -- the detector in the loop for PuLID/ConsisID/InfiniteYou"
 
 [[weights.attestations]]
 source_class = "github_release_asset"
@@ -874,12 +762,10 @@ note = "named at facexlib/detection/__init__.py:11; upstream publishes no digest
 
 [[weights]]
 pack = "facexlib"
-# Resolved from the interpreter, not typed: this row named `.venv` while
-# the suite runs from `.venv-compat`, so it read ABSENT against a
-# directory no interpreter here uses.
 root_package = "facexlib"
 root_subdir = "weights"
 file = "recognition_arcface_ir_se50.pth"
+role = "InfiniteYou's embedding model; a DIFFERENT 512-d space from glintr100"
 
 [[weights.attestations]]
 source_class = "huggingface_snapshot"
@@ -888,8 +774,6 @@ revision = "d3ad6bbf8333a8f4286c9cdd71b12dc7cd66fd8a"
 path = "recognition_arcface_ir_se50.pth"
 authority = "corroborating_mirror"
 note = "third-party mirror; upstream facexlib publishes no digest (hash_prefix=None)"
-
-role = "InfiniteYou's embedding model; a DIFFERENT 512-d space from glintr100"
 
 [[weights.attestations]]
 source_class = "github_release_asset"
@@ -901,12 +785,10 @@ note = "named at facexlib/recognition/__init__.py:10; upstream publishes no dige
 
 [[weights]]
 pack = "facexlib"
-# Resolved from the interpreter, not typed: this row named `.venv` while
-# the suite runs from `.venv-compat`, so it read ABSENT against a
-# directory no interpreter here uses.
 root_package = "facexlib"
 root_subdir = "weights"
 file = "parsing_bisenet.pth"
+role = "face parsing for PuLID/ConsisID masked crops"
 
 [[weights.attestations]]
 source_class = "huggingface_snapshot"
@@ -916,8 +798,6 @@ path = "face_encoder/parsing_bisenet.pth"
 authority = "first_party_consumer_snapshot"
 note = "consisid ships facexlib's own weights; upstream facexlib publishes no digest"
 
-role = "face parsing for PuLID/ConsisID masked crops"
-
 [[weights.attestations]]
 source_class = "github_release_asset"
 repo_id = "xinntao/facexlib"
@@ -926,7 +806,6 @@ path = "releases/download/v0.2.0/parsing_bisenet.pth"
 authority = "canonical_vendor"
 note = "named at facexlib/parsing/__init__.py:11; upstream publishes no digest"
 
-# --- face-native consumers --------------------------------------------------
 
 [[consumers]]
 id = "instantid"
@@ -943,21 +822,17 @@ claim = "no source pixels required: draw_kps uses the reference image ONLY for i
 
 
 [consumers.vendor_setup]
-# Copied from the vendor's own loader and extractor at this row's commit.
 cited = ["InstantID.py:217 load_insight_face", "InstantID.py:171-191 extractFeatures"]
 loader = 'FaceAnalysis(name="antelopev2", root=INSIGHTFACE_DIR, providers=[provider+"ExecutionProvider"])'
 pack = "antelopev2"
 prepare_det_size = [640, 640]
-sweep = [640, 128, -64]           # range(640, 128, -64); first size that finds a face wins
-select = "largest_bbox_area"      # sorted(face, key=area)[-1]
-embedding = "raw"                 # face['embedding'], NOT normed
+sweep = [640, 128, -64]
+select = "largest_bbox_area"
+embedding = "raw"
 crop_sizes = []
-kps_render = "draw_kps_array"     # cubiq's draw_kps takes an ndarray: h, w, _ = image.shape
-combine = "mean"                  # torch.mean(clip_embed, dim=0) when >1 reference
-combine_stage = "raw_embedding"   # averaged BEFORE the projector, unlike pulid_comfyui
-# The node offers ['average', 'norm average', 'concat'] with 'average' as the
-# default (InstantID.py:417), but :306-310 handles only the first two --
-# 'concat' falls through and leaves the embeddings stacked.
+kps_render = "draw_kps_array"
+combine = "mean"
+combine_stage = "raw_embedding"
 combine_options = ["average", "norm average", "concat"]
 
 [[consumers]]
@@ -981,24 +856,15 @@ cited = [
     "IPAdapterPlus.py:643 IPAdapterUnifiedLoaderFaceID inherits that loader",
     "IPAdapterPlus.py:684-700 IPAdapterInsightFaceLoader offers ['buffalo_l', 'antelopev2']",
 ]
-# NOT fixed by the consumer. `insightface_loader` defaults to buffalo_l and the
-# unified loader passes no model_name, so buffalo_l is what runs unless a user
-# wires the separate node and picks antelopev2. The recognition space of what
-# this consumer stores is therefore a WORKFLOW choice, and a retained vector
-# from one space does not serve the other.
 pack = "buffalo_l"
 pack_alt = "antelopev2"
-# Follows the pack: buffalo_l recognises with w600k_r50, antelopev2 with
-# glintr100. So the SPACE this consumer's stored vector lives in is decided by
-# the workflow, not by the consumer, and the application's own glintr100 row
-# serves it only under the non-default choice.
 embedding_model = "w600k_r50"
 embedding_model_alt = "glintr100"
 prepare_det_size = [640, 640]
 sweep = [640, 256, -64]
-select = "first"                  # face[0], NOT the largest -- differs from InstantID
-embedding = "normed"              # normed_embedding unless is_portrait_unnorm
-embedding_alt = "raw"             # is_portrait_unnorm -> face[0].embedding
+select = "first"
+embedding = "normed"
+embedding_alt = "raw"
 crop_sizes = []
 kps_render = "none"
 combine = "concat"
@@ -1024,17 +890,8 @@ cited = [
     "IPAdapterPlus.py:643 IPAdapterUnifiedLoaderFaceID inherits that loader",
     "IPAdapterPlus.py:684-700 IPAdapterInsightFaceLoader offers ['buffalo_l', 'antelopev2']",
 ]
-# NOT fixed by the consumer. `insightface_loader` defaults to buffalo_l and the
-# unified loader passes no model_name, so buffalo_l is what runs unless a user
-# wires the separate node and picks antelopev2. The recognition space of what
-# this consumer stores is therefore a WORKFLOW choice, and a retained vector
-# from one space does not serve the other.
 pack = "buffalo_l"
 pack_alt = "antelopev2"
-# Follows the pack: buffalo_l recognises with w600k_r50, antelopev2 with
-# glintr100. So the SPACE this consumer's stored vector lives in is decided by
-# the workflow, not by the consumer, and the application's own glintr100 row
-# serves it only under the non-default choice.
 embedding_model = "w600k_r50"
 embedding_model_alt = "glintr100"
 prepare_det_size = [640, 640]
@@ -1042,7 +899,7 @@ sweep = [640, 256, -64]
 select = "first"
 embedding = "normed"
 embedding_alt = "raw"
-crop_sizes = [224, 256, 336]      # 224 sd15, 256 sdxl, 336 kwai kolors
+crop_sizes = [224, 256, 336]
 kps_render = "none"
 combine = "concat"
 
@@ -1069,31 +926,14 @@ loader = 'FaceAnalysis(name="antelopev2", root=INSIGHTFACE_DIR, providers=[provi
 pack = "antelopev2"
 prepare_det_size = [640, 640]
 sweep = [640, 256, -64]
-# No reset before the sweep, unlike cubiq's InstantID and IPAdapter which both
-# set input_size back to (640, 640) first. This one starts from whatever the
-# previous caller left behind.
 det_size_inherits = true
 leaves_detector_mutated = true
 select = "largest_bbox_area"
 embedding = "raw"
 crop_sizes = []
 kps_render = "none"
-# NOT none. pulid.py:414-419 cats the per-image results and then, when there
-# is more than one, takes torch.mean(dim=0); the comment above it reads
-# "# average embeddings". The mean is over the ADAPTER OUTPUT, because
-# get_image_embeds runs once per image at :405-406. InstantID averages the raw
-# 512 BEFORE its projector (InstantID.py:305-310). Two different places to
-# average, so one stored averaged vector cannot serve both: serving this
-# consumer with N references needs N retained (id_cond, id_vit_hidden) pairs.
 combine = "mean"
 combine_stage = "adapter_output"
-# README.md:32 -- this node loads ip-adapter_pulid_sdxl_fp16.safetensors
-# from huchenlei/ipadapter_pulid, "converted into IPAdapter format". That is
-# NOT pulid_v1.bin / pulid_v1.1.safetensors, which is what pulid_upstream
-# uses and what this suite holds. Confirmed in the vendor's own example
-# workflow (examples/PuLID_simple.json PulidModelLoader).
-# README.md:18 -- "The quality of the reference image is very important ...
-# Be sure to use a clean and sharp picture!"
 weight_file = "ip-adapter_pulid_sdxl_fp16.safetensors"
 weight_file_held = false
 
@@ -1106,9 +946,10 @@ entrypoint = "reactor_utils.py::save_face_model"
 verifier = "reactor_utils.py::load_face_model"
 dependencies = ["insightface"]
 boundary = ["face_model_safetensors"]
-retained = ["age", "bbox", "det_score", "embedding", "embedding_raw", "gender", "kps", "landmark_2d_106", "landmark_3d_68"]
+retained = ["age", "bbox", "det_score", "embedding", "gender", "kps", "landmark_2d_106", "landmark_3d_68"]
+derived = ["pose"]
 rebuilt = ["face_model_safetensors"]
-claim = "nine keys: bbox kps det_score landmark_3d_68 pose landmark_2d_106 embedding gender age. The pipeline retains three. No pixels required."
+claim = "save_face_model subscripts nine keys; eight are retained and pose is recomputed from landmark_3d_68, proven byte-identical by producer_derivations. No pixels required."
 note = "the only consumer with a first-party LOADER, so its assertion is upstream's own code accepting our bytes"
 
 
@@ -1124,18 +965,6 @@ cited = [
     "reactor_core/analyzer.py:50-58 SCRFD ArcFaceONNX Attribute Landmark",
     'reactor_core/analyzer.py:70-103 "def get" does not sort',
 ]
-# NOT insightface at this pin. The same buffalo_l onnx files
-# (analyzer.py:22-26) run through ReActor's OWN model classes
-# (reactor_core.inswap), and the vendor states the results differ
-# (README.md:55). MEASURED on one corpus photograph, same weights:
-#   bbox, kps, det_score, gender, age  byte-identical
-#   embedding                          max |delta| 3.0e-3, float32 both
-#   landmark_2d_106                    max |delta| 271.55, float64 vs float32
-#   landmark_3d_68                     max |delta| 748.94, float64 vs float32
-#   pose                               max |delta| 6.45
-# So a landmark_2d_106 / landmark_3d_68 / pose stored from insightface CANNOT
-# serve this consumer -- the coordinates are not in the same space -- while
-# bbox/kps/det_score/gender/age can, and the embedding is close but not equal.
 analyzer = "reactor_core.analyzer.ReActorFaceAnalysis"
 analyzer_is_insightface = false
 det_thresh = 0.5
@@ -1143,19 +972,12 @@ pack = "buffalo_l"
 embedding_model = "w600k_r50"
 prepare_det_size = [640, 640]
 sweep = []
-# analyze_faces RECURSES on the halved size when it finds nothing and the
-# current size is > 320 (reactor_swapper.py:193-196), and build_face_model
-# halves once more on top of that (nodes.py:749-754). There IS a ladder; it
-# is spelled as recursion rather than as a range.
 det_size_ladder = [640, 320]
 select = "first"
 embedding = "raw"
 crop_sizes = []
 kps_render = "none"
 combine = "none"
-# getAnalysisModel re-prepares on every call (reactor_swapper.py:102), so
-# unlike PhotoMaker, cubiq IPAdapter and cubiq InstantID this path leaves no
-# mutated detector behind for the next caller.
 leaves_detector_mutated = false
 face_class = "reactor_core.face_objects.Face"
 
@@ -1174,7 +996,6 @@ claim = "uses facexlib's arcface over norm_crop@112, NOT glintr100 -- the stored
 
 
 [consumers.vendor_setup]
-# NOT a sweep on one app: a SEPARATE FaceAnalysis per det_size, tried in order.
 cited = ["nodes.py:35-49 FaceDetector", "nodes.py:104-108 det_sizes when face_analysis_det_size is AUTO", "utils.py:22-29 extract_arcface_bgr_embedding"]
 loader = 'FaceAnalysis(name="antelopev2", root=root_dir, providers=providers) per det_size'
 pack = "antelopev2"
@@ -1182,34 +1003,18 @@ prepare_det_size = [640, 640]
 det_size_ladder = [640, 320, 160]
 sweep = []
 select = "largest_bbox_area"
-embedding = "raw"                 # utils.py:28 says the model already returns it normalized
-embedding_model = "facexlib_arcface"   # init_recognition_model('arcface'); NOT glintr100
+embedding = "raw"
+embedding_model = "facexlib_arcface"
 embedding_preprocess = "norm_crop@112 -> /255 -> 2x-1 -> arcface_model -> [512] normalized"
 crop_sizes = [112]
 kps_render = "draw_kps_pil"
-# NOT source pixels. ExtractFacePoseImage (nodes.py:135-165) takes
-# width=864 / height=1152 as REQUIRED inputs and calls
-# resize_and_pad_pil_image (utils.py:37-61) BEFORE detecting, so the
-# keypoints live in the coordinate space of an 864x1152 LANCZOS-resized,
-# white-centre-padded canvas. Reproducing the pose image from retained
-# keypoints needs that rule and its target size, and detecting on the
-# source frame is NOT the same as detecting on the padded one.
-# bytedance/InfiniteYou README.md:46,59-60 -- TWO current variants selected
-# with --model_version: aes_stage2 (default, after SFT, better text-image
-# alignment) and sim_stage1 (higher ID similarity). Our acceptance uses
-# aes_stage2. One retained primitive, two projectors.
 model_versions = ["aes_stage2", "sim_stage1"]
 acceptance_model_version = "aes_stage2"
 pose_image_size = [864, 1152]
 pose_image_resize = "lanczos_shorter_side_then_centre_pad_white"
-# nodes.py:145-161 -- an optional mask is applied by MULTIPLICATION before
-# detection, so a masked multi-ID run detects different keypoints.
 pose_mask_multiplied_before_detect = true
 combine = "none"
 [consumers.acceptance_expected]
-# nodes.py:59 offers image_proj_num_tokens as [8, 16] and the lane takes the
-# first; :122 passes it to Resampler as num_queries, and resampler.py:97
-# makes that the latent count the forward returns.
 boundary_key = "id_cond"
 tokens = 8
 cited = [
@@ -1235,23 +1040,19 @@ note = "pads by 1.25 with grey and retries when detection fails"
 
 
 [consumers.vendor_setup]
-# No name= on FaceAnalysis, so the pack is insightface's DEFAULT_MP_NAME
-# (buffalo_l), NOT antelopev2 -- a different detector, so different keypoints.
 cited = ["gradio_app.py:65-66 face_app", "gradio_app.py:69-103 pad_np_bgr_image/process_faceid_image"]
 loader = 'FaceAnalysis(providers=["CUDAExecutionProvider"], allowed_modules=["detection"])'
 pack = "buffalo_l"
 allowed_modules = ["detection"]
 prepare_det_size = [640, 640]
 sweep = []
-retry_pad_scale = 1.25            # cv2.copyMakeBorder BORDER_CONSTANT value (128,128,128), then subtract left_top
-select = "largest_bbox_area"      # sorted(..., reverse=True)[0]
-embedding = "none"                # allowed_modules is detection only: no vector exists
+retry_pad_scale = 1.25
+select = "largest_bbox_area"
+embedding = "none"
 crop_sizes = [224]
 kps_render = "none"
 combine = "concat_tokens"
 [consumers.acceptance_expected]
-# uniportrait/uniportrait_pipeline.py:85 UniPortraitFaceIDResampler(num_tokens=16),
-# :88 output_dim = the pipeline's own cross_attention_dim.
 boundary_key = "id_cond"
 tokens = 16
 cited = [
@@ -1273,21 +1074,6 @@ claim = "needs BOTH the vector and the framed image for every reference; torch.s
 
 
 [consumers.vendor_setup]
-# FaceAnalysis2 (photomaker/insightface_package.py) overrides ONLY `get`, to
-# take a per-call det_size. `__init__` is NOT overridden, so `name` falls to
-# insightface's DEFAULT_MP_NAME -- buffalo_l -- and the README instructs no
-# other pack, only photomaker-v1.bin. With allowed_modules detection +
-# recognition that loads det_10g and w600k_r50.
-#
-# w600k_r50 is not glintr100, MEASURED rather than inferred from the
-# filename: different sha256, and the cosine between the two models on the
-# SAME face is 0.022-0.031 -- inside the 0.001-0.006 band that separates
-# DIFFERENT identities within one model. Two spaces, so the vector this
-# application stores cannot serve this consumer at all.
-#
-# The filename caution is not theoretical: antelopev2's scrfd_10g_bnkps.onnx
-# and buffalo_l's det_10g.onnx ARE byte-identical (sha256 5838f7fe0536), so
-# names here prove nothing either way and every such claim is hashed.
 cited = [
   "photomaker/insightface_package.py:9 class FaceAnalysis2",
   "photomaker/insightface_package.py:20-29 def analyze_faces",
@@ -1299,11 +1085,6 @@ pack = "buffalo_l"
 allowed_modules = ["detection", "recognition"]
 prepare_det_size = [640, 640]
 sweep = []
-# The literal list is [None] + [(s, s) for s in range(640, 256, -64)] +
-# [(256, 256)] (insightface_package.py:22). Spelled as a `sweep` range that
-# expands to 640..320 and silently DROPS the trailing (256, 256), so the
-# sizes are listed instead. The leading None means "whatever det_size the
-# previous call left behind".
 det_size_ladder = [640, 576, 512, 448, 384, 320, 256]
 det_size_inherits = true
 leaves_detector_mutated = true
@@ -1330,19 +1111,10 @@ retained = ["embedding_raw", "frame_dimensions", "source_region_pixels", "whole_
 rebuilt = ["facexlib_crop_512", "parsed_face_image", "eva_clip_336", "id_cond"]
 claim = "id_cond = cat(ante_512, eva_clip_768) = 1280; largest pixel requirement in the population at 512x512"
 note = "the whole image is pre-resized to long-edge 1024 BEFORE detection"
-# consisid.md:33-38 lists TWO official checkpoints, both with
-# "recommended inference dtype: torch.bfloat16".
-# compat/vendor/acceptance.py::run_consisid runs float16 on CUDA, so the
-# recorded id_cond digest is at a width the vendor does not recommend.
-# consisid.md:76 also frames the input: "preferably half-body or full-body".
 checkpoints = ["BestWishYsh/ConsisID-preview", "BestWishYsh/ConsisID-1.5"]
 recommended_dtype = "torch.bfloat16"
 acceptance_dtype = "torch.float16"
 [consumers.acceptance_expected]
-# Upstream states the width in its own source, twice: models/consisid_utils.py
-# :192-194 "torch.Size([1, 512]), torch.Size([1, 768]) -> torch.Size([1, 1280])"
-# and :200 repeats it on the return. A literal, so the whole shape is the
-# expectation rather than one axis of it.
 boundary_key = "id_cond"
 shape = [1, 1280]
 cited = [
@@ -1380,18 +1152,10 @@ sweep = []
 select = "largest_bbox_area"
 embedding = "raw"
 crop_sizes = []
-kps_render = "draw_kps_pil"       # upstream's draw_kps takes a PIL image: w, h = image_pil.size
-# draw_kps rasterises onto the image it is handed, and infer.py:64-69 hands it
-# the RESIZED one. Measured: a 543x543 example resizes to 1280x1280, so the
-# ControlNet input is a 1280x1280 raster derived from five keypoints. Retained
-# keypoints reproduce it only if the resize rule and the resulting size are
-# retained with them.
+kps_render = "draw_kps_pil"
 kps_render_canvas = "post_resize"
 combine = "none"
 [consumers.acceptance_expected]
-# pipeline_stable_diffusion_xl_instantid.py:158 and :162 both declare
-# num_tokens=16, and :169 passes it as the Resampler's num_queries. The lane
-# runs cond and uncond together, so the batch axis is 2.
 boundary_key = "id_cond"
 tokens = 16
 cited = [
@@ -1429,10 +1193,6 @@ crop_sizes = []
 kps_render = "none"
 combine = "none"
 [consumers.acceptance_expected]
-# ip_adapter/ip_adapter_faceid.py:121 IPAdapterFaceID(num_tokens=4); :136-141
-# builds MLPProjModel with that token count and the pipeline's own
-# cross_attention_dim, so the token axis is upstream's and the width is the
-# base model's.
 boundary_key = "id_cond"
 tokens = 4
 cited = [
@@ -1463,32 +1223,11 @@ embedding = "raw"
 crop_sizes = []
 kps_render = "none"
 combine = "none"
-# README.md:45-50 Model Zoo -- FOUR published variants across TWO base
-# architectures: PuLID-v1 and v1.1 (SDXL), PuLID-FLUX-v0.9.0 and v0.9.1
-# (FLUX). docs/pulid_v1.1.md:9 keeps v1 recommended for
-# SDXL-lightning-4step, so none is superseded.
-# docs/pulid_for_flux.md:77 -- the FLUX line "switch the ID encoder from an
-# MLP structure to a Transformer structure", so across the four there are
-# THREE encoders: v1 IDEncoder, v1.1 IDFormer, FLUX encoders_flux. All
-# consume the same retained inputs; only the adapter differs.
 published_variants = ["pulid_v1", "pulid_v1.1", "pulid_flux_v0.9.0", "pulid_flux_v0.9.1"]
 encoder_architectures = ["IDEncoder", "IDFormer", "encoders_flux"]
 note_setup = "no det_size sweep, unlike the ComfyUI port; facexlib FaceRestoreHelper and eva_clip follow"
 
-# --- whole-reference-image consumers ---------------------------------------
 
-# TWO incompatible pipelines under one repo, and the variant is part of the
-# identity exactly as it is for ID-V2V's two .pth files. Found by loading the
-# wrong pair: every key mismatched.
-#
-#            v1                              v1.1
-# pipeline   pulid/pipeline.py               pulid/pipeline_v1_1.py
-# encoder    IDEncoder (encoders.py)         IDFormer (encoders_transformer.py)
-# keys       id_adapter.body.*               id_adapter.id_embedding_mapping.*
-# weight     pulid_v1.bin 1582858505 B       pulid_v1.1.safetensors 984405232 B
-#            sha 245d05d8f11cd030            sha 4cb8ceec1078e016
-# input      one image                       image_list -- MULTI-REFERENCE
-# img2tensor pulid/utils.py                  basicsr
 [consumers.variants]
 default = "v1"
 cited = [
@@ -1499,16 +1238,8 @@ cited = [
 ]
 v1 = { pipeline = "pulid/pipeline.py", encoder = "IDEncoder", weight = "pulid_v1.bin", weight_sha256 = "245d05d8f11cd030d52562282332f912a2d5001b111873a40214163f33ab3f5d", references = "single" }
 v1_1 = { pipeline = "pulid/pipeline_v1_1.py", encoder = "IDFormer", weight = "pulid_v1.1.safetensors", weight_sha256 = "4cb8ceec1078e0165399b88332ab3c5971619111b8e1730e6bae64144aabae41", references = "list" }
-# v1.1 takes a reference LIST and its combine semantics are NOT measured by
-# compat/consumers/reference_sets.py. Recorded as an untested declared
-# semantic rather than left out.
 unmeasured = ["v1_1 reference-set combine"]
 [consumers.acceptance_expected]
-# pulid/encoders.py:6 IDEncoder(num_token=5, context_dim=2048); :54 reshapes
-# the body to [-1, 5, 2048]; :62 concatenates five per-layer hidden states on
-# dim=1; :64 returns cat([x, hidden_states], dim=1) -> 10 tokens. The lane
-# runs cond and uncond, and pipeline.py:214 concatenates them on dim=0.
-# The token axis is upstream's constant; the width is the checkpoint's.
 boundary_key = "id_cond"
 tokens = 10
 cited = [
@@ -1532,7 +1263,6 @@ rebuilt = []
 
 
 [consumers.vendor_setup]
-# UMO does not have its own reference preprocessing: it imports UNO's.
 cited = ["eval/UNO/inference_omnicontext.py:29 import preprocess_ref", "eval/UNO/inference_omnicontext.py:108-113 exif_transpose then preprocess_ref"]
 kind = "whole_reference"
 preprocess = "uno_preprocess_ref"
@@ -1540,12 +1270,6 @@ preprocess_from = "uno"
 long_size_single = 512
 long_size_multi = 320
 exif_transpose = true
-# README.md:126-175 -- UMO is a LoRA published for TWO bases: UNO
-# (UMO_UNO.safetensors) and OmniGen2 (comfyui/OmniGen2/convert_ckpt.py).
-# This row describes the UNO path; the OmniGen2 path inherits OmniGen2's
-# max_pixels / max_side_length preprocessing instead, so this consumer has
-# two documented preprocessing contracts.
-# README.md:265 recommends output "resolution 768~1024 instead of 512".
 bases = ["uno", "omnigen2"]
 note_setup = "ImageOps.exif_transpose BEFORE preprocess_ref -- UNO's own inference.py does not do this"
 
@@ -1591,10 +1315,6 @@ cited = [
   "uso/flux/pipeline.py:72-92 preprocess_ref",
 ]
 kind = "whole_reference"
-# Recorded as rgb_only until the pinned source was read. USO ships its OWN
-# preprocess_ref -- LANCZOS to a 512 long edge, then a //16*16 crop -- and
-# calls it on the reference at inference.py:147. Every USO case was comparing
-# a bare RGB array against a resample the consumer really performs.
 preprocess = "preprocess_ref"
 preprocess_path = "uso/flux/pipeline.py"
 long_size_single = 512
@@ -1630,26 +1350,12 @@ cited = [
     "omnigen2/pipelines/omnigen2/pipeline_omnigen2.py:265 image_processor.preprocess per reference",
 ]
 kind = "whole_reference"
-# Recorded as rgb_only until pipeline_omnigen2.py was read. Every reference
-# is downscaled to fit max_pixels and max_side_length, then floored to a
-# multiple of 16.
 preprocess = "omnigen2_max_pixels"
 max_pixels = 1048576
-# 1024, and the entrypoint decides it. README.md:138-139 runs
-# `bash example_edit.sh`, which runs `python inference.py`; inference.py never
-# passes max_input_image_side_length, so the PIPELINE default applies --
-# `max_input_image_side_length: int = 1024` (pipeline_omnigen2.py:482).
-# app.py's gradio slider defaults to 2048 (app.py:1046), which is a different
-# path with a different answer. Recording only one of them was the earlier
-# error, in both directions.
 max_side_length = 1024
 max_side_length_gradio = 2048
 vae_scale_factor = 16
 exif_transpose = false
-# README.md:230 -- "When you input an image, we will set the output size to
-# match the input image". The retained reference's DIMENSIONS therefore decide
-# the generated size, not just its quality, so a resized stored copy changes
-# the output geometry and not only its fidelity.
 input_size_sets_output_size = true
 note_setup = "pipeline_omnigen2.py:265 per reference; image_processor.py:121-133 ratio = min(max_pixels_ratio, max_side_length_ratio, 1.0), then floored to a multiple of vae_scale_factor"
 
@@ -1671,19 +1377,9 @@ cited = [
   "pipeline.py:64-65 object_image_pil_low_res 384 and object_image_pil_high_res 768",
 ]
 kind = "whole_reference"
-# pipeline.py:379 squares
-# the reference to its LONGER edge and :64-65 resamples that to 384 and 768
-# for two encoder paths. The boundary is the squared image: the last artifact
-# before the branch, and both branches derive from it.
 preprocess = "square_then_dual_resize"
-# "dual resize" understates it: pipeline.py:66-70 cuts the 768 view into FOUR
-# 384x384 tiles, so the consumer takes a 384 low-res view AND four 384 tiles
-# of a 768 view -- five 384 inputs, all from the square-padded image.
 siglip_views = 5
 siglip_view_size = 384
-# README.md:93-94 -- TWO image encoders, neither previously recorded.
-# README.md:105 -- the vendor's own example reference is commented
-# "# white background", which is an expectation on the stored reference.
 image_encoders = ["google/siglip-so400m-patch14-384", "facebook/dinov2-giant"]
 nb_token = 1024
 reference_background = "white"
@@ -1703,17 +1399,10 @@ constraint = "1 to 3 images"
 
 
 [consumers.vendor_setup]
-# The .md this row cited is prose with no code. The runnable entrypoint is
-# src/examples/edit_demo.py, and it does NO preprocessing: a gradio
-# gr.Image(type="pil") goes straight into QwenImageEditPipeline.
 cited = ["src/examples/edit_demo.py:36-60 infer, negative_prompt hardcoded", "src/examples/edit_demo.py:82 gr.Image type=pil"]
 kind = "whole_reference"
 preprocess = "rgb_only"
 exif_transpose = false
-# Qwen-Image-Edit-2509.md:7 -- multi-image support is via IMAGE
-# CONCATENATION, "Optimal performance is currently achieved with 1 to 3
-# input images" (person+person, person+product, person+scene).
-# :14,:81 -- native ControlNet conditions: depth, edge and KEYPOINT maps.
 multi_image_by = "concatenation"
 references_optimal = [1, 3]
 controlnet_inputs = ["depth", "edge", "keypoint"]
@@ -1738,9 +1427,6 @@ preprocess = "rgb_only"
 mask_mode = "L"
 exif_transpose = false
 note_setup = "one mode-L mask per subject, supplied as a separate file alongside the RGB image"
-# README.md:31-37 -- the pipeline takes BOTH FLUX.1-dev and FLUX.1-Redux-dev.
-# README.md:62-68 -- the multi-subject path additionally passes
-# enable_router=True and ref_start_at=0.09; single-subject passes neither.
 base_models = ["black-forest-labs/FLUX.1-dev", "black-forest-labs/FLUX.1-Redux-dev"]
 multi_subject_router = true
 
@@ -1755,13 +1441,8 @@ retained = ["whole_reference_image"]
 rebuilt = []
 note = "eval/tools/face_utils/face.py loose_warp_face(scale=1.3, 512) is the identity METRIC, not a generation input."
 
-# --- temporal and audio -----------------------------------------------------
-
 
 [consumers.vendor_setup]
-# The facer/loose_warp_face code lives under eval/tools/, so it is the
-# identity METRIC rather than a generation input. What the pipeline is given
-# is whole reference images.
 cited = [
     "inference_single_sample.py:108 input_images",
     "inference_single_sample.py:172 cond_size default 256",
@@ -1770,18 +1451,8 @@ cited = [
     "eval/tools/face_utils/face.py:75 loose_warp_face (metric, not input)",
     "eval/tools/face_id.py:55 FACE_ID_MODEL_PATH read only under eval",
 ]
-# 256, not raw. Every documented command passes --cond_size 256
-# (README.md:113,118,137) and it is the argparse default
-# (inference_single_sample.py:172), where it becomes
-# model.config["train"]["dataset"]["val_condition_size"] (:132).
 cond_size = 256
-# Per-image, not per-run: --idips marks WHICH references are identity
-# references (inference_single_sample.py:183,199,285; README.md:100).
 per_image_id_flag = true
-# README.md:63,69 tell the reader to download model_ir_se50.pth and export
-# FACE_ID_MODEL_PATH before inference, which reads as an inference
-# dependency. It is not: eval/tools/face_id.py:55 is the only reader in the
-# tree, so it is a METRIC. Verified rather than taken from the install steps.
 face_id_model_is_eval_only = true
 kind = "whole_reference"
 preprocess = "rgb_only"
@@ -1801,23 +1472,9 @@ also_read = [
 boundary = ["orig_pixel_mp4", "david_normal_mp4", "depth_mp4"]
 retained = ["source_video_bytes"]
 rebuilt = []
-# CONFIRMED against README.md:190-193 (the variants table) and README.md:201,
-# which states the two checkpoints are "different, non-interchangeable weights
-# with the same architecture, so loading the wrong .pth into a script does not
-# error -- it silently produces poor output".
-#
-# THIRD control mode, from README.md:176: relighting uses NO preprocessing at
-# all -- "no SAM3 mask, no grayed-out background, and no preprocessing at
-# all. The raw source video is used as the control." So for that documented
-# use case the retained source video IS the control stream and nothing
-# derived is required.
 control_modes = ["orig_pixel_from_sam3", "orig_pixel_plus_normals_plus_depth", "raw_source_video_relighting"]
 claim = "Two non-interchangeable checkpoints. idv2v.pth consumes ONE VACE condition, orig_pixel.mp4 from SAM3. idv2v_with_normal_depth.pth consumes THREE: orig_pixel.mp4, david_normal.mp4 (DAViD), depth.mp4 (DepthAnything-V2). Each stream is per-frame and keyed to the source media, not to a face."
 
-# Which producer writes each stream, and under which variant. Named per
-# stream because the retention question is per stream: re-deriving depth
-# costs a DepthAnything-V2 pass over every frame, and re-deriving normals
-# costs a DAViD pass, whatever the other two cost.
 [consumers.control_streams]
 cited = [
   "scripts/preprocess.sh:57-62 orig_pixel",
@@ -1840,11 +1497,6 @@ boundary = ["ref_tokens"]
 retained = ["audio_waveform", "audio_sample_rate"]
 rebuilt = ["ref_tokens"]
 constraint = "~5s; resampled to audio_vae.audio_sample_rate, default 44100"
-# nodes_lt.py:867 -- "~5 seconds recommended (training duration). Shorter
-# or longer clips may degrade voice identity transfer."
-# nodes_lt.py:883-888 -- the reference is RESAMPLED to the audio VAE's
-# audio_sample_rate (default 44100) when it differs, which is why the
-# stored sample rate is load-bearing rather than metadata.
 reference_seconds_recommended = 5
 vae_audio_sample_rate_default = 44100
-claim = "the latents are the consumer's VAE output and must NOT be stored -- the durable artifact is the waveform, exactly as pixels are durable and crops are not"
+claim = "ref_tokens are recomputed by the consumer's own audio VAE from the waveform; the waveform and its sample rate are the durable inputs"

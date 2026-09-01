@@ -1,44 +1,3 @@
-"""Can an aligned crop be rebuilt from a source patch instead of the frame?
-
-This is the primitive the whole arcface family sits on. IPAdapter FaceID Plus
-calls `face_align.norm_crop(img, kps, 336|256|224)`, InfiniteYou calls it at
-112, and every recognition model behind them is fed the result. If the crop
-can be rebuilt from a bounded patch of source pixels plus the keypoints, then
-the patch and the keypoints are the durable primitives and the crop is derived
-state. If it cannot, the crop has to be stored per size, per consumer, forever.
-
-The patch extent is derived, not guessed. `estimate_norm` returns the affine M
-mapping source to crop; inverting it and mapping the crop's four corners back
-gives the source quad the warp reads from, and the integer box containing that
-quad is the analytic bound.
-
-How much MORE than the analytic bound is needed is not asserted here, because
-a constant asserted is folklore with a threshold attached: it passes while it
-is too generous and never locates the edge. `minimum_patch_extent` measures it
-instead -- four independent binary searches inward, then the combination --
-and the number goes in the evidence.
-
-Geometry comes from two places and both are load-bearing. The synthetic frame
-has known structure at every scale, so a wrong-but-plausible warp cannot land
-on statistically identical pixels. The corpus frames carry keypoints a real
-detector produced on a real photograph, which is the only way the measured
-minimum describes faces rather than a fixture.
-
-Ablations, and what each is asking:
-
-    source_region_pixels   remove the patch        -> must break
-    kps_source_px          remove the keypoints    -> must break
-    patch_origin           remove the origin       -> must break
-    derive_256_from_336    downscale the 336 crop  -> MUST break
-
-The last is the real claim. Measured: 224 and 256 share a scale of 1.16529 and
-differ only in x-translation, by exactly 16.0, because `estimate_norm` sends
-any size divisible by 128 down a branch adding `diff_x = 8.0 * ratio`. So 256
-is not a resized 224 nor a downscaled 336 -- same face size, wider frame,
-shifted. If that ablation ever passes, the three-family reading of the
-template is wrong and the storage design resting on it has to change.
-"""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -56,32 +15,22 @@ from compat.corpus import index as corpus
 from compat.primitives import build
 from compat.storage import derivatives, precision
 
-#: Sizes the pinned consumers ask `norm_crop` for: 112 InfiniteYou,
-#: 224/256/336 IPAdapter FaceID Plus by variant.
 SIZES: Final[tuple[int, ...]] = (112, 224, 256, 336)
 
-#: This lane is `norm_crop` at four sizes over real geometry, not one vendor.
-#: Its own consumer_id, so its rows do not aggregate under a manifest consumer
-#: that has its own `FaceFamilyRunner`.
+
 CONSUMER_ID: Final[str] = "aligned_crop"
 
-#: Corpus images used for real geometry. Two identities and both capture
-#: paths: an ID document and a selfie went through different optics, and a
-#: minimum measured on one framing is a claim about that framing.
+
 CORPUS_IMAGES: Final[int] = 4
 
 
 def estimate_norm(kps: npt.NDArray[np.float32], size: int) -> npt.NDArray[np.float64]:
-    """Upstream's own alignment matrix. Imported inside: insightface is banned
-    at module level in this tree, and rightly -- it pulls onnxruntime, which
-    must never be reachable from the application's import graph."""
     from insightface.utils import face_align
 
     return np.asarray(face_align.estimate_norm(kps.copy(), size), dtype=np.float64)
 
 
 def norm_crop(image: npt.NDArray[np.uint8], kps: npt.NDArray[np.float32], size: int) -> npt.NDArray[np.uint8]:
-    """Upstream's own crop, on whatever pixels it is handed."""
     from insightface.utils import face_align
 
     out = face_align.norm_crop(image, landmark=kps.copy(), image_size=size)
@@ -89,49 +38,17 @@ def norm_crop(image: npt.NDArray[np.uint8], kps: npt.NDArray[np.float32], size: 
 
 
 def shifted_to(matrix: npt.NDArray[np.float64], origin: tuple[int, int]) -> npt.NDArray[np.float64]:
-    """The same alignment, expressed against a source whose origin moved.
-
-    A source point p becomes q = p - origin in the patch, so M[A|t] applied to
-    p equals [A | t + A@origin] applied to q. Exact in floating point: the
-    linear part is untouched and only the translation column is rebuilt.
-
-    This exists because the obvious alternative is NOT equivalent. Estimating
-    the alignment afresh from patch-local keypoints runs Umeyama's SVD over
-    coordinates of a different magnitude, and the accumulated rounding moves
-    the matrix by around 1e-5 -- enough to push samples across `warpAffine`'s
-    fixed-point interpolation boundary. Measured on a 4032x3024 corpus
-    photograph: re-estimating differs from the baseline in 2 of 37632 pixels
-    at 112 and 131 of 338688 at 336, each by one level, while translating
-    differs in none. `local_reestimation_divergence` records that per case.
-    """
     out = np.asarray(matrix, dtype=np.float64).copy()
     out[:, 2] = out[:, 2] + out[:, :2] @ np.array(origin, dtype=np.float64)
     return out
 
 
 def warp(image: npt.NDArray[np.uint8], matrix: npt.NDArray[np.float64], size: int) -> npt.NDArray[np.uint8]:
-    """`norm_crop`'s second line, with the matrix supplied rather than fitted.
-
-    Same call as upstream -- `cv2.warpAffine(img, M, (size, size),
-    borderValue=0.0)`, face_align.py at insightface@7fadd420c235 -- so a crop
-    produced here and one produced by `norm_crop` differ only by the matrix.
-    """
     out = cv2.warpAffine(image, matrix, (size, size), borderValue=0.0)
     return np.asarray(out, dtype=np.uint8)
 
 
 def analytic_footprint(kps: npt.NDArray[np.float32], size: int, frame_wh: tuple[int, int], *, margin: int = 0) -> Rect:
-    """The source box a `norm_crop` at `size` can read from.
-
-    M maps source into crop space, so its inverse maps the crop's corners back
-    out. The integer box containing those four points is the analytic bound;
-    `margin` grows it, and exists so the measurement has somewhere to search
-    from rather than so anybody has to believe a number.
-
-    The box is clipped to the frame, which is not a detail: a face near an
-    edge produces a quad that leaves the image, and upstream fills those
-    samples from the border rather than from pixels that could be stored.
-    """
     inverse = cv2.invertAffineTransform(estimate_norm(kps, size))
     corners = np.array([[0.0, 0.0], [size, 0.0], [size, size], [0.0, size]], dtype=np.float64)
     mapped = np.hstack([corners, np.ones((4, 1), dtype=np.float64)]) @ inverse.T
@@ -156,8 +73,6 @@ def _artifact(name: str, crop: npt.NDArray[np.uint8]) -> Artifact:
 
 @dataclass(frozen=True)
 class Geometry:
-    """One frame and one set of keypoints, with what produced them."""
-
     label: str
     frame: npt.NDArray[np.uint8]
     kps: npt.NDArray[np.float32]
@@ -186,20 +101,13 @@ def synthetic_geometry() -> Geometry:
 
 
 def corpus_geometry(limit: int = CORPUS_IMAGES) -> list[Geometry]:
-    """Real frames with real detected keypoints, or an empty list.
-
-    Empty rather than raising when the corpus or the pack is absent: a machine
-    without them should report the corpus cases as UNSUPPORTED, which the case
-    layer does, and not lose the synthetic ones as collateral.
-    """
     from compat.producers import insightface_pass as producer
 
     if not corpus.KYC.is_dir():
         return []
 
     samples = corpus.scan_kyc()
-    # One of each role for the first identities, by digest so the choice is
-    # stable across machines and across directory orderings.
+
     buckets: dict[tuple[str, str], list[corpus.Sample]] = {}
     for one in samples:
         buckets.setdefault((one.identity, one.role), []).append(one)
@@ -235,8 +143,6 @@ def corpus_geometry(limit: int = CORPUS_IMAGES) -> list[Geometry]:
 
 
 class AlignedCropRunner:
-    """`norm_crop` from a bounded patch, against `norm_crop` from the frame."""
-
     consumer_id: str = CONSUMER_ID
 
     def __init__(self, geometries: list[Geometry] | None = None) -> None:
@@ -252,9 +158,6 @@ class AlignedCropRunner:
                     Ablation(primitive="source_region_pixels", expect_breaks=True),
                     Ablation(primitive="kps_source_px", expect_breaks=True),
                     Ablation(primitive="patch_origin", expect_breaks=True),
-                    # A store that kept the patch and forgot its origin, and
-                    # one that kept the region through its own WebP encoder:
-                    # both are things a schema can do.
                     Ablation(
                         primitive="patch_origin",
                         swap="origin_at_zero",
@@ -267,9 +170,6 @@ class AlignedCropRunner:
                         expect_breaks=True,
                         kind="substitution",
                     ),
-                    # Width, not presence: a removal shows only that the replay
-                    # indexes the key, while halving the float asks how wide the
-                    # column must be.
                     Ablation(
                         primitive="kps_source_px",
                         swap="half_precision",
@@ -280,9 +180,6 @@ class AlignedCropRunner:
                 if size == 256:
                     ablations.append(
                         Ablation(
-                            # The retained key under question is the source
-                            # region: can a 256 crop come off the 336 one rather
-                            # than off the source?
                             primitive="source_region_pixels",
                             swap="downscaled_from_336",
                             expect_breaks=True,
@@ -312,12 +209,6 @@ class AlignedCropRunner:
         return int(head.rsplit("@", 1)[1]), self._geometries[label]
 
     def retained_for(self, case: Case) -> RetainedState:
-        """The durable state this case claims is sufficient.
-
-        The patch carries its origin because keypoints recorded in source
-        pixels mean nothing against a cropped array -- the origin is what makes
-        the geometry portable, and dropping it is its own ablation.
-        """
         size, geometry = self._parts(case)
         box = analytic_footprint(geometry.kps, size, geometry.frame_wh)
         return RetainedState(
@@ -327,18 +218,10 @@ class AlignedCropRunner:
         )
 
     def baseline(self, case: Case) -> Artifact:
-        """The pinned upstream path, over the original frame."""
         size, geometry = self._parts(case)
         return _artifact(case.boundary, norm_crop(geometry.frame, geometry.kps, size))
 
     def replay(self, case: Case, retained: RetainedState) -> Artifact:
-        """The same boundary from retained state, never touching the frame.
-
-        Missing primitives raise through `RetainedState`, by name. A runner
-        that quietly fell back to the original frame would report that every
-        primitive is unnecessary, which is the one failure this suite cannot
-        afford.
-        """
         size, _ = self._parts(case)
 
         if retained.flag("derive_256_from_336"):
@@ -362,19 +245,12 @@ class AlignedCropRunner:
         kps = retained.points("kps_source_px")
 
         if retained.flag("reestimate_from_local_kps"):
-            # The shortcut: translate the keypoints and fit again. Kept as a
-            # runnable path so the divergence can be measured rather than
-            # asserted -- see `shifted_to`.
             local = kps - np.array(origin, dtype=np.float32)
             return _artifact(case.boundary, norm_crop(patch, local, size))
 
-        # The contract: fit in SOURCE space, then move the origin. The
-        # keypoints are retained in source pixels precisely so this is
-        # possible; patch-local keypoints cannot recover it.
         return _artifact(case.boundary, warp(patch, shifted_to(estimate_norm(kps, size), origin), size))
 
     def ablate(self, case: Case, retained: RetainedState, ablation: Ablation) -> RetainedState:
-        """Retained state with one primitive removed or degraded."""
         if ablation.swap == "downscaled_from_336":
             return retained.replacing("derive_256_from_336", True)
         if ablation.swap == "origin_at_zero":
@@ -390,20 +266,6 @@ class AlignedCropRunner:
     def _reestimation_divergence(
         self, case: Case, retained: RetainedState, size: int, geometry: Geometry
     ) -> Measurement:
-        """How far the obvious-looking replay lands from the baseline.
-
-        Retaining the keypoints is not by itself the contract: WHERE they are
-        expressed decides whether the crop comes back. This runs the shortcut
-        -- translate the keypoints into the patch, fit the alignment there --
-        and reports how many pixels it costs, so the requirement to fit in
-        source space is a measured quantity rather than a warning in a
-        docstring.
-
-        A result of zero is not a licence to take the shortcut. It means this
-        geometry could not tell the two apart, which is a fact about the
-        fixture; the corpus rows are the ones with the coordinate magnitudes
-        that discriminate.
-        """
         against = self.baseline(case)
         shortcut = self.replay(case, retained.replacing("reestimate_from_local_kps", True))
         if against.values is None or shortcut.values is None:
@@ -449,13 +311,6 @@ class AlignedCropRunner:
         start = analytic_footprint(geometry.kps, size, geometry.frame_wh)
 
         def reproduces(box: Rect) -> bool:
-            """One probe: crop to `box`, replay, compare bytes.
-
-            Built from the geometry rather than from `retained` because the
-            search is over EXTENTS, and re-slicing the already-sliced patch
-            would measure the analytic bound's own margin instead of the
-            warp's requirement.
-            """
             trial = RetainedState(
                 source_region_pixels=geometry.frame[box.y0 : box.y1, box.x0 : box.x1].copy(),
                 patch_origin=(box.x0, box.y0),
@@ -464,9 +319,6 @@ class AlignedCropRunner:
             try:
                 produced = self.replay(case, trial)
             except cv2.error:
-                # The ONE failure that means "this extent is too small": the
-                # warp could not be performed. Any other exception is a probe
-                # bug, and reading it as a failure inflates the reported extent.
                 return False
             if produced.values is None:
                 return False

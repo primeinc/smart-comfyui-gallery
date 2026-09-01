@@ -1,39 +1,3 @@
-"""Download every artifact the suite requires and does not have. All of them.
-
-An absent weight is work to do, not a reason a case cannot run. Three tables
-declare what the suite needs, and this covers all three rather than the one
-that happened to be empty:
-
-    [[weights]]         13  the packs, located by `root_package`/`root_subdir`
-    [[vendor_weights]]  30  each consumer's own weights, under `sg-vendor-fixtures`
-    [provisioned]        3  artifacts no repository holds, fetched from a URL
-
-Almost none of that needed a new declaration. A `[[weights]]` row already
-carries attestations naming a repository, a revision and a path; a
-`[[vendor_weights]]` row already carries the digest that `hf_check` resolves
-to exactly one published `repo@revision:path`. So the download location is
-DERIVED from the same evidence the gates check, and an artifact this fetches
-is the artifact those gates then verify.
-
-Only `[provisioned]` needed writing down, because SAM3, DAViD and
-DepthAnything-V2 are named in a vendor README and in no manifest table.
-
-WHAT IT WILL NOT DO
--------------------
-It does not invent a source. An artifact whose download cannot be derived is
-reported UNRESOLVED and stays missing: guessing a URL for a model weight is
-how the wrong bytes end up attested as the right ones.
-
-It VERIFIES every download against a declared digest, and deletes bytes that do
-not match. An artifact with NO declared digest is refused rather than installed
-unchecked: unverified bytes on disk are indistinguishable from the real ones to
-every gate downstream, which is the whole failure this lane exists to prevent.
-
-A destination is data too. `root / path` follows `..` and an absolute path
-replaces the root outright, so every destination is required to resolve inside
-the root it was given.
-"""
-
 from __future__ import annotations
 
 import json
@@ -48,15 +12,12 @@ from compat.harness import provenance
 
 ROOT: Final[Path] = Path(__file__).resolve().parent.parent
 
-#: Seconds one artifact may take. These are model weights over the public
-#: internet, so the bound is a stall detector rather than a performance claim.
+
 FETCH_SECONDS: Final[float] = 3600.0
 
 
 @dataclass
 class Provisioned:
-    """One required artifact, and what this run did about it."""
-
     consumer: str
     kind: str
     source: str
@@ -71,20 +32,12 @@ class Provisioned:
 
 
 def root_of(manifest: dict[str, Any]) -> Path:
-    """Where provisioned artifacts live: the env var, else the declared root."""
     block: dict[str, Any] = manifest.get("provisioned", {})
     override = os.environ.get(str(block.get("override_env", "")))
     return Path(override or str(block.get("root", ""))).resolve()
 
 
 def _under(root: Path, path: str) -> Path | None:
-    """The destination inside `root`, or None when it leaves.
-
-    `Path.__truediv__` resolves neither: `root / "../x"` walks out and
-    `root / "C:/x"` discards the root. A row's `path` is manifest data, and
-    a provisioner that writes model bytes wherever the data says is not
-    bounded by the root it reports.
-    """
     where = (root / path).resolve()
     if where == root.resolve() or root.resolve() not in where.parents:
         return None
@@ -92,12 +45,6 @@ def _under(root: Path, path: str) -> Path | None:
 
 
 def _already_here(kind: str, where: Path) -> bool:
-    """Whether the artifact on disk may be accepted without downloading.
-
-    A SNAPSHOT never may: one holding a config and tokenizer but none of its
-    weights read PRESENT for SAM3, and `snapshot_download` is idempotent and
-    completes what is missing. Zero bytes is not an artifact either.
-    """
     return kind != "hf_snapshot" and where.exists() and bool(_size(where))
 
 
@@ -108,7 +55,6 @@ def _size(where: Path) -> int:
 
 
 def _fetch_url(url: str, into: Path) -> None:
-    """Stream one published file, `.partial` until whole."""
     into.parent.mkdir(parents=True, exist_ok=True)
     partial = into.with_suffix(into.suffix + ".partial")
     with requests.get(url, timeout=FETCH_SECONDS, stream=True) as body:
@@ -137,7 +83,6 @@ def _fetch_hf_snapshot(repo: str, into: Path) -> None:
 
 
 def fetch(row: dict[str, Any], root: Path) -> Provisioned:
-    """One artifact: already here, fetched, or the reason it is neither."""
     kind, source, path = str(row.get("kind", "")), str(row.get("source", "")), str(row.get("path", ""))
     held = Provisioned(str(row.get("consumer", "")), kind, source, path, "UNDECLARED")
     if not path:
@@ -183,11 +128,6 @@ def fetch(row: dict[str, Any], root: Path) -> Provisioned:
 
 
 def _verified(where: Path, expected: str) -> str:
-    """Empty when the bytes match, or the reason they do not.
-
-    A mismatched download is DELETED. Leaving it would hand the next gate a
-    file that fails for a reason this run already knew.
-    """
     if not expected:
         where.unlink(missing_ok=True)
         return "nothing declares a digest for this artifact; the bytes were not kept"
@@ -199,7 +139,6 @@ def _verified(where: Path, expected: str) -> str:
 
 
 def _from_hub(repo: str, revision: str, path: str, into: Path, expected: str) -> Provisioned:
-    """One file at a pinned revision of a Hugging Face repository."""
     held = Provisioned("", "hf_pinned", f"{repo}@{revision[:12]}", str(into), "FETCHED")
     if not expected:
         held.verdict = "UNRESOLVED"
@@ -225,7 +164,6 @@ def _from_hub(repo: str, revision: str, path: str, into: Path, expected: str) ->
 
 
 def pack_weights(manifest: dict[str, Any]) -> list[Provisioned]:
-    """The 13 `[[weights]]`, fetched from an attestation that names a revision."""
     out: list[Provisioned] = []
     for row in manifest.get("weights", []):
         where = provenance._weight_root(row) / row["file"]
@@ -245,9 +183,7 @@ def pack_weights(manifest: dict[str, Any]) -> list[Provisioned]:
             out.append(held)
             continue
         first = pinned[0]
-        # An attestation spells its digest `sha256`; `resolved_sha256` is what
-        # `hf` writes back after resolving one. Reading only the second read an
-        # absent key on 11 of the 13 rows and installed them unverified.
+
         got = _from_hub(
             str(first["repo_id"]),
             str(first["revision"]),
@@ -261,13 +197,6 @@ def pack_weights(manifest: dict[str, Any]) -> list[Provisioned]:
 
 
 def vendor_weights(manifest: dict[str, Any], index: dict[str, list[Any]]) -> list[Provisioned]:
-    """The 30 `[[vendor_weights]]`, located by the digest the gates check.
-
-    The row records a sha256 and `hf_check` resolves it to exactly one
-    published `repo@revision:path`, so nothing here needs a second declaration
-    of where a weight comes from -- and an artifact fetched this way is the
-    same artifact `hf` then attests.
-    """
     out: list[Provisioned] = []
     for row in manifest.get("vendor_weights", []):
         where = provenance.VENDOR_ROOT / row["file"]
@@ -284,9 +213,7 @@ def vendor_weights(manifest: dict[str, Any], index: dict[str, list[Any]]) -> lis
             out.append(held)
             continue
         pointer = found[0]
-        # A published-URL pointer names a file at a URL, not a revision: its
-        # `repo` is a hostname, so `hf_hub_download` would fail for a reason
-        # that is not the real one.
+
         if pointer.revision == "published":
             got = fetch(
                 {

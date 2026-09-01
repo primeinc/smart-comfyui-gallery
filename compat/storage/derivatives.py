@@ -1,30 +1,3 @@
-"""What this application can hand back WITHOUT reopening the source file.
-
-The question this suite answers names the constraint outright: served "without
-reopening the original source media". For a face that means the columns of a
-row. For a picture it means a derived artifact, and this application already
-keeps exactly two of them -- `vision/thumbs.py` EDGES, a `thumb` at 512 and a
-`preview` at 1440, both WebP at QUALITY 82 and METHOD 2, both keyed on
-`content_sha256` and both explicitly "a cache of something regenerable"
-(`db/oriented.for_derivatives`).
-
-So a whole-reference consumer has two candidate answers and this module builds
-both by executing the application's own code:
-
-    preview     what the store can return today. Lossy and 1440-capped.
-    lossless    what the store would have to ADD to serve these consumers: a
-                full-resolution rendering, encoded losslessly.
-
-Neither is declared to work. Both are measured, at the vendor's own boundary,
-by the case that uses them -- which is the difference between this and a
-`shot.frame.copy()` that could only ever reproduce itself.
-
-PNG rather than a raw array for the lossless candidate because a store holds
-bytes, not objects, and the byte count is half the answer: `answer.json` must
-say what the minimum state COSTS, and an in-memory array has no size a schema
-could budget for.
-"""
-
 from __future__ import annotations
 
 import atexit
@@ -40,9 +13,7 @@ from compat.assertions.arrays import digest
 
 UInt8Array = npt.NDArray[np.uint8]
 
-#: One scratch directory for the process, removed when it exits. The encoders
-#: this module executes are the application's own and both write to a path;
-#: `tempfile.mkdtemp` with no owner is what left a directory behind per run.
+
 _SCRATCH: Final[Path] = Path(tempfile.mkdtemp(prefix="compat-derivatives-"))
 atexit.register(shutil.rmtree, _SCRATCH, True)
 
@@ -55,12 +26,6 @@ def _scratch_path(suffix: str) -> Path:
 
 
 def _to_pil(bgr: UInt8Array) -> Any:
-    """A PIL image from a BGR frame, or from a single-channel mask.
-
-    A 2-D uint8 array is mode "L". AnyStory's subject mask is decoded
-    single-channel (compat/consumers/masked_reference.py), and reversing a
-    third axis it does not have raises IndexError.
-    """
     from PIL import Image
 
     if bgr.ndim == 2:
@@ -73,13 +38,6 @@ def _from_pil(image: Any) -> UInt8Array:
 
 
 def preview(bgr: UInt8Array) -> tuple[UInt8Array, int]:
-    """The picture as the derived-image cache returns it, and its byte cost.
-
-    `vision.thumbs.fit`, `vision.thumbs.write` and `vision.decode.open_still`
-    are called rather than reimplemented: the edge, the quality and the encoder method are facts about
-    this application, and a copy of them here would go stale silently the first
-    time one moved.
-    """
     from vision import decode, thumbs
 
     target = _scratch_path(".webp")
@@ -90,11 +48,6 @@ def preview(bgr: UInt8Array) -> tuple[UInt8Array, int]:
 
 
 def lossless(bgr: UInt8Array) -> tuple[UInt8Array, int]:
-    """The picture as a full-resolution lossless artifact returns it.
-
-    The candidate a store would have to ADD. PNG because it is lossless for
-    8-bit RGB and because the encoded size is the number a schema budgets.
-    """
     from vision import decode
 
     target = _scratch_path(".png")
@@ -105,14 +58,6 @@ def lossless(bgr: UInt8Array) -> tuple[UInt8Array, int]:
 
 
 def encoded(bgr: UInt8Array) -> tuple[UInt8Array, int]:
-    """The picture through the store's encoder at its NATIVE size.
-
-    `preview` answers "can the 1440-capped derivative serve"; this answers the
-    narrower question underneath it -- whether the WebP encode alone costs
-    anything, with the resize taken out. `vision/thumbs` writes every raster
-    variant this way, including the avatar crop, so a face patch the store
-    keeps is a patch that went through exactly this.
-    """
     from vision import decode, thumbs
 
     target = _scratch_path(".webp")
@@ -126,18 +71,6 @@ _ENCODED: dict[str, int] = {}
 
 
 def lossless_bytes(frame: npt.NDArray[np.uint8]) -> int:
-    """Bytes a store would hold to return this array, memoised by content.
-
-    `RetainedState.sizes()` reports `ndarray.nbytes` for an unpriced key --
-    the decoded footprint, 4.5x the encoded artifact on a corpus frame. Three
-    consumers emit `whole_reference_image`; pricing one of them left the other
-    two reporting nbytes, and `answer.py` aggregates by max, so the unpriced
-    figure won and the priced one never reached the published number.
-
-    Keyed by digest rather than by shot label because the emitters do not
-    share one: the same frame arrives through `corpus.loaded.shots` in one
-    lane and through a vendor fixture in another.
-    """
     key = digest(frame)
     if key not in _ENCODED:
         _ENCODED[key] = lossless(frame)[1]

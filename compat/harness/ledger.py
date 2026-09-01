@@ -1,28 +1,3 @@
-"""Nine cells per declared consumer, from THIS run.
-
-One row per member of the declared population, and one column per stage the
-proof has to pass through:
-
-    source provenance        the clone is at its pin and its paths resolved
-    model/weight provenance  every weight the consumer needs is VERIFIED
-    producer execution       the observation pass ran
-    emitted observation      it emitted the fields the storage contract names
-    durable write            those fields were written to the store
-    durable read-back        they came back
-    native reconstruction    the consumer's own path rebuilt its input
-    consumer replay          the boundary was recomputed from retained state
-    comparison verdict       replay reproduced baseline
-
-Every cell is VERIFIED, FAILED or BLOCKED, and a BLOCKED cell names the lane
-that blocked it. That distinction is the point: `pins` failing does not mean
-twenty-two consumers failed, it means their weight cell is BLOCKED by `pins`
-and the cells downstream of it are BLOCKED by that. A report that collapses
-those into "failed" describes the harness rather than the consumers.
-
-Read-only over the artifacts this run wrote. `lanes.json` carries each lane's
-exit code, so a cell can say which lane owes it evidence.
-"""
-
 from __future__ import annotations
 
 import json
@@ -40,7 +15,7 @@ VERIFIED: Final[str] = "VERIFIED"
 FAILED: Final[str] = "FAILED"
 BLOCKED: Final[str] = "BLOCKED"
 
-#: The nine stages, in the order a proof passes through them.
+
 STAGES: Final[tuple[str, ...]] = (
     "source_provenance",
     "weight_provenance",
@@ -97,11 +72,9 @@ def build() -> dict[str, Any]:
 
     pins = _read("provenance.json")
     cases = _read("cases.json")
-    # Bound to a non-optional name where it is current, so the reader below
-    # cannot be written against a `cases` that may be None.
+
     current_cases: dict[str, Any] | None = cases if _current(cases, now["digest"]) else None
 
-    # Source provenance, per consumer, from the repo proofs this run wrote.
     source_ok: dict[str, Cell] = {}
     if pins is None:
         for who in declared:
@@ -128,8 +101,6 @@ def build() -> dict[str, Any]:
                 else:
                     source_ok[who] = Cell(VERIFIED, f"{len(paths)} path(s) resolved at the pin")
 
-    # Weight provenance is pack-wide: every weight this run measured must be
-    # VERIFIED, because nothing in the manifest maps a consumer to its packs.
     if pins is None:
         weights_cell = Cell(BLOCKED, "pins wrote no provenance.json")
     else:
@@ -255,7 +226,7 @@ def main() -> int:
         with (GENERATED / name).open("w", encoding="utf-8", newline="") as handle:
             handle.write(body)
         print(f"\nwrote {GENERATED / name}")
-    # The ledger REPORTS. `closure` is the only lane that gates.
+
     return 0
 
 

@@ -62,6 +62,7 @@ class Sighting:
     embedding: np.ndarray | None
     landmarks: list = field(default_factory=list)
     attributes: dict | None = None
+    native: bytes | None = None
 
 
 class Peeker:

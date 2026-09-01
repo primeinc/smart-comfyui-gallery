@@ -118,14 +118,22 @@ _LABEL_MATCH_THRESHOLD = 0.9  # min centroid cosine for a recomputed cluster to 
 
 @dataclass
 class FaceDetection:
-    """One detected face. Coordinates are normalized [0, 1] per schema.py."""
+    """One detected face. Coordinates are normalized [0, 1] per schema.py.
+
+    `native` is the producer's COMPLETE output for this face, frozen by
+    `vision/facestore.freeze` at the producer boundary -- captured by
+    iterating the producer's own record, never by naming fields. Every other
+    field here is a projection out of that record for the application's own
+    browsing and clustering; none of them decides what survives.
+    """
 
     bbox: tuple  # (x, y, w, h), normalized
     landmarks: list  # list[(x, y)], normalized, may be empty
     det_score: float  # detector confidence; higher is more face-like
     embedding: np.ndarray | None  # float32 1-D, or None
     dim: int | None = None  # embedding length; derived from `embedding` when one is present
-    attributes: dict | None = None  # per-face model attributes, e.g. {"age": 27, "sex": "M"}
+    attributes: dict | None = None  # promoted per-face values, e.g. {"age": 27, "sex": "male"}
+    native: bytes | None = None  # the complete producer record, facestore envelope
 
     def __post_init__(self) -> None:
         """Coerce fields to plain floats / float32 and keep `dim` consistent
@@ -339,6 +347,8 @@ class OpenCVFaceBackend(FaceBackend):
                 (max(1, round(img.size[0] * f)), max(1, round(img.size[1] * f))),
                 Image.Resampling.LANCZOS,
             )
+        from vision import facestore
+
         bgr = _pil_to_bgr(img)
         h, w = bgr.shape[:2]
         if h == 0 or w == 0:
@@ -372,6 +382,15 @@ class OpenCVFaceBackend(FaceBackend):
                     raise BackendUnavailable("constructor loaded neither arcface nor sface")
                 aligned = recognizer.alignCrop(bgr, row)
                 feature = recognizer.feature(aligned)
+            # This producer's complete native output: the detector row (box,
+            # five landmarks, confidence, detect-input pixels) and the
+            # recognizer's feature as returned -- its shape, not the flat copy.
+            native = facestore.freeze(
+                {"row": np.array(row, copy=True), "feature": np.asarray(feature)},
+                producer=self.model_id,
+                producer_version=self.model_version,
+                container="dict",
+            )
             embedding = np.asarray(feature, dtype=np.float32).reshape(-1)
             bbox = (
                 _clamp01(x / w),
@@ -386,6 +405,7 @@ class OpenCVFaceBackend(FaceBackend):
                     landmarks=landmarks,
                     det_score=score,
                     embedding=embedding,
+                    native=native,
                 )
             )
         return detections
@@ -497,7 +517,7 @@ class InsightFaceBackend(FaceBackend):
     (deepinsight/insightface)."""
 
     model_id = "insightface/antelopev2"
-    model_version = "scrfd10g+glintr100-v1"  # attributes fill in place; embeddings are version-stable
+    model_version = "scrfd10g+glintr100-v1"  # heads fill the record in place; embeddings are version-stable
     # Pairwise F1 is 0.995-0.999 across 0.35-0.50 on the labeled A/B;
     # 0.40 keeps P 1.000 with F1 0.998.
     default_cluster_threshold = 0.40
@@ -524,6 +544,8 @@ class InsightFaceBackend(FaceBackend):
 
     @override
     def detect(self, img: Image.Image) -> list:
+        from vision import facestore
+
         bgr = _pil_to_bgr(img)
         h, w = bgr.shape[:2]
         if h == 0 or w == 0:
@@ -541,6 +563,15 @@ class InsightFaceBackend(FaceBackend):
             x1, y1, x2, y2 = (float(v) for v in face.bbox)
             if min(x2 - x1, y2 - y1) < self._min_face_px:
                 continue
+            # The COMPLETE record, by iteration -- `Face` subclasses dict, so
+            # this is everything the pass emitted, keys nobody named included.
+            # A value the envelope cannot carry raises here, not at a replay.
+            native = facestore.freeze(
+                {str(key): face[key] for key in face},
+                producer=self.model_id,
+                producer_version=self.model_version,
+                container=f"{type(face).__module__}.{type(face).__qualname__}",
+            )
             embedding = np.asarray(face.embedding, dtype=np.float32).reshape(-1)
             bbox = (_clamp01(x1 / w), _clamp01(y1 / h), _clamp01((x2 - x1) / w), _clamp01((y2 - y1) / h))
             landmarks = (
@@ -548,32 +579,17 @@ class InsightFaceBackend(FaceBackend):
                 if face.kps is not None
                 else []
             )
+            # Promotions only -- the values `db/detect.py` fans into indexed
+            # columns for facets. The record itself travels in `native`
+            # above, so nothing here decides what survives.
             attributes: dict = {}
             if face.gender is not None and face.age is not None:
                 attributes["age"] = int(face.age)
                 attributes["sex"] = sex_word(face.sex)
-            # Not rounded: 5 decimals on a normalized coordinate discards up to
-            # 0.033 source pixels on a 6528 px photograph, measured at up to
-            # 0.0322 px and 0.0034 degrees (compat/consumers/gallery_storage.py).
-
-            # A normalized float64 round trip is exact for a float32 source, so
-            # the full value costs some JSON width and conserves the producer's
-            # measurement outright.
-            lmk106 = face.get("landmark_2d_106")
-            if lmk106 is not None:
-                attributes["landmark_2d_106"] = [
-                    [_clamp01(float(px) / w), _clamp01(float(py) / h)] for px, py in lmk106
-                ]
-            lmk68 = face.get("landmark_3d_68")
-            if lmk68 is not None:
-                # x/y normalized like every other coordinate; z stays in
-                # the model's pixel-scaled depth units (no image norm
-                # exists for depth) — recorded as-is.
-                attributes["landmark_3d_68"] = [
-                    [_clamp01(float(px) / w), _clamp01(float(py) / h), float(pz)] for px, py, pz in lmk68
-                ]
             pose = face.get("pose")
             if pose is not None:
+                # Named axes, never a triple: upstream's array is
+                # [pitch, yaw, roll] and the columns are yaw-first.
                 attributes["pose"] = {
                     "pitch": float(pose[0]),
                     "yaw": float(pose[1]),
@@ -581,7 +597,12 @@ class InsightFaceBackend(FaceBackend):
                 }
             detections.append(
                 FaceDetection(
-                    bbox=bbox, landmarks=landmarks, det_score=score, embedding=embedding, attributes=attributes or None
+                    bbox=bbox,
+                    landmarks=landmarks,
+                    det_score=score,
+                    embedding=embedding,
+                    attributes=attributes or None,
+                    native=native,
                 )
             )
         return detections
@@ -666,8 +687,8 @@ def get_insightface_app(models_dir: str, providers: str = "auto", *, provision: 
     if cache_key in _insightface_apps:
         return _insightface_apps[cache_key]
     try:
-        # Every pack head loads, and all of it persists per face in
-        # FaceDetection.attributes -- see the docstring for the cost of
+        # Every pack head loads, and all of it persists per face in the
+        # FaceDetection.native record -- see the docstring for the cost of
         # 1k3d68 and for why the providers are split per stage.
         app = FaceAnalysis(
             name=weights_module.PACK,

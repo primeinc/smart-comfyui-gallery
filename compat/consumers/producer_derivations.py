@@ -1,35 +1,3 @@
-"""Which producer outputs are recomputable from other producer outputs.
-
-Two of the nine values an observation pass emits are not independent facts.
-Upstream computes them from values it already returned, with no pixels and no
-second inference, so storing them is storing the same fact twice -- and a
-column that holds a copy of a derivable value is exactly the state this suite
-exists to refuse.
-
-Both claims are executed against upstream's own code at the pinned commit,
-never reimplemented here. A reimplementation that agreed would prove that two
-pieces of arithmetic agree, which is not the question.
-
-    pose <- landmark_3d_68
-        `Landmark.get` (model_zoo/landmark.py, insightface@7fadd420c235) ends
-        with estimate_affine_matrix_3d23d(mean_lmk, pred) -> P2sRt ->
-        matrix2angle, where `pred` is the landmark array it just assigned to
-        `face['landmark_3d_68']` and `mean_lmk` is the packaged
-        meanshape_68.pkl. No image is touched after the landmark head runs.
-
-    normed_embedding <- embedding
-        `Face.normed_embedding` (app/common.py) is a property computed on
-        access: embedding / norm(embedding). Nothing stores it.
-
-The second half of each case is the one that decides the schema. What the
-application currently CONSERVES is not the producer's array: `vision/faces.py`
-normalises x and y to fractions of width and height, ROUNDS them to 5 places,
-rounds z to 2, and clamps to [0, 1]. So the same derivation is run twice --
-once from the producer's float32 output, once from the values that would come
-back out of today's storage -- and the difference between those two results IS
-the cost of the conservation decision, in degrees.
-"""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -46,22 +14,16 @@ from compat.storage import precision
 
 CONSUMER_ID: Final[str] = "insightface_producer"
 
-#: Corpus images to derive over. Every identity would say the same thing about
-#: the arithmetic; the axis that matters here is that the numbers came off
-#: real photographs rather than a fixture.
+
 CORPUS_IMAGES: Final[int] = 6
 
-#: What `vision/faces.py` does to a 3D landmark before storage: x and y
-#: divided by width and height and rounded to 5 places, z rounded to 2. Stated
-#: as constants because the point is to measure the policy.
+
 XY_PLACES: Final[int] = 5
 Z_PLACES: Final[int] = 2
 
 
 @dataclass(frozen=True)
 class Observation:
-    """One real face, with every producer output that these claims need."""
-
     label: str
     fixture: Fixture
     width: int
@@ -73,13 +35,6 @@ class Observation:
 
 
 def pose_from_landmarks(landmark_3d_68: npt.NDArray[np.float32]) -> npt.NDArray[np.float32]:
-    """Upstream's own pose derivation, on the landmarks it is handed.
-
-    `transform` and the packaged mean shape are imported from insightface, not
-    copied: the claim is that OUR retained landmarks are sufficient input to
-    UPSTREAM's computation, and a local reimplementation would test a different
-    sentence.
-    """
     from insightface.data import get_object
     from insightface.utils import transform
 
@@ -91,13 +46,6 @@ def pose_from_landmarks(landmark_3d_68: npt.NDArray[np.float32]) -> npt.NDArray[
 
 
 def through_todays_storage(landmark_3d_68: npt.NDArray[np.float32], width: int, height: int) -> npt.NDArray[np.float32]:
-    """The landmark array as it survives the application's conservation policy.
-
-    Normalised, rounded, clamped, then expanded back to source pixels -- which
-    is what any consumer reading the stored value would have to do. The
-    round-trip is the point: whatever this loses is lost permanently, and the
-    derived pose is where the loss becomes visible in a unit anybody can read.
-    """
     out = np.asarray(landmark_3d_68, dtype=np.float64).copy()
     out[:, 0] = np.round(np.clip(out[:, 0] / width, 0.0, 1.0), XY_PLACES) * width
     out[:, 1] = np.round(np.clip(out[:, 1] / height, 0.0, 1.0), XY_PLACES) * height
@@ -106,7 +54,6 @@ def through_todays_storage(landmark_3d_68: npt.NDArray[np.float32], width: int, 
 
 
 def observations(limit: int = CORPUS_IMAGES) -> list[Observation]:
-    """Real faces from the corpus, or an empty list when it is absent."""
     if not corpus.KYC.is_dir():
         return []
 
@@ -163,8 +110,6 @@ def _artifact(name: str, values: npt.NDArray[np.float32]) -> Artifact:
 
 
 class ProducerDerivationRunner:
-    """Two derivations, each executed through the code that owns it."""
-
     consumer_id: str = CONSUMER_ID
 
     def __init__(self, found: list[Observation] | None = None) -> None:
@@ -188,9 +133,6 @@ class ProducerDerivationRunner:
                     retained=("landmark_3d_68",),
                     ablations=(
                         Ablation(primitive="landmark_3d_68", expect_breaks=True),
-                        # Not a removal: offering the same value in the
-                        # narrowest storable float asks how wide the column
-                        # must be.
                         Ablation(
                             primitive="landmark_3d_68",
                             swap="half_precision",
@@ -239,7 +181,6 @@ class ProducerDerivationRunner:
         return RetainedState(embedding=found.embedding.copy())
 
     def baseline(self, case: Case) -> Artifact:
-        """What the producer itself returned. Not recomputed."""
         kind, found = self._parts(case)
         if kind == "pose":
             return _artifact(case.boundary, found.pose)
@@ -279,9 +220,6 @@ class ProducerDerivationRunner:
             )
 
         if name == "norm_is_not_recoverable":
-            # The direction survives normalisation; the magnitude does not.
-            # That asymmetry is why the raw vector is the durable one: a unit
-            # vector cannot reconstruct the value it was divided by.
             magnitude = float(np.linalg.norm(found.embedding))
             back = found.normed_embedding * magnitude
             worst = float(np.max(np.abs(back.astype(np.float64) - found.embedding.astype(np.float64))))
