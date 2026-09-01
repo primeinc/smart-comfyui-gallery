@@ -46,10 +46,72 @@ Three reviewer-practice failures, each with a forcing artifact rather than prose
 enumeration misses (populations derived from code, never remembered lists — the G4
 method constraint, with the boundary rule: every field traced to its writer AND to
 whatever validates the writer's output); generalization misses (the G4 family column
-against a declared-closed family list — currently: unreachable member, empty population,
-inconsistent inputs); statistic trust (a count is not an enumeration — absence claims
-rest on classified searches with positive controls or printed enumerations, never
-counts).
+against a declared-closed family list — currently four: unreachable member, empty
+population, inconsistent inputs, self-referential control); statistic trust (a count is
+not an enumeration — absence claims rest on classified searches with positive controls
+or printed enumerations, never counts).
+
+Fourth family, recorded 2026-09-01 (adversary, G1–G5 re-attack): SELF-REFERENTIAL
+CONTROL — the control is derived from the artifact it guards, so it passes at every
+value of the thing it constrains. Discriminator: could the control fail if the
+implementation and the control were wrong in the same direction? If the control is
+written from the implementation's own list or constant, no. Instances at recording:
+identity_attack.COVERED["gates"] copied from GATE_GLOBS (G3); closure_attack building
+ALLOWANCE+1 rows from the allowance it guards (G6); neighbour: G1's recorded lane set
+judged against itself. Third direction (F9): a control frozen as an ARTIFACT rather
+than a CLAIM drifts out from under the claim while the claim keeps passing.
+
+Fifth family, recorded 2026-09-01 (adversary F11): PRESENT BUT UNCLASSIFIABLE — a
+denylist condition enumerates bad values and admits every malformed shape it never
+imagined (fifty ablations carrying verdict "WOBBLE"/None/absent/"" pass "every
+ablation concluded"), while the allowlist form beside it (weight_is_verified, == the
+one good state) rejects them all — and the polarity lesson was already written down in
+weight_is_verified's own comment, learned in one place and not carried to code written
+beside it in the same phase. Structural blind spot: G4's audit vocabulary has one
+degenerate word (empty/absent) and cannot say MALFORMED, so G4+G6 jointly certify a
+condition as sound over unclassifiable members. Rules: conditions are ALLOWLISTS
+(anything not the known-good state is an offence); every population audit injects a
+present-but-unclassifiable member as its second degenerate shape.
+
+Recorded 2026-09-01 (user correction): THE CURRENT TREE IS THE DEFENDANT, NOT THE
+AUTHORITY — a fix is never patterned on the mechanism under indictment. The .gitignore
+benchmark allowlist is the canonical instance: extending it would have repeated the
+expected-set defect it embodies. Existing code may serve as a reference pattern only
+after being independently verified to hold (e.g. provenance.weight_identity iterating
+the DECLARED set, verified 13-of-13).
+
+SINGLE-WRITER RULE (recorded 2026-09-01, after three tree-blocks in one session): the
+commit gate walks the whole tree, so any agent's in-flight file reddens every commit.
+Until Phase G's commits land, proof is the ONLY writer in the shared checkout;
+architecture (capture-monopoly-r1), population (capture-monopoly-nonface), and envelope
+(capture-monopoly-envelope) work in their own worktrees, merged by the lead at
+checkpoints. Commits use explicit pathspec (`git commit -- <paths>`); a gate-rejected
+commit leaves the index staged — unstage after any failure.
+
+Shared machine-local state worktrees do not isolate (recorded 2026-09-01; AMENDED —
+architecture's correction: db/build.py:22 makes DEFAULT module-relative, so worktrees
+DO isolate gallery.db; the v48 contamination was its pre-move cwd, a one-time event,
+not a standing leak): node_modules —
+CAUSE FOUND for the openapi-fetch gate failure: architecture had junctioned the r1
+worktree's node_modules to the main checkout's, and its `npm ci` followed the junction
+and emptied main's (disclosed, repaired, byte-identical rebuild verified). RULE: never
+junction/symlink a directory an installer owns between worktrees; each worktree gets
+its own node_modules. The .venv junction stands (python embeds no paths). Retry-first
+guidance stands for residue of this class — but the same failure twice is not a race:
+a race repairs itself; a deterministic deletion only looks transient because someone
+repaired it. Ask the junction question on the second occurrence, not the third.
+
+Probe-narration rule (recorded 2026-09-01, adversary self-catch on the census attack —
+its draft narration asserted conclusions its own output contradicted): a probe's
+narration is an assertion and must be written after its output, never before.
+
+Two operational rules, recorded 2026-09-01 (adversary F5): (1) a harness that captures
+identity() once and then calls anything recomputing it live is order-dependent on
+concurrent commits — hermetic harnesses thread ONE captured identity end to end; (2) an
+alarm is not a diagnosis — a red number gets its cause established before it is
+reported, exactly as a green one does (companion to "a count is not an enumeration";
+this session's fourth number that meant something other than what it said, and the
+first alarming one).
 
 ## User mandate
 
@@ -130,9 +192,24 @@ here.
   facts. Query vectors: captured.
 - R-5 Execution: Phase G (nine gates + G8b) precedes R1; then R1 (runtime + nonface
   owners), R2, R3 hostile closure. Enforcement hooks arm for implementation tasks.
-- OPEN: location of the production library database (the repo's gallery.db and all 40
-  backups are measured empty; re-detect cost is stated when the production DB is found,
-  before any run).
+- R-6 (closes the former OPEN item) Production library database LOCATED at
+  C:/Users/will/.smartgallery/gallery.db — 184 MB, schema v45 (no `native` column),
+  read-only census 2026-09-01 (population): 3,748 files (3,737 present images, 12.74 GB,
+  14.5 GP), 3,514 face instances (3,088 opencv + 426 insightface), 11,031 embeddings
+  (7,283 qwen + 3,748 openclip), 3,852 BLIP captions, and human-authored rows that MUST
+  survive any migration: 72 person_assertions, 431 persons/clusters, 1,457 memberships,
+  ratings/favourites/collections/stories. Migration cost is NOT zero: v45→v48 leaves all
+  3,514 faces without canonical records (v46/v47 add columns with no backfill), and
+  canonical recovery means re-detecting 3,737 images plus re-embedding 11,031 vectors and
+  re-captioning 3,852 files if those gain canonical capture. Z4's zero-cost measurement
+  was of the repo fixture and does not generalize.
+  USER RULING 2026-09-01: C:/Users/will/.smartgallery/gallery.db is a TEST gallery,
+  "just like the one in this cwd" — its contents (including the 72 person_assertions)
+  are test data, not irreplaceable user data. The census above stands as a measurement
+  of that test gallery; the S8 drop_all standing attack still uses it as the realistic
+  fixture. A production library database remains UNLOCATED; Z4's state-the-cost-before-
+  any-run requirement re-attaches to whatever production DB is ever identified, and the
+  compute cost of any large re-detect run is still stated before starting one, as cost.
 
 ## CLOSED criteria
 
