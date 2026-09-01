@@ -209,20 +209,29 @@ def conditions(where: Path = GENERATED) -> list[Condition]:
         )
     )
 
+    # The ledger's own VERIFIED, imported rather than re-spelled: two definitions
+    # of the good state is how the closure/ledger predicates diverged in E10.
+    from compat.harness.ledger import VERIFIED as CELL_VERIFIED
+
     stages: list[str] = ledger.get("stages") or []
-    for state in ("BLOCKED", "FAILED"):
-        cells = [
-            f"{row['consumer']}/{stage}" for row in rows for stage in stages if row["cells"][stage]["state"] == state
-        ]
-        out.append(
-            _over(
-                f"no ledger cell {state}",
-                "ledger.json:rows",
-                [(row["consumer"], stage) for row in rows for stage in stages],
-                cells,
-                f"{len(rows) * len(stages)} cell(s), none {state}",
-            )
+    # ONE allowlist, not two denylists. `== "BLOCKED"` and `== "FAILED"` both
+    # admitted a cell carrying a state nothing recognises; the same polarity fix
+    # weights took in G4 and ablations took in G6r2, applied to the third site.
+    cells = [(row["consumer"], stage, row.get("cells", {}).get(stage, {})) for row in rows for stage in stages]
+    unverified = [
+        f"{who}/{stage} {(cell.get('state') or 'no state')}"
+        for who, stage, cell in cells
+        if cell.get("state") != CELL_VERIFIED
+    ]
+    out.append(
+        _over(
+            "every ledger cell VERIFIED",
+            "ledger.json:rows",
+            cells,
+            unverified,
+            f"{len(cells)} cell(s), all VERIFIED",
         )
+    )
 
     results: list[dict[str, Any]] = (cases or {}).get("results") or []
     skipped = [str(one) for one in ((cases or {}).get("skipped") or [])]

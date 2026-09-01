@@ -5,10 +5,9 @@
     "every consumed artifact unchanged": "ledger.json:consumed",
     "every declared member accounted for": "ledger.json:rows",
     "every lane exited 0": "lanes.json:lanes",
+    "every ledger cell VERIFIED": "ledger.json:rows",
     "every weight VERIFIED": "provenance.json:weights",
     "evidence from one tree": "generated:identity stamps",
-    "no ledger cell BLOCKED": "ledger.json:rows",
-    "no ledger cell FAILED": "ledger.json:rows",
     "no shard failed": "cases.json:results",
     "no skipped input": "cases.json:results"
   },
@@ -32,8 +31,7 @@
     ],
     "ledger.json:rows": [
       "every declared member accounted for",
-      "no ledger cell BLOCKED",
-      "no ledger cell FAILED"
+      "every ledger cell VERIFIED"
     ],
     "provenance.json:weights": [
       "every weight VERIFIED"

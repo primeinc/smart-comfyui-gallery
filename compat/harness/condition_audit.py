@@ -21,6 +21,11 @@ class Source:
     #: from the inputs rather than supplied, so there is no input dict to edit.
     empty: Callable[[Path], None]
 
+    #: The SECOND degenerate shape: a member that is present and unclassifiable.
+    #: Empty was the audit's only word, so a denylist condition holding over
+    #: "WOBBLE" was certified sound by a check that never showed it one.
+    malform: Callable[[Path], None]
+
     #: The BOUNDARY RULE: a field traced only to its writer stops one screen above
     #: the guard, which is where the guarantee usually lives. Both are cited so a
     #: reviewer can check the trace rather than take this table's word for it.
@@ -60,6 +65,62 @@ def _empty_ablations(where: Path) -> None:
     _rewrite(where, "cases.json", strip)
 
 
+def _malform(artifact: str, field_name: str, make: Callable[[], Any]) -> Callable[[Path], None]:
+    def spoiled(where: Path) -> None:
+        def change(held: dict[str, Any]) -> None:
+            found = held.get(field_name)
+            if isinstance(found, dict):
+                found["a_member_nobody_classified"] = make()
+            else:
+                # An absent field is not an excuse to inject nothing: a malformer
+                # that no-ops reports the condition sound without ever testing it.
+                held[field_name] = [*(found or []), make()]
+
+        _rewrite(where, artifact, change)
+
+    return spoiled
+
+
+def _malform_ablation(where: Path) -> None:
+    def change(held: dict[str, Any]) -> None:
+        rows = held.get("results") or []
+        if rows:
+            rows[0].setdefault("ablations", []).append({"primitive": "p", "verdict": "WOBBLE"})
+
+    _rewrite(where, "cases.json", change)
+
+
+def _malform_stamp(where: Path) -> None:
+    _rewrite(where, "cases.json", lambda held: held.__setitem__("identity", {"digest": "not-a-digest"}))
+
+
+def _malform_case_offences(where: Path) -> None:
+    # Both conditions over cases.json:results read a DIFFERENT field from the one
+    # they declare, so a malformed member has to reach each of them by name.
+    def change(held: dict[str, Any]) -> None:
+        held["skipped"] = [*(held.get("skipped") or []), {"why": "an input nobody classified"}]
+        held["shards_failed"] = [*(held.get("shards_failed") or []), "a shard nobody classified"]
+
+    _rewrite(where, "cases.json", change)
+
+
+def _malform_ledger(where: Path) -> None:
+    # An extra ROW carrying an unrecognised cell state, so it reaches every
+    # condition over this population: the count one AND the two cell ones.
+    def change(held: dict[str, Any]) -> None:
+        stages = held.get("stages") or []
+        rows = held.get("rows")
+        if isinstance(rows, list) and stages:
+            rows.append(
+                {
+                    "consumer": "a_consumer_nobody_declared",
+                    "cells": {one: {"state": "WOBBLE", "reason": "a state nothing recognises"} for one in stages},
+                }
+            )
+
+    _rewrite(where, "ledger.json", change)
+
+
 def _drop_ledger(where: Path) -> None:
     (where / "ledger.json").unlink(missing_ok=True)
 
@@ -67,41 +128,49 @@ def _drop_ledger(where: Path) -> None:
 SOURCES: Final[dict[str, Source]] = {
     "generated:identity stamps": Source(
         empty=_strip_stamps,
+        malform=_malform_stamp,
         writer="each artifact's own main(): ledger.py:build, sharded.py:112, lanes.py:main, provenance.py:main",
         validator="identity.py:identity() recomputes the tree digest; closure._one_tree compares every stamp to it",
     ),
     "lanes.json:lanes": Source(
         empty=_empty("lanes.json", "lanes"),
+        malform=_malform("lanes.json", "lanes", lambda: 1),
         writer="compat.just `run` appends `<lane> <code>` per lane; lanes.py:_recorded parses it",
         validator="NONE beyond the int parse -- the exit code is the shell's, and nothing re-derives it",
     ),
     "ledger.json:consumed": Source(
         empty=_empty("ledger.json", "consumed"),
+        malform=_malform("ledger.json", "consumed", lambda: "not-the-digest-that-was-read"),
         writer="ledger.py:_read records a sha256 at every open build() performs",
         validator="closure._consumption_agrees re-digests each named artifact and compares",
     ),
     "ledger.json:rows": Source(
         empty=_empty("ledger.json", "rows"),
+        malform=_malform_ledger,
         writer="ledger.py:build() -- one row per manifest consumer",
         validator="ledger.py:stages_are_covered() + STAGE_EVIDENCE: each cell derives from its own case field",
     ),
     "provenance.json:weights": Source(
         empty=_empty("provenance.json", "weights"),
+        malform=_malform("provenance.json", "weights", lambda: {"pack": "p", "file": "f", "state": "WOBBLE"}),
         writer="provenance.py:weight_identity() -> main(), state from weight_state() at :505-517",
         validator="provenance.weight_is_verified() -- the one predicate closure and ledger now share",
     ),
     "cases.json:ablations": Source(
         empty=_empty_ablations,
+        malform=_malform_ablation,
         writer="run.py:run_ablation() -> run_case(); tallied by run.py:ablation_tally",
         validator="run.py:116 compares observed_break against the declared expect_breaks",
     ),
     "cases.json:results": Source(
         empty=_empty("cases.json", "results"),
+        malform=_malform_case_offences,
         writer="sharded.py:main() for the shipped lane; run.py:main() when run whole",
         validator="assertions/arrays.py:compare() decides each verdict; run.py:run_case records it",
     ),
     "generated:ledger": Source(
         empty=_drop_ledger,
+        malform=_malform_ledger,
         writer="ledger.py:main() writes ledger.json",
         validator="closure.conditions() returns only `ledger present` when the file is absent",
     ),
@@ -138,7 +207,16 @@ def run(asked: Provider = closure.conditions) -> Audit:
         where = Path(raw)
         base = closure_attack.green_fixture()
         closure_attack._write(where, base)
-        control = {one.name: one for one in asked(where)}
+        answered = asked(where)
+        control = {one.name: one for one in answered}
+        if len(control) != len(answered):
+            seen: set[str] = set()
+            twice = sorted({one.name for one in answered if one.name in seen or seen.add(one.name)})
+            out.findings.append(
+                Finding(
+                    "duplicate condition name", ", ".join(twice), "", "keyed by name, so one silently replaced another"
+                )
+            )
 
         for name, one in control.items():
             out.declared[name] = one.population
@@ -175,6 +253,27 @@ def run(asked: Provider = closure.conditions) -> Audit:
                 out.findings.append(
                     Finding("empties to no effect", "", population, "the verdict stayed green with it emptied")
                 )
+
+            # The second degenerate shape. Empty was the only word this audit knew,
+            # so a denylist condition holding over an unclassifiable member was
+            # certified sound by a check that never showed it one.
+            closure_attack._write(where, base)
+            source.malform(where)
+            spoiled = {one.name: one for one in asked(where)}
+            # The VERDICT must cost, not every condition over the population: a
+            # malformed cell does not concern a row-count condition, and demanding
+            # it would make the audit fail on conditions that are behaving.
+            for name in over:
+                found = spoiled.get(name)
+                if found is not None and found.green:
+                    out.findings.append(
+                        Finding(
+                            "held over an unclassifiable member",
+                            name,
+                            population,
+                            f"still {found.state} with a member nothing classifies",
+                        )
+                    )
     return out
 
 
@@ -213,8 +312,10 @@ def _with_a_vacuous_condition(where: Path) -> list[closure.Condition]:
 
 def self_control() -> tuple[bool, str]:
     caught = run(_with_a_vacuous_condition)
-    named = [one.condition for one in caught.findings if one.kind == "held over an empty population"]
-    return "a condition that cannot fail" in named, ", ".join(named) or "nothing"
+    wanted = {"held over an empty population", "held over an unclassifiable member"}
+    found = {one.kind for one in caught.findings if one.condition == "a condition that cannot fail"}
+    missing = sorted(wanted - found)
+    return not missing, f"caught by {sorted(found)}" if not missing else f"NOT caught by {missing}"
 
 
 def main() -> int:
