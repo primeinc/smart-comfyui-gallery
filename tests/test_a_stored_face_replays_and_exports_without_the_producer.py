@@ -186,11 +186,10 @@ def test_replay_and_export_run_with_the_producer_gone(db, a_file, monkeypatch):
 
 
 def test_the_exported_face_model_is_upstreams_construction(db, a_file):
-    """The container holds exactly ReActor's nine tensors, in the order its
-    writer inserts them, at the dtypes `torch.tensor` derives from the
-    record. Byte identity against upstream's own writer is proven in compat,
-    where the pinned clone runs; this holds the construction in the suite
-    that runs on every push."""
+    """The container holds exactly ReActor's nine tensors at the dtypes the
+    serializer derives from the record. Byte identity against upstream's own
+    writer is proven in compat, where the pinned clone runs; this holds the
+    construction in the suite that runs on every push."""
     face = producer_record()
     face_id = harvested(db, a_file, face)
     native = faces_native.native_of(db, face_id)
@@ -210,11 +209,11 @@ def test_the_exported_face_model_is_upstreams_construction(db, a_file):
     assert header["gender"]["shape"] == []
     assert header["landmark_3d_68"]["shape"] == [68, 3]
 
-    from safetensors.torch import load
+    from safetensors.numpy import load
 
     loaded = load(blob)
     for key in faces_native.REACTOR_KEYS:
-        assert loaded[key].numpy().tobytes() == np.asarray(native.record[key]).tobytes(), key
+        assert loaded[key].tobytes() == np.asarray(native.record[key]).tobytes(), key
 
 
 def test_an_export_missing_an_upstream_key_refuses_by_name(db, a_file):

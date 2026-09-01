@@ -72,16 +72,16 @@ def reactor_face_model_bytes(native: Native) -> bytes:
     swallow-and-print: a face model missing a tensor is not a smaller face
     model, it is a file `load_face_model` cannot serve.
     """
-    import torch
-    from safetensors.torch import save
+    import numpy as np
+    from safetensors.numpy import save
 
     missing = [key for key in REACTOR_KEYS if key not in native.record]
     if missing:
         raise KeyError(f"the {native.producer} record cannot fill ReActor's face model: it lacks {', '.join(missing)}")
-    # The same construction as the pinned writer -- torch.tensor copies and
-    # keeps the ndarray's dtype -- and `save` returns the bytes `save_file`
-    # would put on disk.
-    tensors = {key: torch.tensor(native.record[key]) for key in REACTOR_KEYS}
+    # safetensors' numpy writer: the same Rust serializer, bytes measured
+    # identical to upstream's torch save_file -- and `import torch` after
+    # onnxruntime is resident dies loading CUDA DLLs (0xc0000139).
+    tensors = {key: np.asarray(native.record[key]) for key in REACTOR_KEYS}
     return save(tensors)
 
 
