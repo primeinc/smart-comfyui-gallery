@@ -2,6 +2,7 @@
   "clean": true,
   "declared": {
     "every ablation concluded": "cases.json:ablations",
+    "every consumed artifact unchanged": "ledger.json:consumed",
     "every declared member accounted for": "ledger.json:rows",
     "every lane exited 0": "lanes.json:lanes",
     "every weight VERIFIED": "provenance.json:weights",
@@ -25,6 +26,9 @@
     "generated:ledger": [],
     "lanes.json:lanes": [
       "every lane exited 0"
+    ],
+    "ledger.json:consumed": [
+      "every consumed artifact unchanged"
     ],
     "ledger.json:rows": [
       "every declared member accounted for",
@@ -56,6 +60,10 @@
     "lanes.json:lanes": {
       "validator": "NONE beyond the int parse -- the exit code is the shell's, and nothing re-derives it",
       "writer": "compat.just `run` appends `<lane> <code>` per lane; lanes.py:_recorded parses it"
+    },
+    "ledger.json:consumed": {
+      "validator": "closure._consumption_agrees re-digests each named artifact and compares",
+      "writer": "ledger.py:_read records a sha256 at every open build() performs"
     },
     "ledger.json:rows": {
       "validator": "ledger.py:stages_are_covered() + STAGE_EVIDENCE: each cell derives from its own case field",

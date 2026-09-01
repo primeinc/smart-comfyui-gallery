@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Sized
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final
@@ -20,6 +21,12 @@ NOT_APPLICABLE: Final[str] = "not-applicable"
 #: it may only ever be lowered. 497 of 1037 shipped green while ablation verdicts
 #: reached no gate at all -- this number exists so that stops being invisible.
 ABLATION_INCONCLUSIVE_ALLOWANCE: Final[int] = 497
+
+ABLATION_INCONCLUSIVE: Final[str] = "INCONCLUSIVE"
+
+#: Known-good ablation verdicts. Anything else -- including null, absent and a
+#: value nobody anticipated -- is unconcluded, because a denylist admits the rest.
+ABLATION_CONCLUDED: Final[frozenset[str]] = frozenset({"PASS", "INCONCLUSIVE"})
 
 
 @dataclass
@@ -56,7 +63,11 @@ def _stamp(held: dict[str, Any]) -> str:
     return str(found or "")
 
 
-def _over(name: str, population: str, size: int, offending: list[str], clean: str) -> Condition:
+def _over(name: str, population: str, over: Sized, offending: list[str], clean: str) -> Condition:
+    # `over` is the COLLECTION, not a count: with size passed separately the
+    # declared population could name one collection while the verdict came from
+    # another, and the audit then proved a set the condition never reads.
+    size = len(over)
     # The empty-population rule. A condition that examined nothing has not held:
     # green must mean "checked, and clean", never "found no reason to complain".
     if size == 0:
@@ -72,7 +83,7 @@ def _one_tree(stamped: dict[str, str]) -> Condition:
     return _over(
         "evidence from one tree",
         "generated:identity stamps",
-        len(stamped),
+        stamped,
         wrong,
         f"{len(stamped)} artifact(s) stamped {now[:12]}",
     )
@@ -80,11 +91,33 @@ def _one_tree(stamped: dict[str, str]) -> Condition:
 
 def _every_lane_green(lanes: dict[str, Any] | None) -> Condition:
     # A lane's exit code was recorded and read by nothing: `attack` and `selftest`
-    # could both exit 1 while this printed GREEN. The lane record is now evidence.
+    # could both exit 1 while this printed GREEN. The lane record is now evidence,
+    # and its population is compat.just's declared list rather than its own keys.
+    from compat.harness import lanes as lane_record
+
     found = (lanes or {}).get("lanes")
     held = found if isinstance(found, dict) else {}
-    red = sorted(f"{name} exited {code}" for name, code in held.items() if int(code) != 0)
-    return _over("every lane exited 0", "lanes.json:lanes", len(held), red, f"{len(held)} lane(s), all 0")
+    want = lane_record.declared()
+    if not want:
+        # `want or held` would fall back to judging the record by its own keys --
+        # the exact defect this condition was repaired to remove. A declaration
+        # that cannot be read is a failure, never a quiet reversion.
+        return Condition(
+            "every lane exited 0",
+            FAILED,
+            "compat.just's lane loop could not be parsed, so there is no declared set to judge against",
+            "lanes.json:lanes",
+        )
+
+    offending = sorted(f"{name} exited {code}" for name, code in held.items() if int(code) != 0)
+    offending += [f"{name} declared but never recorded" for name in want if name not in held]
+    return _over(
+        "every lane exited 0",
+        "lanes.json:lanes",
+        want or held,
+        offending,
+        f"{len(held)} lane(s) recorded for {len(want)} declared, all 0",
+    )
 
 
 def _ablations_concluded(cases: dict[str, Any] | None) -> Condition:
@@ -92,19 +125,41 @@ def _ablations_concluded(cases: dict[str, Any] | None) -> Condition:
     # were aggregated nowhere. CONTRADICTED gets no allowance: it means an ablation
     # behaved opposite to its declaration, which is a finding, not a shortfall.
     held = [one for row in ((cases or {}).get("results") or []) for one in (row.get("ablations") or [])]
-    contradicted = [one for one in held if one.get("verdict") == "CONTRADICTED"]
-    inconclusive = [one for one in held if one.get("verdict") == "INCONCLUSIVE"]
+    inconclusive = [one for one in held if one.get("verdict") == ABLATION_INCONCLUSIVE]
+    # Allowlist, matching provenance.weight_is_verified. An enumerated-bad-values
+    # filter admits every shape it did not think of: null, absent, "", "WOBBLE".
+    unconcluded = [one for one in held if one.get("verdict") not in ABLATION_CONCLUDED]
 
-    offending = [f"{one.get('primitive', '?')} CONTRADICTED" for one in contradicted[:4]]
+    offending = [f"{one.get('primitive', '?')} {one.get('verdict') or 'no verdict'}" for one in unconcluded[:4]]
     if len(inconclusive) > ABLATION_INCONCLUSIVE_ALLOWANCE:
         offending.append(f"{len(inconclusive)} INCONCLUSIVE over an allowance of {ABLATION_INCONCLUSIVE_ALLOWANCE}")
     return _over(
         "every ablation concluded",
         "cases.json:ablations",
-        len(held),
+        held,
         offending,
-        f"{len(held)} ablation(s), 0 contradicted, {len(inconclusive)} inconclusive "
+        f"{len(held)} ablation(s), all concluded, {len(inconclusive)} inconclusive "
         f"within the allowance of {ABLATION_INCONCLUSIVE_ALLOWANCE}",
+    )
+
+
+def _consumption_agrees(ledger: dict[str, Any], where: Path) -> Condition:
+    # One-tree compares each artifact to the TREE, never to each other, so two
+    # artifacts individually current for the tree but not built from one another
+    # both passed. `just compat pins` alone after a full run does exactly that.
+    consumed: dict[str, str] = ledger.get("consumed") or {}
+    drifted: list[str] = []
+    for name, digest in sorted(consumed.items()):
+        path = where / name
+        now = evidence_identity.sha256_of(path.read_bytes()) if path.is_file() else ""
+        if now != digest:
+            drifted.append(f"{name} was {digest[:8]}, is {now[:8] or 'absent'}")
+    return _over(
+        "every consumed artifact unchanged",
+        "ledger.json:consumed",
+        consumed,
+        drifted,
+        f"{len(consumed)} artifact(s) still the bytes the ledger read",
     )
 
 
@@ -124,6 +179,7 @@ def conditions(where: Path = GENERATED) -> list[Condition]:
             stamped[name] = _stamp(held)
     out.append(_one_tree(stamped))
     out.append(_every_lane_green(lanes))
+    out.append(_consumption_agrees(ledger, where))
 
     rows: list[dict[str, Any]] = ledger.get("rows") or []
     declared = int(ledger.get("totals", {}).get("declared", 0))
@@ -131,7 +187,7 @@ def conditions(where: Path = GENERATED) -> list[Condition]:
         _over(
             "every declared member accounted for",
             "ledger.json:rows",
-            len(rows),
+            rows,
             [] if len(rows) == declared else [f"{len(rows)} row(s) for {declared} declared"],
             f"{len(rows)} row(s) for {declared} declared",
         )
@@ -147,7 +203,7 @@ def conditions(where: Path = GENERATED) -> list[Condition]:
         _over(
             "every weight VERIFIED",
             "provenance.json:weights",
-            len(weights),
+            weights,
             unverified,
             f"{len(weights)} weight(s) VERIFIED",
         )
@@ -162,7 +218,7 @@ def conditions(where: Path = GENERATED) -> list[Condition]:
             _over(
                 f"no ledger cell {state}",
                 "ledger.json:rows",
-                len(rows) * len(stages),
+                [(row["consumer"], stage) for row in rows for stage in stages],
                 cells,
                 f"{len(rows) * len(stages)} cell(s), none {state}",
             )
@@ -171,14 +227,14 @@ def conditions(where: Path = GENERATED) -> list[Condition]:
     results: list[dict[str, Any]] = (cases or {}).get("results") or []
     skipped = [str(one) for one in ((cases or {}).get("skipped") or [])]
     out.append(
-        _over("no skipped input", "cases.json:results", len(results), skipped, f"{len(results)} case(s), none skipped")
+        _over("no skipped input", "cases.json:results", results, skipped, f"{len(results)} case(s), none skipped")
     )
 
     out.append(_ablations_concluded(cases))
 
     shards = [str(one) for one in ((cases or {}).get("shards_failed") or [])]
     out.append(
-        _over("no shard failed", "cases.json:results", len(results), shards, f"{len(results)} case(s), no shard failed")
+        _over("no shard failed", "cases.json:results", results, shards, f"{len(results)} case(s), no shard failed")
     )
     return out
 

@@ -17,13 +17,13 @@ ROOT: Final[Path] = Path(__file__).resolve().parent.parent
 CACHE_ROOT: Final[Path] = ROOT / ".cache"
 
 
-_BUILTIN: Final[dict[str, Any]] = {"int": int, "float": float, "bool": bool, "str": str}
-
-
-_SCALAR: Final[str] = "s__"
-
-
 _held: dict[str, str] = {}
+
+
+#: The codec every entry is written and read through. It MUST contribute to each
+#: kind's namespace: without it a codec edit left the hash identical and entries
+#: written under one codec were silently reinterpreted under the next.
+CODEC: Final[tuple[str, ...]] = ("compat/corpus/cache.py", "vision/facestore.py")
 
 
 def enabled() -> bool:
@@ -31,19 +31,32 @@ def enabled() -> bool:
 
 
 CONTRIBUTORS: Final[dict[str, tuple[str, ...]]] = {
-    "frame": ("compat/corpus/loaded.py",),
+    "frame": ("compat/corpus/loaded.py", *CODEC),
     "ours": (
         "compat/corpus/loaded.py",
         "compat/producers/insightface_pass.py",
         "vision/faces.py",
+        *CODEC,
     ),
 }
+
+
+def codec_is_declared() -> None:
+    # Enumerated from the registry itself, so a kind added later cannot quietly
+    # omit the codec that serves it.
+    undeclared = sorted(kind for kind, held in CONTRIBUTORS.items() if not set(CODEC) <= set(held))
+    if undeclared:
+        raise KeyError(
+            f"{undeclared} do not name the codec in CONTRIBUTORS. A codec edit would leave their "
+            f"namespace hash identical and reinterpret entries written under the previous one."
+        )
 
 
 WEIGHTED: Final[frozenset[str]] = frozenset({"ours"})
 
 
 def namespace(kind: str) -> str:
+    codec_is_declared()
     if kind not in _held:
         from compat.harness import identity as evidence_identity
 
@@ -102,34 +115,6 @@ def frame_put(sha: str, frame: npt.NDArray[np.uint8]) -> None:
         beside.unlink(missing_ok=True)
 
 
-def _parts(face: Any) -> tuple[dict[str, Any], dict[str, str]]:
-    payload: dict[str, Any] = {}
-    kinds: dict[str, str] = {}
-    for key in face:
-        name = str(key)
-        value = face[key]
-        kinds[name] = type(value).__name__
-        if isinstance(value, np.ndarray):
-            payload[name] = value
-        else:
-            payload[f"{_SCALAR}{name}"] = np.asarray(value)
-    return payload, kinds
-
-
-def _restore(payload: dict[str, npt.NDArray[Any]], kinds: dict[str, str]) -> Any:
-    from insightface.app.common import Face
-
-    held: dict[str, Any] = {}
-    for stored, array in payload.items():
-        if not stored.startswith(_SCALAR):
-            held[stored] = array
-            continue
-        name = stored[len(_SCALAR) :]
-        want = _BUILTIN.get(kinds.get(name, ""))
-        held[name] = want(array.item()) if want is not None else array[()]
-    return Face(**held)
-
-
 def _same(one: Any, two: Any) -> bool:
     if set(one.keys()) != set(two.keys()):
         return False
@@ -145,48 +130,57 @@ def _same(one: Any, two: Any) -> bool:
     return True
 
 
-def _read(body: Path, kinds_at: Path) -> Any | None:
-    try:
-        kinds: dict[str, str] = json.loads(kinds_at.read_text(encoding="utf-8"))
+def _read(where: Path) -> Any | None:
+    from insightface.app.common import Face
 
-        with body.open("rb") as handle, np.load(handle, allow_pickle=False) as held:
-            payload = {name: np.asarray(held[name]) for name in held.files}
-    except (OSError, ValueError, EOFError, KeyError, zipfile.BadZipFile):
+    from vision import facestore
+
+    try:
+        # thaw verifies the trailing digest, so corrupt bytes RAISE rather than
+        # decode into something plausible. The old read path verified nothing.
+        record = facestore.thaw(where.read_bytes()).record
+    except (OSError, ValueError, facestore.Unpreservable):
         return None
-    return _restore(payload, kinds)
+    return Face(**record)
 
 
 def face_get(sha: str) -> Any | None:
     if not enabled():
         return None
-    body, kinds_at = slot("ours", f"{sha}.npz"), slot("ours", f"{sha}.json")
-    if not body.is_file() or not kinds_at.is_file():
+    where = slot("ours", f"{sha}.sgface")
+    if not where.is_file():
         return None
-    return _read(body, kinds_at)
+    return _read(where)
 
 
 def face_put(sha: str, face: Any) -> None:
     if not enabled():
         return
-    payload, kinds = _parts(face)
-    body, kinds_at = slot("ours", f"{sha}.npz"), slot("ours", f"{sha}.json")
-    body.parent.mkdir(parents=True, exist_ok=True)
-    beside, kinds_beside = _temp(body, ".raw"), _temp(kinds_at, ".raw")
+    from vision import facestore
+
+    where = slot("ours", f"{sha}.sgface")
+    where.parent.mkdir(parents=True, exist_ok=True)
+    beside = _temp(where, ".raw")
     try:
+        # Inside the try, unlike the encode it replaces: that one sat above the
+        # `try` whose `except` named the very exception it raises, so a value the
+        # codec could not carry crashed the load instead of missing the cache.
+        blob = facestore.freeze(
+            {str(key): face[key] for key in face},
+            producer="compat.corpus.cache",
+            producer_version=namespace("ours"),
+            container=f"{type(face).__module__}.{type(face).__qualname__}",
+        )
         with beside.open("wb") as handle:
-            np.savez(handle, **payload)
-        kinds_beside.write_text(json.dumps(kinds, sort_keys=True), encoding="utf-8")
-        back = _read(beside, kinds_beside)
+            handle.write(blob)
+        back = _read(beside)
         if back is None or not _same(face, back):
             return
-
-        os.replace(kinds_beside, kinds_at)
-        os.replace(beside, body)
-    except (OSError, ValueError, zipfile.BadZipFile):
+        os.replace(beside, where)
+    except (OSError, ValueError, facestore.Unpreservable):
         return
     finally:
         beside.unlink(missing_ok=True)
-        kinds_beside.unlink(missing_ok=True)
 
 
 _counts: dict[str, int] = {}

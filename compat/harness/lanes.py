@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any, Final
 
@@ -11,6 +12,14 @@ GENERATED: Final[Path] = ROOT / "generated"
 
 RAW: Final[str] = "lanes.raw"
 STAMPED: Final[str] = "lanes.json"
+
+
+def declared(repo: Path = ROOT.parent) -> tuple[str, ...]:
+    # Parsed from compat.just's run recipe, never duplicated here. Judged against
+    # its own keys, a lane DELETED from the recipe simply never appears, and the
+    # gate passes over what remains -- the record cannot be its own population.
+    found = re.search(r"for lane in ([^;]+); do", (repo / "compat.just").read_text(encoding="utf-8"))
+    return tuple(found.group(1).split()) if found else ()
 
 
 def read(where: Path = GENERATED) -> dict[str, Any] | None:

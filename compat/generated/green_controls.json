@@ -1,6 +1,6 @@
 {
   "failing": [],
-  "identity": "d8f34ddb7d95fd4477e5a107ca5f3ed1891922753ae0c8a63cc770c78580a3d8",
+  "identity": "cfd18d6206dcaa749d9db09faeb0a3324573673ba597123e85d2c0c7648fc43d",
   "ledger_stages": [
     "source_provenance",
     "weight_provenance",
@@ -15,18 +15,18 @@
   "probes": [
     {
       "detail": "closure RED on every lane exited 0 [failed]",
-      "held": true,
-      "name": "a red attack lane turns the verdict RED"
+      "name": "a red attack lane turns the verdict RED",
+      "state": "held"
     },
     {
       "detail": "closure RED on every lane exited 0 [failed], no ledger cell BLOCKED [failed]",
-      "held": true,
-      "name": "shipped evidence re-stamped cannot close"
+      "name": "shipped evidence re-stamped cannot close",
+      "state": "held"
     },
     {
-      "detail": "closure.py carries no directory waiver",
-      "held": true,
-      "name": "no non-default-directory waiver remains"
+      "detail": "one-tree still judges outside compat/generated: failed",
+      "name": "a non-default directory gets no free pass",
+      "state": "held"
     }
   ]
 }

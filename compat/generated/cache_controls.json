@@ -1,0 +1,49 @@
+{
+  "codec": [
+    "compat/corpus/cache.py",
+    "vision/facestore.py"
+  ],
+  "contributors": {
+    "frame": [
+      "compat/corpus/loaded.py",
+      "compat/corpus/cache.py",
+      "vision/facestore.py"
+    ],
+    "ours": [
+      "compat/corpus/loaded.py",
+      "compat/producers/insightface_pass.py",
+      "vision/faces.py",
+      "compat/corpus/cache.py",
+      "vision/facestore.py"
+    ]
+  },
+  "failing": [],
+  "identity": "cfd18d6206dcaa749d9db09faeb0a3324573673ba597123e85d2c0c7648fc43d",
+  "probes": [
+    {
+      "detail": "2 kind(s), all naming 2 codec file(s) that exist",
+      "held": true,
+      "name": "the codec contributes to every kind"
+    },
+    {
+      "detail": "\"['a_kind_someone_added'] do not name the codec in CONTRIBUTORS. A codec edit would leav",
+      "held": true,
+      "name": "a kind without the codec is refused"
+    },
+    {
+      "detail": "all 2 kind(s) re-namespaced, and restored",
+      "held": true,
+      "name": "a codec edit moves every namespace"
+    },
+    {
+      "detail": "face-native envelope failed its digest: the stored bytes are not the bytes written",
+      "held": true,
+      "name": "a corrupted entry is refused"
+    },
+    {
+      "detail": "face_put returned quietly",
+      "held": true,
+      "name": "an uncarryable value misses, never crashes"
+    }
+  ]
+}

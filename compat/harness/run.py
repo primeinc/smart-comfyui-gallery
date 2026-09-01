@@ -291,9 +291,19 @@ def blocking_failures(results: list[dict[str, Any]]) -> dict[str, list[str]]:
     return {why: names for why, names in out.items() if names}
 
 
+#: Anything the Verdict members do not classify. Without it the tally silently
+#: dropped null and unrecognised verdicts and summed to less than it counted.
+UNCLASSIFIED: Final[str] = "UNCLASSIFIED"
+
+
 def ablation_tally(results: list[dict[str, Any]]) -> dict[str, int]:
     held = [one for row in results for one in (row.get("ablations") or [])]
-    return {one.value: sum(1 for a in held if a.get("verdict") == one.value) for one in Verdict}
+    known = {one.value for one in Verdict}
+    out = {one.value: sum(1 for a in held if a.get("verdict") == one.value) for one in Verdict}
+    out[UNCLASSIFIED] = sum(1 for a in held if a.get("verdict") not in known)
+    if sum(out.values()) != len(held):
+        raise ValueError(f"ablation tally sums to {sum(out.values())} over {len(held)} ablations")
+    return out
 
 
 def canonical(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -419,7 +429,7 @@ def main(argv: list[str] | None = None) -> int:
     # Was `out["verdicts"][CONTRADICTED]`, which run_case cannot assign: constant
     # true. The ablation tally is where CONTRADICTED and INCONCLUSIVE actually land.
     unsettled = out["ablation_verdicts"]
-    clean = not blocking and unsettled.get(Verdict.CONTRADICTED.value, 0) == 0
+    clean = not blocking and not unsettled.get(Verdict.CONTRADICTED.value, 0) and not unsettled.get(UNCLASSIFIED, 0)
     complete = not out["population"]["unexercised"]
     print(f"\ncases: {'clean' if clean else 'NOT clean'}   population: {'complete' if complete else 'INCOMPLETE'}")
     return 0 if (clean and complete) else 1

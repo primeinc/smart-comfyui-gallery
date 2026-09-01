@@ -46,7 +46,8 @@ def _strip_stamps(where: Path) -> None:
 
 def _empty(artifact: str, field_name: str) -> Callable[[Path], None]:
     def emptied(where: Path) -> None:
-        _rewrite(where, artifact, lambda held: held.__setitem__(field_name, {} if field_name == "lanes" else []))
+        blank: Any = {} if field_name in ("lanes", "consumed") else []
+        _rewrite(where, artifact, lambda held: held.__setitem__(field_name, blank))
 
     return emptied
 
@@ -73,6 +74,11 @@ SOURCES: Final[dict[str, Source]] = {
         empty=_empty("lanes.json", "lanes"),
         writer="compat.just `run` appends `<lane> <code>` per lane; lanes.py:_recorded parses it",
         validator="NONE beyond the int parse -- the exit code is the shell's, and nothing re-derives it",
+    ),
+    "ledger.json:consumed": Source(
+        empty=_empty("ledger.json", "consumed"),
+        writer="ledger.py:_read records a sha256 at every open build() performs",
+        validator="closure._consumption_agrees re-digests each named artifact and compares",
     ),
     "ledger.json:rows": Source(
         empty=_empty("ledger.json", "rows"),
@@ -172,6 +178,30 @@ def run(asked: Provider = closure.conditions) -> Audit:
     return out
 
 
+def allowance_is_not_inflated() -> Finding | None:
+    # The mutation that guards the allowance builds ALLOWANCE+1 rows FROM the
+    # allowance, so it passes at any value. Shipped evidence is the number the
+    # constant cannot move: a ratchet may not be set above what was observed.
+    shipped = GENERATED / "cases.json"
+    if not shipped.is_file():
+        return Finding("allowance unverifiable", "every ablation concluded", "cases.json:ablations", "no evidence yet")
+    held = json.loads(shipped.read_text(encoding="utf-8"))
+    observed = sum(
+        1
+        for row in (held.get("results") or [])
+        for one in (row.get("ablations") or [])
+        if one.get("verdict") == "INCONCLUSIVE"
+    )
+    if observed < closure.ABLATION_INCONCLUSIVE_ALLOWANCE:
+        return Finding(
+            "allowance above what was observed",
+            "every ablation concluded",
+            "cases.json:ablations",
+            f"allowance {closure.ABLATION_INCONCLUSIVE_ALLOWANCE} exceeds the {observed} in shipped evidence",
+        )
+    return None
+
+
 def _with_a_vacuous_condition(where: Path) -> list[closure.Condition]:
     # A condition that holds whatever its population contains -- the exact shape this
     # audit exists to catch. If the audit cannot go red on this, it cannot go red.
@@ -196,6 +226,9 @@ def main() -> int:
     print("self-control: a deliberately vacuous condition IS caught\n")
 
     out = run()
+    inflated = allowance_is_not_inflated()
+    if inflated is not None:
+        out.findings.append(inflated)
     print(f"conditions audited: {len(out.declared)}   sources: {len(SOURCES)}\n")
     for name, population in sorted(out.declared.items()):
         print(f"  {name:<38} over {population}")

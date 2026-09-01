@@ -1,0 +1,26 @@
+{
+  "failing": [],
+  "identity": "cfd18d6206dcaa749d9db09faeb0a3324573673ba597123e85d2c0c7648fc43d",
+  "probes": [
+    {
+      "detail": "GREEN",
+      "held": true,
+      "name": "the control closes"
+    },
+    {
+      "detail": "recorded ['cases.json', 'lanes.json', 'provenance.json']",
+      "held": true,
+      "name": "the graph names every artifact build() opened"
+    },
+    {
+      "detail": "stamp cfd18d6206dc unchanged by the regeneration, so only the graph sees it",
+      "held": true,
+      "name": "the regenerated input keeps its stamp"
+    },
+    {
+      "detail": "closure RED on every consumed artifact unchanged [failed], every weight VERIFIED [failed]",
+      "held": true,
+      "name": "an input regenerated after the ledger read it is caught"
+    }
+  ]
+}

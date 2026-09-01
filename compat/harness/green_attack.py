@@ -20,12 +20,19 @@ RED_LANES: Final[dict[str, int]] = {"attack": 1, "selftest": 1}
 @dataclass
 class Probe:
     name: str
-    held: bool
+    state: str
     detail: str
+
+    #: Three states, like closure.Condition. Returning held=True for "no shipped
+    #: evidence to test" made an untested probe count as a passing one -- the
+    #: empty-population defect, inside the control that guards the phase.
+    @property
+    def green(self) -> bool:
+        return self.state == closure.HELD
 
     @property
     def mark(self) -> str:
-        return "ok " if self.held else "RED"
+        return {closure.HELD: "ok ", closure.FAILED: "RED", closure.NOT_APPLICABLE: "N/A"}[self.state]
 
 
 def _verdict(where: Path, held: dict[str, Any]) -> tuple[bool, list[str]]:
@@ -42,10 +49,12 @@ def _lane_red_over_a_green_run() -> Probe:
         held = ledger_attack.green_fixture()
         held["lanes.json"]["lanes"] = {**held["lanes.json"]["lanes"], **RED_LANES}
         closed, red = _verdict(where, held)
-    named = "every lane exited 0" in " ".join(red)
+    # The STATE beside the name, not the name alone: a bare substring is satisfied
+    # by that condition being red for some other reason, including not-applicable.
+    named = f"every lane exited 0 [{closure.FAILED}]" in " ".join(red)
     return Probe(
         "a red attack lane turns the verdict RED",
-        not closed and named,
+        closure.HELD if (not closed and named) else closure.FAILED,
         "closure RED on " + ", ".join(red[:3]) if not closed else "THE GATE STAYED GREEN WITH attack=1",
     )
 
@@ -56,7 +65,11 @@ def _shipped_evidence_restamped() -> Probe:
     # would mean, then let ledger.build() derive every cell itself.
     cases, pins = GENERATED / "cases.json", GENERATED / "provenance.json"
     if not (cases.is_file() and pins.is_file()):
-        return Probe("shipped evidence re-stamped cannot close", True, "no shipped cases.json/provenance.json to test")
+        return Probe(
+            "shipped evidence re-stamped cannot close",
+            closure.NOT_APPLICABLE,
+            "no shipped cases.json/provenance.json to test, so this proved nothing",
+        )
 
     now = evidence_identity.identity()
     held = {
@@ -68,21 +81,28 @@ def _shipped_evidence_restamped() -> Probe:
         closed, red = _verdict(Path(raw), held)
     return Probe(
         "shipped evidence re-stamped cannot close",
-        not closed,
+        closure.HELD if not closed else closure.FAILED,
         "closure RED on " + ", ".join(red[:3]) if not closed else "THE GATE CLOSED ON RE-STAMPED EVIDENCE",
     )
 
 
 def _no_waiver_to_defeat() -> Probe:
-    # The original had to rebind closure.conditions.__defaults__ because
-    # `where != GENERATED` returned the one-tree condition true for any scratch
-    # directory. G4 deleted that waiver; there is nothing left to rebind past.
-    source = (ROOT / "harness" / "closure.py").read_text(encoding="utf-8")
+    # This matched the literal "where != GENERATED", so `where is not GENERATED`,
+    # `GENERATED != where` or a changed _read default all reinstated the waiver
+    # undetected. Behaviour, not spelling: a scratch directory gets no free pass.
+    with tempfile.TemporaryDirectory(prefix="green_attack_") as raw:
+        where = Path(raw)
+        held = ledger_attack.green_fixture()
+        held["cases.json"] = {**held["cases.json"], "identity": {"digest": "f" * 64}}
+        closure_attack._write(where, held)
+        stale = [one for one in closure.conditions(where) if one.name == "evidence from one tree"]
+
+    caught = bool(stale) and not stale[0].green
     return Probe(
-        "no non-default-directory waiver remains",
-        "where != GENERATED" not in source,
-        "closure.py carries no directory waiver"
-        if "where != GENERATED" not in source
+        "a non-default directory gets no free pass",
+        closure.HELD if caught else closure.FAILED,
+        f"one-tree still judges outside compat/generated: {stale[0].state}"
+        if caught
         else "THE WAIVER IS BACK: one-tree is excused outside compat/generated",
     )
 
@@ -99,7 +119,7 @@ def main() -> int:
     for one in held:
         print(f"{one.mark} {one.name:<44} {one.detail}")
 
-    failing = [one.name for one in held if not one.held]
+    failing = [f"{one.name} [{one.state}]" for one in held if not one.green]
     print(f"\n{len(held)} probe(s), {len(failing)} failing: {failing or 'none'}")
     if not failing:
         print("\nThe demonstration that closed GREEN before Phase G now closes RED.")

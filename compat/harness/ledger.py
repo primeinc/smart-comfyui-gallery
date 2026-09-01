@@ -87,11 +87,17 @@ class Row:
         return all(one.state == VERIFIED for one in self.cells.values())
 
 
-def _read(name: str, where: Path = GENERATED) -> dict[str, Any] | None:
+def _read(name: str, where: Path = GENERATED, consumed: dict[str, str] | None = None) -> dict[str, Any] | None:
     path = where / name
     if not path.is_file():
         return None
-    return json.loads(path.read_text(encoding="utf-8"))
+    raw = path.read_bytes()
+    if consumed is not None:
+        # Recorded at the open, so the consumption graph is what the builder really
+        # read rather than a table someone maintains beside it.
+        consumed[name] = evidence_identity.sha256_of(raw)
+    held: dict[str, Any] = json.loads(raw.decode("utf-8"))
+    return held
 
 
 def _current(held: dict[str, Any] | None, digest: str) -> bool:
@@ -114,8 +120,10 @@ def build(where: Path = GENERATED) -> dict[str, Any]:
     declared = sorted(one["id"] for one in manifest.get("consumers", []))
     lanes = lane_exits(where)
 
-    pins = _read("provenance.json", where)
-    cases = _read("cases.json", where)
+    consumed: dict[str, str] = {}
+    pins = _read("provenance.json", where, consumed)
+    cases = _read("cases.json", where, consumed)
+    _read("lanes.json", where, consumed)
 
     current_cases: dict[str, Any] | None = cases if _current(cases, now["digest"]) else None
 
@@ -206,6 +214,7 @@ def build(where: Path = GENERATED) -> dict[str, Any]:
 
     return {
         "identity": now["digest"],
+        "consumed": consumed,
         "lanes": lanes,
         "stages": list(STAGES),
         "rows": [{"consumer": one.consumer, "cells": {k: asdict(v) for k, v in one.cells.items()}} for one in rows],

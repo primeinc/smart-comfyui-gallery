@@ -28,10 +28,15 @@ SOURCE_DIRS: Final[tuple[str, ...]] = (
 )
 
 
-#: What decides WHETHER a gate runs and what it enforces. None of it was digested,
-#: so a lane could be deleted from a .just module and every staleness check would
-#: still report the evidence current. Globbed, because a named list misses modules.
-GATE_GLOBS: Final[tuple[str, ...]] = ("*.just", "justfile", "pyproject.toml", "uv.lock", "conftest.py")
+#: Root gate/config files are digested BY EXCLUSION -- everything at the repo
+#: root minus this list. The include list it replaced missed lefthook.yml, which
+#: decides whether the gates run at all, plus pytest.ini, .vale.ini and biome.json.
+GATE_IGNORED: Final[frozenset[str]] = frozenset(
+    {
+        "LICENSE",  # legal text; cannot change what any gate does
+        "faceefind.png",  # a screenshot asset
+    }
+)
 
 GATE_DIRS: Final[tuple[tuple[str, tuple[str, ...]], ...]] = (
     ("tests", ("*.py", "*.sql")),
@@ -81,13 +86,27 @@ def source_digests() -> dict[str, str]:
     return out
 
 
+def tracked_root_files(repo: Path) -> list[str]:
+    """Everything git tracks at the repo root. The tree is the authority on what
+    exists; a list in this file is only ever the authority on what someone
+    remembered. An unreadable index is a failure, never an empty gate set."""
+    import proc
+
+    code, out, err = proc.text(["git", "-C", str(repo), "ls-files", "--", ":(glob)*"], timeout=proc.LOCAL_SECONDS)
+    if code != 0:
+        raise RuntimeError(f"git ls-files failed ({code}) enumerating the gate surface: {err.strip()[:200]}")
+    return sorted(one for one in out.splitlines() if one and "/" not in one)
+
+
 def gate_digests() -> dict[str, str]:
     repo = ROOT.parent
     out: dict[str, str] = {}
-    for pattern in GATE_GLOBS:
-        for path in sorted(repo.glob(pattern)):
-            if path.is_file():
-                out[path.relative_to(repo).as_posix()] = sha256_of(path.read_bytes())
+    # ON DISK, not git-tracked: `just` reads *.just from the filesystem whether or
+    # not git knows about it, so an untracked lane module changes what runs while
+    # being invisible to the index. iterdir also sees dotfiles like .vale.ini.
+    for path in sorted(repo.iterdir()):
+        if path.is_file() and path.name not in GATE_IGNORED:
+            out[path.name] = sha256_of(path.read_bytes())
     for name, patterns in GATE_DIRS:
         folder = repo / name
         if not folder.is_dir():
@@ -153,7 +172,20 @@ def weight_digests() -> dict[str, str]:
     return out
 
 
+_memo: dict[str, dict[str, Any]] = {}
+
+
+def forget() -> None:
+    # G3 widened this to the whole gate/test surface, so per-call recomputation is
+    # no longer cheap. A control that mutates a file on disk must invalidate it;
+    # everything else gets one snapshot per run, which a shared worktree wants too.
+    _memo.clear()
+    _corpus.clear()
+
+
 def identity() -> dict[str, Any]:
+    if "held" in _memo:
+        return _memo["held"]
     parts: dict[str, Any] = {
         "manifest": manifest_digest(),
         "repos": pinned_repos(),
@@ -164,7 +196,8 @@ def identity() -> dict[str, Any]:
         "corpus": corpus_digests(),
         "gates": gate_digests(),
     }
-    return {**parts, "digest": digest_of(parts)}
+    _memo["held"] = {**parts, "digest": digest_of(parts)}
+    return _memo["held"]
 
 
 def compare_to(recorded: dict[str, Any]) -> list[str]:

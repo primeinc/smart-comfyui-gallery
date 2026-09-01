@@ -10,6 +10,16 @@ from typing import Any, Final
 
 from compat.harness import closure, ledger, ledger_attack
 
+#: This suite's OWN bound on the ratchet, deliberately not read from closure.
+#: Building ALLOWANCE+1 rows from the constant made the mutation pass at every
+#: value of it -- including 1037, where the condition held over 1037 unconcluded.
+PINNED_ALLOWANCE: Final[int] = 497
+
+
+def allowance_within_the_pin() -> tuple[bool, str]:
+    held = closure.ABLATION_INCONCLUSIVE_ALLOWANCE
+    return held <= PINNED_ALLOWANCE, f"allowance {held} against this suite's pin of {PINNED_ALLOWANCE}"
+
 
 def green_fixture() -> dict[str, Any]:
     # INPUTS ONLY. The ledger is derived from these by ledger.build(), never written
@@ -81,11 +91,19 @@ def _ablation_contradicted(held: dict[str, Any]) -> None:
 def _ablations_over_allowance(held: dict[str, Any]) -> None:
     row = held["cases.json"]["results"][0]
     one = dict(row["ablations"][0], verdict="INCONCLUSIVE")
-    row["ablations"] = [one] * (closure.ABLATION_INCONCLUSIVE_ALLOWANCE + 1)
+    # A FIXED count above this suite's own pin, never ALLOWANCE+1: derived from the
+    # constant, this mutation went red at every value the constant could take.
+    row["ablations"] = [one] * (PINNED_ALLOWANCE + 1)
 
 
 def _lane_failed(held: dict[str, Any]) -> None:
     held["lanes.json"]["lanes"]["attack"] = 1
+
+
+def _lane_declared_but_missing(held: dict[str, Any]) -> None:
+    # A lane deleted from compat.just's run recipe. Judged against the record's own
+    # keys this was invisible; judged against the declaration it is a missing lane.
+    held["lanes.json"]["lanes"].pop("attack", None)
 
 
 def _lane_record_empty(held: dict[str, Any]) -> None:
@@ -110,6 +128,7 @@ MUTATIONS: Final[tuple[tuple[str, Callable[[dict[str, Any]], None]], ...]] = (
     ("input_skipped", _input_skipped),
     ("shard_killed", _shard_killed),
     ("lane_failed", _lane_failed),
+    ("lane_declared_but_missing", _lane_declared_but_missing),
     ("lane_record_empty", _lane_record_empty),
     ("evidence_from_another_tree", _evidence_from_another_tree),
 )
@@ -184,7 +203,11 @@ def main() -> int:
         print("every mutation below would pass for the wrong reason")
         return 1
 
-    print("closure control: GREEN (ledger derived from synthetic inputs)\n")
+    pinned, why = allowance_within_the_pin()
+    if not pinned:
+        print(f"RATCHET BROKEN: {why}")
+        return 1
+    print(f"closure control: GREEN (ledger derived from synthetic inputs); {why}\n")
     print(f"{'mutation':<28} {'red under it':<14} {'green after revert':<20} observed")
     for one in results:
         print(f"{one.name:<28} {one.red_under_mutation!s:<14} {one.green_after_revert!s:<20} {one.detail}")

@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Final
 
 from compat.harness import identity as evidence_identity
-from compat.harness import ledger, provenance
+from compat.harness import lanes, ledger, provenance
 from compat.harness.ledger import STAGE_EVIDENCE, VERIFIED
 
 ROOT: Final[Path] = Path(__file__).resolve().parent.parent
@@ -46,7 +46,9 @@ def green_fixture() -> dict[str, Any]:
             "weights": [{"pack": "antelopev2", "file": "glintr100.onnx", "state": "VERIFIED"}],
         },
         "cases.json": {"identity": {"digest": now}, "results": [_case(who) for who in declared]},
-        "lanes.json": {"identity": now, "lanes": {"cases": 0, "pins": 0}},
+        # Every DECLARED lane, from compat.just: the condition's population is the
+        # declaration, so a fixture naming only a few would be short by the rest.
+        "lanes.json": {"identity": now, "lanes": dict.fromkeys(lanes.declared(), 0)},
     }
 
 

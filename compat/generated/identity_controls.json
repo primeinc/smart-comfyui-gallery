@@ -1,7 +1,7 @@
 {
   "controls": [
     {
-      "detail": "74 file(s); all 3 present",
+      "detail": "78 file(s); all 3 present",
       "held": true,
       "name": "sources digests its declared files"
     },
@@ -11,7 +11,7 @@
       "name": "application digests its declared files"
     },
     {
-      "detail": "168 file(s); all 5 present",
+      "detail": "186 file(s); all 9 present",
       "held": true,
       "name": "gates digests its declared files"
     },
@@ -19,6 +19,21 @@
       "detail": "every tree contributes at least one file",
       "held": true,
       "name": "gates reaches every declared tree"
+    },
+    {
+      "detail": "6 module(s) on disk, all digested",
+      "held": true,
+      "name": "every .just module on disk is digested"
+    },
+    {
+      "detail": "26 tracked, 2 declared-ignored, none undigested",
+      "held": true,
+      "name": "every tracked root file is digested or declared"
+    },
+    {
+      "detail": "8 part(s), all in PARTS",
+      "held": true,
+      "name": "every computed part reaches the digest"
     },
     {
       "detail": "a change to it mints a new identity",
@@ -61,7 +76,7 @@
       "name": "gates moves the digest"
     },
     {
-      "detail": "97a86f869b5b -> 216ed6082e2b -> 97a86f869b5b",
+      "detail": "3b711b9dbae0 -> 4d262bd06bbe -> 3b711b9dbae0",
       "held": true,
       "name": "a new .just module moves the live digest"
     },
@@ -72,5 +87,5 @@
     }
   ],
   "failing": [],
-  "identity": "97a86f869b5b611034e10a4b1e57d43e9a84f07a587483961b8ed396eac6d1d5"
+  "identity": "3b711b9dbae0adf9062c86ce5575ae3e42dfcb3d47088ec9b423751c4b0946cc"
 }

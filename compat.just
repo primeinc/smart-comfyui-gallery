@@ -13,7 +13,7 @@ run: sync
     cd "$(git rev-parse --show-toplevel)"
     mkdir -p compat/generated
     rm -f compat/generated/lanes.json compat/generated/lanes.raw
-    for lane in check proc-attack weights weights-attack pins citations hf population population-attack vendor acceptance producer union cases observe-attack reconcile reconcile-attack matrices attack closure-attack condition-audit ledger-attack selftest staleness identity-attack missing; do
+    for lane in check proc-attack weights weights-attack pins citations hf population population-attack vendor acceptance producer union cases observe-attack reconcile reconcile-attack matrices attack closure-attack condition-audit ledger-attack green-attack cache-attack consumption-attack selftest staleness identity-attack missing; do
         echo "=== compat: $lane ==="
         code=0
         just compat "$lane" || code=$?
@@ -83,6 +83,15 @@ closure-attack:
 
 ledger-attack:
     {{ python }} -m compat.harness.ledger_attack
+
+green-attack:
+    {{ python }} -m compat.harness.green_attack
+
+cache-attack:
+    {{ python }} -m compat.harness.cache_attack
+
+consumption-attack:
+    {{ python }} -m compat.harness.consumption_attack
 
 condition-audit:
     {{ python }} -m compat.harness.condition_audit
