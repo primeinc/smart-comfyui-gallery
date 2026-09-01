@@ -108,6 +108,19 @@ scope — a different generator from the lens's others, which are about how a ch
 written; this one is about who is looking. At every ownership boundary, ask what
 property crosses it and whose test reads it.
 
+Repair the selector, not the site (recorded 2026-09-01, adversary's generator,
+self-refuted from "uncarried repair is general" to this bounded positive form by
+testing it): a pointwise repair leaves the same defect at sibling sites even when its
+own comment states the general lesson — six reproduced instances F11/F23/F25/F33/
+F39/F41, all in one cluster of Phase-G modules. The structural repair changes the
+MECHANISM that selects the sites: S2r starting the guard check FROM table_class
+covers every declared member by construction (measured: eight of eight tables, both
+directions, none scoped), and G3r's exclusion form for root files is the same move —
+F33 is what happens when that author applies it to files but not directories.
+Discriminator at review time, until the fix is structural: what else reads this
+field, has this shape, or was written beside this in the same change? Fix-in-place
+re-declarations carry the discriminator's answer as part of the claim.
+
 Dilemmas dissolve before they trade (recorded 2026-09-01, architecture's observation
 across three instances — X1 closing capture-determinism, derive dissolving the trial
 question, one-adapter-per-file making the honest digest exist at the wanted
@@ -149,6 +162,13 @@ STAGE the candidate so the declared set and the committable set are one set —
 staging is the stronger half (envelope): memory can be wrong about a diff, but the
 index cannot be wrong about itself, and an EMPTY unstaged diff makes the gate's green
 a statement about what will commit rather than about something adjacent.
+Amendment (2026-09-01, adversary, live instance in r1): the diff commands cannot see
+UNTRACKED files, so a brand-new module — most of this campaign's work — is invisible
+to the prescribed command, and a pathspec commit drops it the same way. Declare from
+`git diff --cached --stat` PLUS `git ls-files --others --exclude-standard`, and the
+untracked list must be empty OR declared by name as non-candidate (next-work files
+disjoint from the frozen set — the pre-build mechanic stays legal, it just stops
+being invisible).
 
 Forwarded-claim rule (recorded 2026-09-01, adversary, after TWO instances of the
 lead's forwarding recording a mechanism the commit does not contain — envelope's
