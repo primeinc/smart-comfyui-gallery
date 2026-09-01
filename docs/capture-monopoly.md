@@ -168,7 +168,11 @@ to the prescribed command, and a pathspec commit drops it the same way. Declare 
 `git diff --cached --stat` PLUS `git ls-files --others --exclude-standard`, and the
 untracked list must be empty OR declared by name as non-candidate (next-work files
 disjoint from the frozen set — the pre-build mechanic stays legal, it just stops
-being invisible).
+being invisible). Second amendment (2026-09-01, adversary, observed twice under the
+two-reviewer split): a re-declaration after a finding goes to BOTH reviewers, not
+only the one whose finding forced it — otherwise the other reviewer's held
+declaration silently stops matching the commit, and "probably the other reviewer's
+fix" replaces knowing, which is what the rule exists to remove.
 
 Forwarded-claim rule (recorded 2026-09-01, adversary, after TWO instances of the
 lead's forwarding recording a mechanism the commit does not contain — envelope's

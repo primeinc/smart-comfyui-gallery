@@ -80,10 +80,10 @@ temp
 .omniquery/
 .coverage
 # pytest writes the cache's self-ignoring .gitignore only when IT creates the
-# directory; this repo's fixtures (tests/staging.py schema-masters and kin) can
-# create a subdirectory first, which suppresses that write. Whether a tree was
-# clean was decided by an undeclared first-run race; this line is the
-# ordering-independent remedy.
+# directory — any pre-existing directory suppresses it, and tests/conftest.py's
+# pytest_sessionstart mkdirs .pytest_cache on EVERY run before cacheprovider
+# can, so in this repo that file is never written, deterministically. This line
+# is the ordering-independent remedy.
 .pytest_cache/
 # Benchmark scratch is machine-local and regenerable; the whole directory is
 # ignored with NO allowlist. Evidence that shipped constants cite lives in
