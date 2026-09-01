@@ -44,6 +44,12 @@ class FakeFace(dict):
         return self.get(name)
 
 
+# The backend names the producer's own class on the envelope, and a name no
+# adapter rebuilds is refused at capture. Declaring it here is what a real
+# producer's container does in `vision/facestore.py`.
+facestore.register_container(f"{FakeFace.__module__}.{FakeFace.__qualname__}", FakeFace)
+
+
 def replaying(found):
     """`InsightFaceBackend` with `_app` pinned, `detect` inherited unchanged.
 
@@ -160,6 +166,29 @@ def test_a_key_no_persistence_code_names_survives_the_whole_lane(db, a_file):
     assert inner["score"].tobytes() == np.float16(0.02).tobytes()
     assert inner["cells"].dtype == np.uint8
     assert inner["cells"].shape == (2, 3)
+
+
+def test_a_consumer_reads_the_stored_face_the_way_it_read_the_producers_own(db, a_file):
+    """The whole lane, asked the question a consumer asks: attributes.
+
+    Every other assertion here either subscripts the thawed record or reads
+    the container LABEL, and both survive a rebuild that never happens: a
+    plain mapping answers a subscript exactly as the producer's record does,
+    and the label is recorded whether or not thaw honours it. Only an
+    attribute read separates the container the envelope promised from the
+    one it handed back.
+    """
+    face = producer_record()
+    face_id = harvested(db, a_file, face)
+
+    stored = faces_native.native_of(db, face_id).value
+
+    assert type(stored) is FakeFace, "the stored root came back a plainer container than the producer returned"
+    assert stored.age == face.age
+    assert stored.sex == face.sex
+    assert face.nose_tip is None
+    assert stored.nose_tip is None, "an absent key raised or answered differently than the producer's record does"
+    assert stored.embedding.tobytes() == face.embedding.tobytes()
 
 
 def test_replay_and_export_run_with_the_producer_gone(db, a_file, monkeypatch):

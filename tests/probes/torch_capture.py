@@ -14,7 +14,7 @@ def main() -> int:
     from vision import facestore
 
     tensor = torch.linspace(-1, 1, 12, dtype=torch.float16).reshape(3, 4)
-    blob = facestore.freeze({"feat": tensor}, producer="p", producer_version="v", container="c")
+    blob = facestore.freeze({"feat": tensor}, producer="p", producer_version="v", container="dict")
     back = facestore.thaw(blob).record["feat"]
     if not isinstance(back, torch.Tensor) or back.dtype != torch.float16:
         raise SystemExit(f"came back as {type(back).__name__}/{getattr(back, 'dtype', '?')}, not a float16 Tensor")
@@ -22,7 +22,9 @@ def main() -> int:
         raise SystemExit("shape or values moved through the round trip")
 
     try:
-        facestore.freeze({"x": torch.zeros(2, dtype=torch.bfloat16)}, producer="p", producer_version="v", container="c")
+        facestore.freeze(
+            {"x": torch.zeros(2, dtype=torch.bfloat16)}, producer="p", producer_version="v", container="dict"
+        )
     except facestore.Unpreservable as why:
         if "bfloat16" not in str(why):
             raise SystemExit(f"the refusal does not name the dtype: {why}") from why
