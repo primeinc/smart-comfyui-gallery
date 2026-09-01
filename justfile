@@ -95,7 +95,7 @@ prove-push: web::build
     fi
     pushed=$(mktemp -d)/pushed
     git worktree add --detach --quiet "$pushed" HEAD
-    trap 'git -C "$root" worktree remove --force "$pushed" >/dev/null 2>&1 \n      || echo "warning: the pushed worktree at $pushed was left behind" >&2' EXIT
+    trap 'git -C "$root" worktree remove --force "$pushed" >/dev/null 2>&1; rm -rf "$(dirname "$pushed")" || echo "warning: the pushed worktree at $pushed was left behind" >&2; git -C "$root" worktree prune >/dev/null 2>&1' EXIT
     # `<dir>/.` into an existing `<dir>/`, never `cp -r <dir> <dir>`: the
     # second nests when the destination exists, and both do in a checkout.
     # Nesting is silent and reads as the gate failing on a green commit.
