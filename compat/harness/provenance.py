@@ -278,6 +278,13 @@ WEIGHT_MISMATCH: Final[str] = "MISMATCH"
 WEIGHT_MISSING: Final[str] = "MISSING"
 
 
+def weight_is_verified(row: dict[str, Any]) -> bool:
+    # THE weight-state predicate, at the writer. The gate asked a different question
+    # from the ledger -- closure named three bad states, the ledger and this module
+    # ask `!= VERIFIED` -- so an unrecognised state passed one and failed the other.
+    return row.get("state") == WEIGHT_VERIFIED
+
+
 WEIGHT_CONTRADICTED: Final[str] = "CONTRADICTED"
 
 

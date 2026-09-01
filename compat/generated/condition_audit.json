@@ -1,0 +1,61 @@
+{
+  "clean": true,
+  "declared": {
+    "every declared member accounted for": "ledger.json:rows",
+    "every lane exited 0": "lanes.json:lanes",
+    "every weight VERIFIED": "provenance.json:weights",
+    "evidence from one tree": "generated:identity stamps",
+    "no ledger cell BLOCKED": "ledger.json:rows",
+    "no ledger cell FAILED": "ledger.json:rows",
+    "no shard failed": "cases.json:results",
+    "no skipped input": "cases.json:results"
+  },
+  "emptied": {
+    "cases.json:results": [
+      "no shard failed",
+      "no skipped input"
+    ],
+    "generated:identity stamps": [
+      "evidence from one tree"
+    ],
+    "generated:ledger": [],
+    "lanes.json:lanes": [
+      "every lane exited 0"
+    ],
+    "ledger.json:rows": [
+      "every declared member accounted for",
+      "no ledger cell BLOCKED",
+      "no ledger cell FAILED"
+    ],
+    "provenance.json:weights": [
+      "every weight VERIFIED"
+    ]
+  },
+  "findings": [],
+  "sources": {
+    "cases.json:results": {
+      "validator": "assertions/arrays.py:compare() decides each verdict; run.py:run_case records it",
+      "writer": "sharded.py:main() for the shipped lane; run.py:main() when run whole"
+    },
+    "generated:identity stamps": {
+      "validator": "identity.py:identity() recomputes the tree digest; closure._one_tree compares every stamp to it",
+      "writer": "each artifact's own main(): ledger.py:155, sharded.py:112, lanes.py:main, provenance.py:main"
+    },
+    "generated:ledger": {
+      "validator": "closure.conditions() returns only `ledger present` when the file is absent",
+      "writer": "ledger.py:main() writes ledger.json"
+    },
+    "lanes.json:lanes": {
+      "validator": "NONE beyond the int parse -- the exit code is the shell's, and nothing re-derives it",
+      "writer": "compat.just `run` appends `<lane> <code>` per lane; lanes.py:_recorded parses it"
+    },
+    "ledger.json:rows": {
+      "validator": "NONE -- rows are derived, not checked; G2 gives each stage cell its own evidence",
+      "writer": "ledger.py:build() -- one row per manifest consumer"
+    },
+    "provenance.json:weights": {
+      "validator": "provenance.weight_is_verified() -- the one predicate closure and ledger now share",
+      "writer": "provenance.py:weight_identity() -> main(), state from weight_state() at :505-517"
+    }
+  }
+}

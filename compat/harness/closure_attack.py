@@ -9,14 +9,20 @@ from pathlib import Path
 from typing import Any, Final
 
 from compat.harness import closure
+from compat.harness import identity as evidence_identity
 from compat.harness.ledger import STAGES
 
 CONSUMERS: Final[tuple[str, ...]] = ("alpha", "beta")
 
 
 def green_fixture() -> dict[str, Any]:
+    # Every artifact carries the CURRENT tree digest. With the one-tree waiver gone
+    # a fixture stamped with a literal cannot hold, so the control now exercises the
+    # staleness condition instead of being excused from it.
+    now = str(evidence_identity.identity()["digest"])
     return {
         "provenance.json": {
+            "identity": now,
             "provenance_ok": True,
             "weights": [
                 {
@@ -38,6 +44,7 @@ def green_fixture() -> dict[str, Any]:
             ],
         },
         "cases.json": {
+            "identity": {"digest": now},
             "skipped": [],
             "shards_failed": [],
             "results": [
@@ -46,11 +53,11 @@ def green_fixture() -> dict[str, Any]:
             ],
         },
         "lanes.json": {
-            "identity": "c" * 64,
+            "identity": now,
             "lanes": {"check": 0, "pins": 0, "cases": 0, "attack": 0, "selftest": 0},
         },
         "ledger.json": {
-            "identity": "c" * 64,
+            "identity": now,
             "stages": list(STAGES),
             "rows": [
                 {"consumer": who, "cells": {stage: {"state": "VERIFIED", "reason": "ok"} for stage in STAGES}}
@@ -115,6 +122,23 @@ def _lane_record_empty(held: dict[str, Any]) -> None:
     held["lanes.json"]["lanes"] = {}
 
 
+def _weights_empty(held: dict[str, Any]) -> None:
+    # E9: three conditions held over zero weights and the ledger rendered a VERIFIED
+    # cell reading "0 weights VERIFIED". Checking nothing is not a pass.
+    held["provenance.json"]["weights"] = []
+
+
+def _weight_state_unknown(held: dict[str, Any]) -> None:
+    # E10: closure named three bad states, the ledger asked `!= VERIFIED`. An
+    # unrecognised state passed the gate and failed the ledger; one predicate now.
+    held["provenance.json"]["weights"][0]["state"] = "SKIPPED"
+
+
+def _evidence_from_another_tree(held: dict[str, Any]) -> None:
+    # The condition the deleted `where != GENERATED` waiver made unreachable.
+    held["cases.json"]["identity"] = {"digest": "e" * 64}
+
+
 MUTATIONS: Final[tuple[tuple[str, Callable[[dict[str, Any]], None]], ...]] = (
     ("attestation_removed", _attestation_removed),
     ("attested_digest_altered", _attested_digest_altered),
@@ -125,6 +149,9 @@ MUTATIONS: Final[tuple[tuple[str, Callable[[dict[str, Any]], None]], ...]] = (
     ("shard_killed", _shard_killed),
     ("lane_failed", _lane_failed),
     ("lane_record_empty", _lane_record_empty),
+    ("weights_empty", _weights_empty),
+    ("weight_state_unknown", _weight_state_unknown),
+    ("evidence_from_another_tree", _evidence_from_another_tree),
 )
 
 
@@ -149,7 +176,7 @@ def _write(where: Path, held: dict[str, Any]) -> None:
 
 def _closed(where: Path) -> tuple[bool, str]:
     held = closure.conditions(where)
-    broken = [one.name for one in held if not one.held]
+    broken = [f"{one.name} [{one.state}]" for one in held if not one.green]
     return not broken, ", ".join(broken[:3])
 
 

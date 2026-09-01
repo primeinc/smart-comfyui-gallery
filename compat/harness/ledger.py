@@ -105,14 +105,18 @@ def build() -> dict[str, Any]:
     if pins is None:
         weights_cell = Cell(BLOCKED, "pins wrote no provenance.json")
     else:
-        bad = [one for one in pins.get("weights", []) if one.get("state") != "VERIFIED"]
-        weights_cell = (
-            Cell(VERIFIED, f"{len(pins.get('weights', []))} weights VERIFIED")
-            if not bad
-            else Cell(
+        held = pins.get("weights") or []
+        bad = [one for one in held if not provenance.weight_is_verified(one)]
+        if not held:
+            # "0 weights VERIFIED" was a VERIFIED cell whose own reason said it
+            # verified nothing. An empty population is no evidence, so it BLOCKS.
+            weights_cell = Cell(BLOCKED, "provenance.json carries no weight: nothing was verified")
+        elif bad:
+            weights_cell = Cell(
                 FAILED, f"{len(bad)} weight(s) not VERIFIED, e.g. {bad[0]['pack']}/{bad[0]['file']} {bad[0]['state']}"
             )
-        )
+        else:
+            weights_cell = Cell(VERIFIED, f"{len(held)} weights VERIFIED")
 
     rows: list[Row] = []
     for who in declared:

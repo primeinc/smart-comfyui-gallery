@@ -1,0 +1,208 @@
+from __future__ import annotations
+
+import copy
+import json
+import tempfile
+from collections.abc import Callable
+from dataclasses import asdict, dataclass, field
+from pathlib import Path
+from typing import Any, Final
+
+from compat.harness import closure, closure_attack
+
+ROOT: Final[Path] = Path(__file__).resolve().parent.parent
+GENERATED: Final[Path] = ROOT / "generated"
+
+
+@dataclass(frozen=True)
+class Source:
+    #: Emptying this is what proves a condition over it cannot hold on nothing.
+    empty: Callable[[dict[str, Any]], None]
+
+    #: The BOUNDARY RULE: a field traced only to its writer stops one screen above
+    #: the guard, which is where the guarantee usually lives. Both are cited so a
+    #: reviewer can check the trace rather than take this table's word for it.
+    writer: str
+    validator: str
+
+
+def _strip_stamps(held: dict[str, Any]) -> None:
+    for body in held.values():
+        body.pop("identity", None)
+
+
+def _empty(artifact: str, field_name: str) -> Callable[[dict[str, Any]], None]:
+    def emptied(held: dict[str, Any]) -> None:
+        held[artifact][field_name] = [] if field_name != "lanes" else {}
+
+    return emptied
+
+
+def _drop_ledger(held: dict[str, Any]) -> None:
+    held.pop("ledger.json", None)
+
+
+SOURCES: Final[dict[str, Source]] = {
+    "generated:identity stamps": Source(
+        empty=_strip_stamps,
+        writer="each artifact's own main(): ledger.py:155, sharded.py:112, lanes.py:main, provenance.py:main",
+        validator="identity.py:identity() recomputes the tree digest; closure._one_tree compares every stamp to it",
+    ),
+    "lanes.json:lanes": Source(
+        empty=_empty("lanes.json", "lanes"),
+        writer="compat.just `run` appends `<lane> <code>` per lane; lanes.py:_recorded parses it",
+        validator="NONE beyond the int parse -- the exit code is the shell's, and nothing re-derives it",
+    ),
+    "ledger.json:rows": Source(
+        empty=_empty("ledger.json", "rows"),
+        writer="ledger.py:build() -- one row per manifest consumer",
+        validator="NONE -- rows are derived, not checked; G2 gives each stage cell its own evidence",
+    ),
+    "provenance.json:weights": Source(
+        empty=_empty("provenance.json", "weights"),
+        writer="provenance.py:weight_identity() -> main(), state from weight_state() at :505-517",
+        validator="provenance.weight_is_verified() -- the one predicate closure and ledger now share",
+    ),
+    "cases.json:results": Source(
+        empty=_empty("cases.json", "results"),
+        writer="sharded.py:main() for the shipped lane; run.py:main() when run whole",
+        validator="assertions/arrays.py:compare() decides each verdict; run.py:run_case records it",
+    ),
+    "generated:ledger": Source(
+        empty=_drop_ledger,
+        writer="ledger.py:main() writes ledger.json",
+        validator="closure.conditions() returns only `ledger present` when the file is absent",
+    ),
+}
+
+
+@dataclass
+class Finding:
+    kind: str
+    condition: str
+    population: str
+    detail: str
+
+
+@dataclass
+class Audit:
+    declared: dict[str, str] = field(default_factory=dict)
+    emptied: dict[str, list[str]] = field(default_factory=dict)
+    findings: list[Finding] = field(default_factory=list)
+
+    @property
+    def clean(self) -> bool:
+        return not self.findings
+
+
+Provider = Callable[[Path], list[closure.Condition]]
+
+
+def _states(where: Path, held: dict[str, Any], asked: Provider) -> dict[str, closure.Condition]:
+    closure_attack._write(where, held)
+    return {one.name: one for one in asked(where)}
+
+
+def run(asked: Provider = closure.conditions) -> Audit:
+    out = Audit()
+    with tempfile.TemporaryDirectory(prefix="condition_audit_") as raw:
+        where = Path(raw)
+        base = closure_attack.green_fixture()
+        control = _states(where, base, asked)
+
+        for name, one in control.items():
+            out.declared[name] = one.population
+            if not one.population:
+                out.findings.append(Finding("undeclared population", name, "", "the condition declares no population"))
+            elif one.population not in SOURCES:
+                out.findings.append(
+                    Finding("no emptier", name, one.population, "this audit cannot empty it, so it is unproven")
+                )
+            if not one.green:
+                out.findings.append(Finding("control not green", name, one.population, one.detail))
+
+        for population, source in SOURCES.items():
+            over = sorted(n for n, one in control.items() if one.population == population)
+            out.emptied[population] = over
+
+            for path in (where / one for one in ("ledger.json", "cases.json", "provenance.json", "lanes.json")):
+                path.unlink(missing_ok=True)
+            held = copy.deepcopy(base)
+            source.empty(held)
+            after = _states(where, held, asked)
+
+            for name in over:
+                found = after.get(name)
+                if found is not None and found.green:
+                    out.findings.append(
+                        Finding(
+                            "held over an empty population", name, population, f"still {found.state}: {found.detail}"
+                        )
+                    )
+
+            # A source no condition claims in the green state is not thereby exempt:
+            # `ledger present` exists only on the early-return path. Emptying any
+            # source must cost the verdict, or the source is not load-bearing at all.
+            if all(one.green for one in after.values()):
+                out.findings.append(
+                    Finding("empties to no effect", "", population, "the verdict stayed green with it emptied")
+                )
+    return out
+
+
+def _with_a_vacuous_condition(where: Path) -> list[closure.Condition]:
+    # A condition that holds whatever its population contains -- the exact shape this
+    # audit exists to catch. If the audit cannot go red on this, it cannot go red.
+    return [
+        *closure.conditions(where),
+        closure.Condition("a condition that cannot fail", closure.HELD, "holds regardless", "lanes.json:lanes"),
+    ]
+
+
+def self_control() -> tuple[bool, str]:
+    caught = run(_with_a_vacuous_condition)
+    named = [one.condition for one in caught.findings if one.kind == "held over an empty population"]
+    return "a condition that cannot fail" in named, ", ".join(named) or "nothing"
+
+
+def main() -> int:
+    caught, named = self_control()
+    if not caught:
+        print("SELF-CONTROL FAILED: a deliberately vacuous condition was not caught")
+        print(f"  the audit reported: {named}")
+        return 1
+    print("self-control: a deliberately vacuous condition IS caught\n")
+
+    out = run()
+    print(f"conditions audited: {len(out.declared)}   sources: {len(SOURCES)}\n")
+    for name, population in sorted(out.declared.items()):
+        print(f"  {name:<38} over {population}")
+    print()
+    for population, over in sorted(out.emptied.items()):
+        print(f"  emptying {population:<28} -> {len(over)} condition(s) must stop holding")
+
+    if out.findings:
+        print(f"\n{len(out.findings)} FINDING(S):")
+        for one in out.findings:
+            print(f"  {one.kind:<30} {one.condition or '-':<38} {one.detail}")
+    else:
+        print("\nVALIDATED EMPTY: every condition declares a population, every population can be")
+        print("emptied, and emptying it stops every condition over it from holding.")
+
+    GENERATED.mkdir(parents=True, exist_ok=True)
+    body = {
+        "clean": out.clean,
+        "declared": out.declared,
+        "emptied": out.emptied,
+        "findings": [asdict(one) for one in out.findings],
+        "sources": {name: {"writer": one.writer, "validator": one.validator} for name, one in sorted(SOURCES.items())},
+    }
+    with (GENERATED / "condition_audit.json").open("w", encoding="utf-8", newline="") as handle:
+        handle.write(json.dumps(body, indent=2, sort_keys=True))
+        handle.write("\n")
+    print(f"\nwrote {GENERATED / 'condition_audit.json'}")
+    return 0 if out.clean else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
