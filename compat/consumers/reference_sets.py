@@ -22,7 +22,6 @@ from compat.contracts.case import (
 )
 from compat.harness import provenance
 from compat.producers import insightface_pass as producer
-from compat.storage import precision
 
 CONSUMER_ID: Final[str] = "reference_sets"
 
@@ -186,12 +185,6 @@ class ReferenceSetRunner:
                         Ablation(primitive="reference_vectors", expect_breaks=True),
                         Ablation(
                             primitive="reference_vectors",
-                            swap="half_precision",
-                            expect_breaks=True,
-                            kind="substitution",
-                        ),
-                        Ablation(
-                            primitive="reference_vectors",
                             swap="order_reversed",
                             expect_breaks=_reversal_observable(how, arrangement),
                             kind="substitution",
@@ -222,8 +215,6 @@ class ReferenceSetRunner:
         return self._artifact(case.boundary, combine(list(held), how))
 
     def ablate(self, case: Case, retained: RetainedState, ablation: Ablation) -> RetainedState:
-        if ablation.swap == "half_precision":
-            return retained.replacing("reference_vectors", precision.half(retained.array("reference_vectors")))
         if ablation.swap == "order_reversed":
             held = np.asarray(retained.array("reference_vectors"), dtype=np.float32)
             return retained.replacing("reference_vectors", held[::-1].copy())

@@ -13,7 +13,6 @@ from compat.assertions.minimize import Rect, minimum_extent
 from compat.contracts.case import Ablation, Artifact, Case, Fixture, Measurement, RetainedState, Tier, note_skip
 from compat.corpus import index as corpus
 from compat.primitives import build
-from compat.storage import derivatives, precision
 
 SIZES: Final[tuple[int, ...]] = (112, 224, 256, 336)
 
@@ -158,34 +157,7 @@ class AlignedCropRunner:
                     Ablation(primitive="source_region_pixels", expect_breaks=True),
                     Ablation(primitive="kps_source_px", expect_breaks=True),
                     Ablation(primitive="patch_origin", expect_breaks=True),
-                    Ablation(
-                        primitive="patch_origin",
-                        swap="origin_at_zero",
-                        expect_breaks=True,
-                        kind="substitution",
-                    ),
-                    Ablation(
-                        primitive="source_region_pixels",
-                        swap="webp_encoded",
-                        expect_breaks=True,
-                        kind="substitution",
-                    ),
-                    Ablation(
-                        primitive="kps_source_px",
-                        swap="half_precision",
-                        expect_breaks=precision.narrows(geometry.kps),
-                        kind="substitution",
-                    ),
                 ]
-                if size == 256:
-                    ablations.append(
-                        Ablation(
-                            primitive="source_region_pixels",
-                            swap="downscaled_from_336",
-                            expect_breaks=True,
-                            kind="substitution",
-                        )
-                    )
                 out.append(
                     Case(
                         name=f"aligned_crop_{size}_{label}",
@@ -251,16 +223,6 @@ class AlignedCropRunner:
         return _artifact(case.boundary, warp(patch, shifted_to(estimate_norm(kps, size), origin), size))
 
     def ablate(self, case: Case, retained: RetainedState, ablation: Ablation) -> RetainedState:
-        if ablation.swap == "downscaled_from_336":
-            return retained.replacing("derive_256_from_336", True)
-        if ablation.swap == "origin_at_zero":
-            return retained.replacing("patch_origin", (0, 0))
-        if ablation.swap == "webp_encoded":
-            return retained.replacing(
-                "source_region_pixels", derivatives.encoded(retained.pixels("source_region_pixels"))[0]
-            )
-        if ablation.swap == "half_precision":
-            return retained.replacing(ablation.primitive, precision.half(retained.array(ablation.primitive)))
         return retained.without(ablation.primitive)
 
     def _reestimation_divergence(

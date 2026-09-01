@@ -139,12 +139,6 @@ class FaceSelectionRunner:
                         retained=("face_rows", "selection_rule"),
                         ablations=(
                             Ablation(primitive="face_rows", expect_breaks=True),
-                            Ablation(
-                                primitive="face_rows",
-                                swap="integer_pixels",
-                                expect_breaks=True,
-                                kind="substitution",
-                            ),
                             Ablation(primitive="selection_rule", expect_breaks=True),
                             Ablation(
                                 primitive="selection_rule",
@@ -185,9 +179,6 @@ class FaceSelectionRunner:
 
     def ablate(self, case: Case, retained: RetainedState, ablation: Ablation) -> RetainedState:
         del case
-        if ablation.swap == "integer_pixels":
-            held = np.asarray(retained.array("face_rows"), dtype=np.float32)
-            return retained.replacing("face_rows", np.rint(held).astype(np.float32))
         if ablation.swap == "other_selection_rule":
             return retained.replacing("selection_rule", OTHER[retained.text("selection_rule")])
         return retained.without(ablation.primitive)

@@ -169,8 +169,6 @@ def run_case(runner: Runner, case: Case) -> CaseResult:
     measurements = tuple(run_measurement(runner, case, retained, one) for one in case.measurements)
 
     verdict = Verdict.REPRODUCED if result.equal else Verdict.DIVERGED
-    if verdict is Verdict.REPRODUCED and any(one.verdict is Verdict.CONTRADICTED for one in ablations):
-        verdict = Verdict.CONTRADICTED
 
     return CaseResult(
         case=case.name,

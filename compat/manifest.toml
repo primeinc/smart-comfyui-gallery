@@ -816,8 +816,6 @@ entrypoint = "InstantID.py::extractFeatures"
 also_read = ["InstantID.py::ApplyInstantID.apply_instantid"]
 dependencies = ["insightface"]
 boundary = ["id_embedding", "pose_control_image"]
-retained = ["embedding_raw", "kps_source_px", "frame_dimensions"]
-rebuilt = ["pose_control_image"]
 claim = "no source pixels required: draw_kps uses the reference image ONLY for its size"
 
 
@@ -843,8 +841,6 @@ commit = "a0f451a5113cf9becb0847b92884cb10cbdec0ef"
 entrypoint = "IPAdapterPlus.py::ipadapter_execute"
 dependencies = ["insightface"]
 boundary = ["face_cond_embeds"]
-retained = ["embedding_raw"]
-rebuilt = ["unit_embedding"]
 claim = "unit is derivable from raw; raw is NOT derivable from unit -- the norm carries quality"
 
 
@@ -877,8 +873,6 @@ commit = "a0f451a5113cf9becb0847b92884cb10cbdec0ef"
 entrypoint = "IPAdapterPlus.py::ipadapter_execute"
 dependencies = ["insightface"]
 boundary = ["face_cond_embeds", "aligned_crop_224", "aligned_crop_256", "aligned_crop_336"]
-retained = ["embedding_raw", "frame_dimensions", "kps_source_px", "patch_origin", "source_region_pixels"]
-rebuilt = ["aligned_crop_224", "aligned_crop_256", "aligned_crop_336"]
 claim = "one source patch regenerates all three sizes; a 336 crop downscaled to 256 does NOT -- 256 is the 128-family with x += 16"
 
 
@@ -911,8 +905,6 @@ commit = "93e0c4c226b87b23c0009d671978bad0e77289ff"
 entrypoint = "pulid.py::ApplyPulid.apply_pulid"
 dependencies = ["insightface", "facexlib"]
 boundary = ["iface_embeds", "cropped_face", "id_cond_vit"]
-retained = ["source_region_pixels", "frame_dimensions", "embedding_raw"]
-rebuilt = ["facexlib_landmarks_5", "facexlib_crop", "eva_clip_features"]
 risk = "facexlib runs its OWN detector over pixels, so the retained patch must be large enough for retinaface to find the same face. Not analytically derivable: needs four-sided ablation."
 
 
@@ -946,9 +938,6 @@ entrypoint = "reactor_utils.py::save_face_model"
 verifier = "reactor_utils.py::load_face_model"
 dependencies = ["insightface"]
 boundary = ["face_model_safetensors"]
-retained = ["age", "bbox", "det_score", "embedding", "gender", "kps", "landmark_2d_106", "landmark_3d_68"]
-derived = ["pose"]
-rebuilt = ["face_model_safetensors"]
 claim = "save_face_model subscripts nine keys; eight are retained and pose is recomputed from landmark_3d_68, proven byte-identical by producer_derivations. No pixels required."
 note = "the only consumer with a first-party LOADER, so its assertion is upstream's own code accepting our bytes"
 
@@ -990,8 +979,6 @@ entrypoint = "nodes.py::ExtractIDEmbedding.extract_id_embedding"
 also_read = ["utils.py::extract_arcface_bgr_embedding", "nodes.py::ExtractFacePoseImage.extract_face_pose"]
 dependencies = ["insightface", "facexlib"]
 boundary = ["arcface_embedding", "pose_control_image"]
-retained = ["embedding_raw", "frame_dimensions", "kps_source_px", "patch_origin", "source_region_pixels"]
-rebuilt = ["aligned_crop_112", "arcface_embedding", "pose_control_image"]
 claim = "uses facexlib's arcface over norm_crop@112, NOT glintr100 -- the stored embedding cannot serve this consumer at all"
 
 
@@ -1033,8 +1020,6 @@ entrypoint = "gradio_app.py::process_faceid_image"
 also_read = ["uniportrait/uniportrait_pipeline.py::UniPortraitPipeline.get_single_faceid_embeds"]
 dependencies = ["insightface"]
 boundary = ["aligned_crop_224", "faceid_prompt_embeds"]
-retained = ["frame_dimensions", "kps_source_px", "patch_origin", "source_region_pixels"]
-rebuilt = ["aligned_crop_224"]
 claim = "consumes NO embedding: FaceAnalysis(allowed_modules=['detection']). N crops become 49 spatial tokens each, concatenated."
 note = "pads by 1.25 with grey and retries when detection fails"
 
@@ -1068,8 +1053,6 @@ commit = "060b4fcb10b76a4554edf565d6106b7e36c968f0"
 entrypoint = "inference_scripts/inference_pmv2_ip_adapter.py::__main__"
 dependencies = ["insightface"]
 boundary = ["id_embeds", "input_id_images"]
-retained = ["embedding_raw", "whole_reference_image"]
-rebuilt = ["id_embeds_stack"]
 claim = "needs BOTH the vector and the framed image for every reference; torch.stack, never averaged"
 
 
@@ -1107,8 +1090,6 @@ entrypoint = "src/diffusers/pipelines/consisid/consisid_utils.py::process_face_e
 entrypoint_in = "diffusers"
 dependencies = ["insightface", "facexlib", "diffusers"]
 boundary = ["id_cond", "id_vit_hidden", "face_kps", "parsed_face_image"]
-retained = ["embedding_raw", "frame_dimensions", "source_region_pixels", "whole_reference_image"]
-rebuilt = ["facexlib_crop_512", "parsed_face_image", "eva_clip_336", "id_cond"]
 claim = "id_cond = cat(ante_512, eva_clip_768) = 1280; largest pixel requirement in the population at 512x512"
 note = "the whole image is pre-resized to long-edge 1024 BEFORE detection"
 checkpoints = ["BestWishYsh/ConsisID-preview", "BestWishYsh/ConsisID-1.5"]
@@ -1132,8 +1113,6 @@ entrypoint = "infer.py::__main__"
 also_read = ["pipeline_stable_diffusion_xl_instantid.py::draw_kps"]
 dependencies = ["insightface"]
 boundary = ["face_emb", "face_kps_image"]
-retained = ["embedding_raw", "kps_source_px", "frame_dimensions"]
-rebuilt = ["face_kps_image"]
 
 
 [consumers.vendor_setup]
@@ -1173,8 +1152,6 @@ commit = "62e4af9d0c1ac7d5f8dd386a0ccf2211346af1a2"
 entrypoint = "ip_adapter/ip_adapter_faceid.py::IPAdapterFaceID.get_image_embeds"
 dependencies = ["insightface"]
 boundary = ["image_prompt_embeds"]
-retained = ["embedding_raw"]
-rebuilt = ["unit_embedding", "image_prompt_embeds"]
 claim = "generate() takes faceid_embeds and NO image -- vector-only, proven by the signature"
 
 
@@ -1209,8 +1186,6 @@ commit = "1aa2fc7df4bf51080df39f355f9abdc1cbfefbaa"
 entrypoint = "pulid/pipeline.py::PuLIDPipeline.get_id_embedding"
 dependencies = ["insightface", "facexlib"]
 boundary = ["id_ante_embedding", "id_cond_vit"]
-retained = ["embedding_raw", "source_region_pixels"]
-rebuilt = ["facexlib_crop", "eva_clip_features"]
 
 [consumers.vendor_setup]
 cited = ["pulid/pipeline.py:87-92 FaceAnalysis + handler_ante", "pulid/pipeline.py:144-157 get_id_embedding"]
@@ -1258,8 +1233,6 @@ commit = "aada3dc32990ae82061857ebe911b2c15621571a"
 entrypoint = "eval/UNO/inference_omnicontext.py::main"
 dependencies = ["insightface", "facexlib"]
 boundary = ["reference_images"]
-retained = ["whole_reference_image"]
-rebuilt = []
 
 
 [consumers.vendor_setup]
@@ -1280,8 +1253,6 @@ repo = "https://github.com/bytedance/UNO.git"
 commit = "a563432dcfb4caf98df4368facb8102bf97d376c"
 entrypoint = "inference.py::__main__"
 boundary = ["reference_images"]
-retained = ["whole_reference_image"]
-rebuilt = []
 constraint = "long side 512 single-subject, 320 multi-subject (README:146)"
 
 
@@ -1302,8 +1273,6 @@ repo = "https://github.com/bytedance/USO.git"
 commit = "6587514aa3adf8e8f46e5f7e804239651d30b32d"
 entrypoint = "inference.py::__main__"
 boundary = ["reference_images"]
-retained = ["whole_reference_image"]
-rebuilt = []
 constraint = "framing is load-bearing: half-body close-ups for half-body prompts, full-body when framing shifts (README:117). A face crop cannot substitute -- the ablation must show it."
 
 
@@ -1329,8 +1298,6 @@ repo = "https://github.com/VectorSpaceLab/OmniGen2.git"
 commit = "18e6f9d5271b517fcb32e999f10df943ae9b8f20"
 entrypoint = "inference.py::main"
 boundary = ["reference_images"]
-retained = ["whole_reference_image"]
-rebuilt = []
 constraint = ">512x512, person large in frame; max_pixels default 1024*1024"
 
 
@@ -1366,8 +1333,6 @@ repo = "https://github.com/Tencent-Hunyuan/InstantCharacter.git"
 commit = "5f5c49a98ba15eb75caf70e60787156c6ae619b0"
 entrypoint = "pipeline.py::InstantCharacterFluxPipeline.__call__"
 boundary = ["subject_image"]
-retained = ["whole_reference_image"]
-rebuilt = []
 
 
 [consumers.vendor_setup]
@@ -1393,8 +1358,6 @@ repo = "https://github.com/QwenLM/Qwen-Image.git"
 commit = "6b5e1f5cec987d404be5ac6657db3b9aacb56a89"
 entrypoint = "src/examples/edit_demo.py::infer"
 boundary = ["reference_images"]
-retained = ["whole_reference_image"]
-rebuilt = []
 constraint = "1 to 3 images"
 
 
@@ -1415,8 +1378,6 @@ repo = "https://github.com/junjiehe96/AnyStory.git"
 commit = "c38fef83a35512b2a00c072a95bc0ff56b003f93"
 entrypoint = "inference.py::__main__"
 boundary = ["subject_images", "subject_masks"]
-retained = ["whole_reference_image", "subject_mask"]
-rebuilt = []
 claim = "masks are mode L, one per subject, supplied as separate files"
 
 
@@ -1437,8 +1398,6 @@ repo = "https://github.com/bytedance/XVerse.git"
 commit = "65e2581aac0faffe4607881a10cc486186f6499d"
 entrypoint = "inference_single_sample.py::__main__"
 boundary = ["input_images"]
-retained = ["whole_reference_image"]
-rebuilt = []
 note = "eval/tools/face_utils/face.py loose_warp_face(scale=1.3, 512) is the identity METRIC, not a generation input."
 
 
@@ -1470,8 +1429,6 @@ also_read = [
   "checkpoints/README.md",
 ]
 boundary = ["orig_pixel_mp4", "david_normal_mp4", "depth_mp4"]
-retained = ["source_video_bytes"]
-rebuilt = []
 control_modes = ["orig_pixel_from_sam3", "orig_pixel_plus_normals_plus_depth", "raw_source_video_relighting"]
 claim = "Two non-interchangeable checkpoints. idv2v.pth consumes ONE VACE condition, orig_pixel.mp4 from SAM3. idv2v_with_normal_depth.pth consumes THREE: orig_pixel.mp4, david_normal.mp4 (DAViD), depth.mp4 (DepthAnything-V2). Each stream is per-frame and keyed to the source media, not to a face."
 
@@ -1494,8 +1451,6 @@ entrypoint = "comfy_extras/nodes_lt.py::LTXVReferenceAudio.execute"
 entrypoint_in = "comfyui"
 dependencies = ["comfyui"]
 boundary = ["ref_tokens"]
-retained = ["audio_waveform", "audio_sample_rate"]
-rebuilt = ["ref_tokens"]
 constraint = "~5s; resampled to audio_vae.audio_sample_rate, default 44100"
 reference_seconds_recommended = 5
 vae_audio_sample_rate_default = 44100

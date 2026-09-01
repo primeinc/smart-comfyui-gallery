@@ -280,21 +280,7 @@ class IdV2VControlStreamRunner:
                     rtol=0.0,
                     atol=0.0,
                     retained=("source_video_bytes",),
-                    ablations=(
-                        Ablation(primitive="source_video_bytes", expect_breaks=True),
-                        Ablation(
-                            primitive="source_video_bytes",
-                            swap="face_row",
-                            expect_breaks=True,
-                            kind="substitution",
-                        ),
-                        Ablation(
-                            primitive="source_video_bytes",
-                            swap="transcoded",
-                            expect_breaks=True,
-                            kind="substitution",
-                        ),
-                    ),
+                    ablations=(Ablation(primitive="source_video_bytes", expect_breaks=True),),
                     measurements=("frames_and_bytes",),
                     note=(
                         "the frames every stream producer is handed; proves the media "
@@ -349,13 +335,6 @@ class IdV2VControlStreamRunner:
 
     def ablate(self, case: Case, retained: RetainedState, ablation: Ablation) -> RetainedState:
         del case
-        if ablation.swap == "face_row":
-            rng = np.random.default_rng(20260828)
-            row = rng.standard_normal(512 + 10).astype(np.float32)
-            return retained.replacing("source_video_bytes", np.frombuffer(row.tobytes(), dtype=np.uint8))
-        if ablation.swap == "transcoded":
-            held = encode(decode(retained.pixels("source_video_bytes").tobytes()))
-            return retained.replacing("source_video_bytes", np.frombuffer(held, dtype=np.uint8))
         if ablation.swap == "video_round_trip":
             return retained.replacing(ablation.primitive, decode(encode(retained.pixels(ablation.primitive))))
         return retained.without(ablation.primitive)

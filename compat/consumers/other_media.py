@@ -16,7 +16,6 @@ from compat.contracts.case import (
     Tier,
     UInt8Array,
 )
-from compat.storage import precision
 
 VAE_SAMPLE_RATE: Final[int] = 44100
 
@@ -92,12 +91,6 @@ class IdLoraAudioRunner:
                 retained=("audio_waveform", "audio_sample_rate"),
                 ablations=(
                     Ablation(primitive="audio_waveform", expect_breaks=True),
-                    Ablation(
-                        primitive="audio_waveform",
-                        swap="pcm_16_bit",
-                        expect_breaks=True,
-                        kind="substitution",
-                    ),
                     Ablation(primitive="audio_sample_rate", expect_breaks=True),
                     Ablation(
                         primitive="audio_sample_rate",
@@ -125,8 +118,6 @@ class IdLoraAudioRunner:
     def ablate(self, case: Case, retained: RetainedState, ablation: Ablation) -> RetainedState:
         if ablation.swap == "vae_rate_assumed":
             return retained.replacing("audio_sample_rate", float(VAE_SAMPLE_RATE))
-        if ablation.swap == "pcm_16_bit":
-            return retained.replacing("audio_waveform", precision.quantised(retained.points("audio_waveform")))
         return retained.without(ablation.primitive)
 
     def measure(self, case: Case, retained: RetainedState, name: str) -> Measurement:

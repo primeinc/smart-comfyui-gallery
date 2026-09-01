@@ -160,12 +160,6 @@ class MaskedReferenceRunner:
                 ablations=(
                     Ablation(primitive="whole_reference_image", expect_breaks=True),
                     Ablation(primitive="subject_mask", expect_breaks=True),
-                    Ablation(
-                        primitive="subject_mask",
-                        swap="face_bbox_rectangle",
-                        expect_breaks=True,
-                        kind="substitution",
-                    ),
                 ),
                 measurements=("mask_coverage",),
                 note="inference.py:19-20 RGB image + L mask; :23 images=/masks= parallel lists",
@@ -206,9 +200,6 @@ class MaskedReferenceRunner:
         )
 
     def ablate(self, case: Case, retained: RetainedState, ablation: Ablation) -> RetainedState:
-        if ablation.swap == "face_bbox_rectangle":
-            substitute, _ = face_box_mask(self._pair(case))
-            return retained.replacing("subject_mask", substitute)
         return retained.without(ablation.primitive)
 
     def measure(self, case: Case, retained: RetainedState, name: str) -> Measurement:

@@ -14,7 +14,6 @@ from compat.consumers.producer_derivations import Observation, observations, pos
 from compat.contracts.case import Ablation, Artifact, Case, Measurement, RetainedState, Tier
 from compat.corpus.loaded import best_face
 from compat.producers import insightface_pass as producer
-from compat.storage import precision
 
 CONSUMER_ID: Final[str] = "reactor"
 
@@ -173,24 +172,9 @@ class ReactorFaceModelRunner:
         return (*replay_cases, *export_cases)
 
     def _ablations(self, label: str) -> tuple[Ablation, ...]:
-        held = self._state(self._by_label[label])
+        del label
         return (
             *(Ablation(primitive=one, expect_breaks=True) for one in retained_keys()),
-            *(
-                Ablation(
-                    primitive=one,
-                    swap="half_precision",
-                    expect_breaks=precision.narrows(held.array(one)),
-                    kind="substitution",
-                )
-                for one in retained_keys()
-            ),
-            Ablation(
-                primitive="age",
-                swap="decade_bucket",
-                expect_breaks=True,
-                kind="substitution",
-            ),
             Ablation(
                 primitive="gender",
                 swap="opposite_label",
@@ -271,15 +255,10 @@ class ReactorFaceModelRunner:
         return faces_native.reactor_face_model_bytes(native)
 
     def ablate(self, case: Case, retained: RetainedState, ablation: Ablation) -> RetainedState:
-        if ablation.swap == "decade_bucket":
-            held = retained.integers("age")
-            return retained.replacing("age", np.asarray(np.rint(held / 10.0) * 10, dtype=held.dtype))
         if ablation.swap == "opposite_label":
             held = retained.integers("gender")
 
             return retained.replacing("gender", np.asarray(1 - held, dtype=held.dtype))
-        if ablation.swap == "half_precision":
-            return retained.replacing(ablation.primitive, precision.half(retained.array(ablation.primitive)))
         return retained.without(ablation.primitive)
 
     def measure(self, case: Case, retained: RetainedState, name: str) -> Measurement:

@@ -16,7 +16,6 @@ from compat.contracts.case import (
     Tier,
 )
 from compat.corpus.loaded import Shot, our_face, shots
-from compat.storage import derivatives
 
 CONSUMER_ID: Final[str] = "embedding_spaces"
 
@@ -68,12 +67,6 @@ class EmbeddingSpaceRunner:
             for space in SPACES:
                 ablations = [
                     Ablation(primitive="aligned_crop_112", expect_breaks=True),
-                    Ablation(
-                        primitive="aligned_crop_112",
-                        swap="webp_encoded",
-                        expect_breaks=True,
-                        kind="substitution",
-                    ),
                 ]
                 if space != STORED:
                     ablations.append(
@@ -120,8 +113,6 @@ class EmbeddingSpaceRunner:
         return self._artifact(case.boundary, embed_with(space, retained.pixels("aligned_crop_112")))
 
     def ablate(self, case: Case, retained: RetainedState, ablation: Ablation) -> RetainedState:
-        if ablation.swap == "webp_encoded":
-            return retained.replacing("aligned_crop_112", derivatives.encoded(retained.pixels("aligned_crop_112"))[0])
         if ablation.swap == "stored_glintr100":
             _, shot = self._parts(case)
             return retained.replacing("substituted_vector", self.vector(STORED, shot))

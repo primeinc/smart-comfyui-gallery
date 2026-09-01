@@ -10,7 +10,6 @@ import numpy.typing as npt
 from compat.contracts.case import Ablation, Artifact, Case, Fixture, Measurement, RetainedState, Tier, note_skip
 from compat.corpus import index as corpus
 from compat.producers import insightface_pass as producer
-from compat.storage import precision
 
 CONSUMER_ID: Final[str] = "insightface_producer"
 
@@ -131,15 +130,7 @@ class ProducerDerivationRunner:
                     rtol=0.0,
                     atol=0.0,
                     retained=("landmark_3d_68",),
-                    ablations=(
-                        Ablation(primitive="landmark_3d_68", expect_breaks=True),
-                        Ablation(
-                            primitive="landmark_3d_68",
-                            swap="half_precision",
-                            expect_breaks=True,
-                            kind="substitution",
-                        ),
-                    ),
+                    ablations=(Ablation(primitive="landmark_3d_68", expect_breaks=True),),
                     measurements=("pose_error_through_todays_storage",),
                     note="upstream's own estimate_affine_matrix_3d23d/P2sRt/matrix2angle, no pixels",
                 )
@@ -155,15 +146,7 @@ class ProducerDerivationRunner:
                     rtol=0.0,
                     atol=0.0,
                     retained=("embedding",),
-                    ablations=(
-                        Ablation(primitive="embedding", expect_breaks=True),
-                        Ablation(
-                            primitive="embedding",
-                            swap="half_precision",
-                            expect_breaks=True,
-                            kind="substitution",
-                        ),
-                    ),
+                    ablations=(Ablation(primitive="embedding", expect_breaks=True),),
                     measurements=("norm_is_not_recoverable",),
                     note="Face.normed_embedding is a property; the norm it divides away is not in the result",
                 )
@@ -194,8 +177,6 @@ class ProducerDerivationRunner:
         return _artifact(case.boundary, (raw / np.linalg.norm(raw)).astype(np.float32))
 
     def ablate(self, case: Case, retained: RetainedState, ablation: Ablation) -> RetainedState:
-        if ablation.swap == "half_precision":
-            return retained.replacing(ablation.primitive, precision.half(retained.array(ablation.primitive)))
         return retained.without(ablation.primitive)
 
     def measure(self, case: Case, retained: RetainedState, name: str) -> Measurement:

@@ -75,6 +75,43 @@ class InsightFacePack:
         ]
 
 
+class OpenCVYuNet:
+    name = "opencv/yunet+arcface"
+
+    def available(self) -> Availability:
+        from compat.producers import insightface_pass as producer
+        from vision import faces
+
+        try:
+            faces.OpenCVFaceBackend(str(producer.MODELS_ROOT.parent))
+        except faces.BackendUnavailable as why:
+            return Availability(self.name, False, str(why))
+        return Availability(self.name, True, identity=_versions("cv2"))
+
+    def observe(self, frame: UInt8Array) -> list[Emission]:
+        import cv2
+        from PIL import Image
+
+        from compat.producers import insightface_pass as producer
+        from vision import faces, facestore
+
+        backend = faces.OpenCVFaceBackend(str(producer.MODELS_ROOT.parent))
+        image = Image.fromarray(cv2.cvtColor(np.asarray(frame), cv2.COLOR_BGR2RGB))
+        out: list[Emission] = []
+        for found in backend.detect(image):
+            if found.native is None:
+                raise ValueError("the OpenCV backend handed over a detection with no native record")
+            record = facestore.thaw(found.native).record
+            out.append(
+                Emission(
+                    producer=self.name,
+                    values={key: np.asarray(value) for key, value in record.items() if value is not None},
+                    note="YuNet row + recognizer feature, through the application's own capture",
+                )
+            )
+        return out
+
+
 class FaceAlignment68:
     name = "face_alignment/68"
 
@@ -174,6 +211,7 @@ def every_producer() -> tuple[Producer, ...]:
     return (
         InsightFacePack("antelopev2"),
         InsightFacePack("buffalo_l"),
+        OpenCVYuNet(),
         FaceAlignment68(),
         MediaPipeFaceMesh(),
     )

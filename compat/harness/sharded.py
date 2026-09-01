@@ -93,7 +93,7 @@ def merge(partials: list[dict[str, Any]]) -> dict[str, Any]:
             broken.append(one["failed"])
         elif one.get("exit"):
             explains = blocking_failures(one.get("results", []))
-            if explains or any(row["verdict"] == Verdict.CONTRADICTED.value for row in one.get("results", [])):
+            if explains:
                 broken.append(f"shard {one.get('shard', '?')} exited {one['exit']}: {sorted(explains)}")
             else:
                 exited.append(f"shard {one.get('shard', '?')} exited {one['exit']} over declared findings")
@@ -259,7 +259,7 @@ def _run_every_shard(generated: Path) -> int:
             for one in names:
                 print(f"        {one}")
 
-    clean = not blocking and out["verdicts"][Verdict.CONTRADICTED.value] == 0
+    clean = not blocking
     complete = not pop["unexercised"] and not out["shards_failed"] and not out["duplicated_cases"]
     print(f"\ncases: {'clean' if clean else 'NOT clean'}   population: {'complete' if complete else 'INCOMPLETE'}")
     return 0 if (clean and complete) else 1

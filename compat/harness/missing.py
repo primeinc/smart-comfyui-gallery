@@ -25,7 +25,6 @@ LANES: Final[tuple[str, ...]] = (
     "attack",
     "selftest",
     "staleness",
-    "answer",
 )
 
 

@@ -20,7 +20,10 @@ clone: the construction, the key order the container records, the dtypes,
 and the refusal when a key upstream subscripts is absent.
 """
 
+import hashlib
 import json
+import pathlib
+import subprocess
 import sys
 
 import numpy as np
@@ -239,6 +242,97 @@ def test_a_value_the_envelope_cannot_carry_fails_at_capture(db, a_file):
 
     count = db.execute("SELECT count(*) FROM derived_face_instance WHERE file_id = ?", (a_file,)).fetchone()[0]
     assert count == 0, "a record that failed capture must not half-persist"
+
+
+def test_a_corrupted_record_refuses_instead_of_serving_wrong_bytes(db, a_file):
+    """The envelope carries a digest over everything it wrote. A flipped bit
+    in an array payload would otherwise decode into a plausible wrong value
+    -- the most expensive kind of corruption, because nothing downstream can
+    tell."""
+    face_id = harvested(db, a_file, producer_record())
+    (blob,) = db.execute("SELECT native FROM derived_face_instance WHERE id = ?", (face_id,)).fetchone()
+    broken = bytearray(blob)
+    broken[len(broken) // 2] ^= 0x40
+    db.execute("UPDATE derived_face_instance SET native = ? WHERE id = ?", (bytes(broken), face_id))
+
+    with pytest.raises(ValueError, match="digest"):
+        faces_native.native_of(db, face_id)
+
+
+@pytest.mark.slow
+def test_replay_and_export_survive_a_fresh_process(tmp_path):
+    """Cold replay at its coldest: a separate interpreter opens the database
+    file, replays, and exports -- no producer import, no torch, no state the
+    writing process could have leaked. The export bytes must match the ones
+    the writing process produced."""
+    from db import connect
+
+    where = tmp_path / "library.sgly"
+    connect.create(where)
+    conn = connect.connect(where)
+    try:
+        root = tmp_path / "lib"
+        root.mkdir()
+        root_id = library.add_root(conn, root, "library", NOW)
+        folder_id = scan.ensure_folder(conn, root_id, None, "lib")
+        file_id = scan.mint(conn, "file", "cold")
+        conn.execute(
+            "INSERT INTO file(id, folder_id, name, kind, size, mtime, content_sha256, width, height,"
+            " first_seen_at, last_seen_at) VALUES(?, ?, 'cold.png', 'image', 10, 0, 'aa', 640, 480, ?, ?)",
+            (file_id, folder_id, NOW, NOW),
+        )
+        authored.add_user(conn, "will", "hash", "ADMIN", NOW)
+        (face_id,) = detect.harvest(
+            conn, replaying([producer_record()]), file_id, None, NOW, image=Image.new("RGB", (640, 480))
+        )
+        warm = hashlib.sha256(faces_native.reactor_face_model_bytes(faces_native.native_of(conn, face_id))).hexdigest()
+        conn.commit()
+    finally:
+        connect.close(conn)
+
+    script = (
+        "import hashlib, sys\n"
+        "from db import connect, faces_native\n"
+        f"conn = connect.connect({str(where)!r})\n"
+        f"blob = faces_native.reactor_face_model_bytes(faces_native.native_of(conn, {face_id}))\n"
+        "assert 'torch' not in sys.modules, 'the export leaned on torch'\n"
+        "assert 'insightface' not in sys.modules, 'the replay leaned on the producer'\n"
+        "print(hashlib.sha256(blob).hexdigest())\n"
+    )
+    ran = subprocess.run(
+        [sys.executable, "-c", script], capture_output=True, text=True, cwd=pathlib.Path(__file__).parent.parent
+    )
+    assert ran.returncode == 0, ran.stderr
+    assert ran.stdout.strip() == warm, "the fresh process exported different bytes than the writing process"
+
+
+@pytest.mark.slow
+def test_a_torch_tensor_survives_capture_in_its_own_interpreter():
+    """A producer that hands over torch tensors is captured faithfully --
+    dtype, shape, values, device provenance. In its own interpreter, because
+    importing torch after onnxruntime is resident crashes the DLL load, and
+    this suite's workers run modules in arbitrary company."""
+    script = (
+        "import torch\n"
+        "from vision import facestore\n"
+        "t = torch.linspace(-1, 1, 12, dtype=torch.float16).reshape(3, 4)\n"
+        "blob = facestore.freeze({'feat': t}, producer='p', producer_version='v', container='c')\n"
+        "back = facestore.thaw(blob).record['feat']\n"
+        "assert isinstance(back, torch.Tensor) and back.dtype == torch.float16\n"
+        "assert tuple(back.shape) == (3, 4) and torch.equal(back, t)\n"
+        "try:\n"
+        "    facestore.freeze({'x': torch.zeros(2, dtype=torch.bfloat16)}, producer='p', producer_version='v', container='c')\n"
+        "except facestore.Unpreservable as why:\n"
+        "    assert 'bfloat16' in str(why)\n"
+        "else:\n"
+        "    raise SystemExit('a dtype numpy cannot spell was accepted silently')\n"
+        "print('ok')\n"
+    )
+    ran = subprocess.run(
+        [sys.executable, "-c", script], capture_output=True, text=True, cwd=pathlib.Path(__file__).parent.parent
+    )
+    assert ran.returncode == 0, ran.stderr
+    assert ran.stdout.strip() == "ok"
 
 
 def test_precision_the_projection_discards_survives_in_the_record(db, a_file):

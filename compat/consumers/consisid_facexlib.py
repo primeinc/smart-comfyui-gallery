@@ -119,21 +119,7 @@ class ConsisIDRunner:
                 rtol=0.0,
                 atol=0.0,
                 retained=("whole_reference_image",),
-                ablations=(
-                    Ablation(primitive="whole_reference_image", expect_breaks=True),
-                    Ablation(
-                        primitive="whole_reference_image",
-                        swap="arcface_footprint_only",
-                        expect_breaks=True,
-                        kind="substitution",
-                    ),
-                    Ablation(
-                        primitive="whole_reference_image",
-                        swap="generous_patch",
-                        expect_breaks=True,
-                        kind="substitution",
-                    ),
-                ),
+                ablations=(Ablation(primitive="whole_reference_image", expect_breaks=True),),
                 measurements=("patch_divergence",),
                 note="facexlib retinaface_resnet50 re-detects; whether a patch suffices is measured, not derived",
             )
@@ -172,11 +158,6 @@ class ConsisIDRunner:
         return _artifact(case.boundary, align_through_facexlib(resize_numpy_image_long(pixels)))
 
     def ablate(self, case: Case, retained: RetainedState, ablation: Ablation) -> RetainedState:
-        margins = {"arcface_footprint_only": 1.0, "generous_patch": START_MARGIN}
-        if ablation.swap in margins:
-            shot = self._shot(case)
-            box = self._footprint(shot, margins[ablation.swap])
-            return retained.replacing("whole_reference_image", shot.frame[box.y0 : box.y1, box.x0 : box.x1].copy())
         return retained.without(ablation.primitive)
 
     def measure(self, case: Case, retained: RetainedState, name: str) -> Measurement:

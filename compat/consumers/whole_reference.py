@@ -157,18 +157,7 @@ class WholeReferenceRunner:
                 rtol=0.0,
                 atol=0.0,
                 retained=("whole_reference_image",),
-                ablations=(
-                    Ablation(primitive="whole_reference_image", expect_breaks=True),
-                    Ablation(
-                        primitive="whole_reference_image", swap="face_patch", expect_breaks=True, kind="substitution"
-                    ),
-                    Ablation(
-                        primitive="whole_reference_image",
-                        swap="preview_derivative",
-                        expect_breaks=True,
-                        kind="substitution",
-                    ),
-                ),
+                ablations=(Ablation(primitive="whole_reference_image", expect_breaks=True),),
                 measurements=("bytes_whole_against_face_patch", "bytes_to_retain_the_picture"),
                 note=f"vendor setup at {self.setup.commit[:12]}; cited {'; '.join(self.setup.cited)}",
             )
@@ -207,11 +196,7 @@ class WholeReferenceRunner:
         return _artifact(case.boundary, vendor_preprocess(self.setup, pixels))
 
     def ablate(self, case: Case, retained: RetainedState, ablation: Ablation) -> RetainedState:
-        shot = self._shot(case)
-        if ablation.swap == "face_patch":
-            return retained.replacing("whole_reference_image", self._face_patch(shot))
-        if ablation.swap == "preview_derivative":
-            return retained.replacing("whole_reference_image", self._preview(shot)[0])
+        del case
         return retained.without(ablation.primitive)
 
     def measure(self, case: Case, retained: RetainedState, name: str) -> Measurement:

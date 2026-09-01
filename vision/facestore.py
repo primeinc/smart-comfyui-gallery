@@ -26,18 +26,22 @@ recorded dtype string).
 
 Wire layout, versioned by the magic:
 
-    b"sgface1\\n"  u32-LE header length  header JSON (utf-8)  payload bytes
+    b"sgface2\\n"  u32-LE header length  header JSON (utf-8)  payload bytes
+    sha256 over everything before it (32 raw bytes, the trailer)
 
 Header: {"producer", "producer_version", "container", "root": <node>}.
 `container` records the producer's native result type (for insightface,
 `Face` is a dict subclass), so a replay can rebuild the container a consumer
-subscripts, not just the values.
+subscripts, not just the values. The trailing digest makes silent payload
+corruption a loud refusal instead of a wrong array.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import struct
+import sys
 from dataclasses import dataclass
 from typing import Any
 
@@ -45,7 +49,7 @@ import numpy as np
 
 __all__ = ["Native", "Unpreservable", "freeze", "thaw"]
 
-_MAGIC = b"sgface1\n"
+_MAGIC = b"sgface2\n"
 
 #: dtype kinds whose bytes identify their values: bool, ints, uints, floats,
 #: complex, bytes/unicode strings, datetimes, timedeltas. 'O' holds pointers
@@ -80,6 +84,25 @@ def _encode(value: object, where: str, payload: bytearray) -> dict[str, Any]:
     """
     if value is None:
         return {"t": "z"}
+    torch = sys.modules.get("torch")
+    if torch is not None and isinstance(value, torch.Tensor):
+        # A tensor can only exist in a process that already imported torch,
+        # so the module reference costs no import. Values serialize through
+        # numpy; a dtype numpy cannot spell (bfloat16, complex32) refuses.
+        try:
+            flat = value.detach().cpu().contiguous().numpy()
+        except TypeError as why:
+            raise _refuse(where, value, f"holds torch dtype {value.dtype}, which numpy cannot spell: {why}") from why
+        spec = {
+            "t": "tt",
+            "d": _dtype_str(where, value, flat.dtype),
+            "s": [int(one) for one in value.shape],
+            "at": len(payload),
+            "n": flat.nbytes,
+            "dev": str(value.device),
+        }
+        payload.extend(flat.tobytes())
+        return spec
     if isinstance(value, np.ndarray):
         spec: dict[str, Any] = {
             "t": "nd",
@@ -151,6 +174,15 @@ def _decode(node: dict[str, Any], payload: memoryview) -> Any:
         # a consumer could have mutated.
         values = np.frombuffer(raw, dtype=np.dtype(node["d"])).reshape(node["s"]).copy()
         return np.asfortranarray(values) if node.get("order") == "F" else values
+    if kind == "tt":
+        # The reader of a tensor record needs torch; on CPU, whatever device
+        # produced it -- the recorded device is provenance, not a demand a
+        # replay machine must satisfy.
+        import torch
+
+        raw = payload[node["at"] : node["at"] + node["n"]]
+        values = np.frombuffer(raw, dtype=np.dtype(node["d"])).reshape(node["s"]).copy()
+        return torch.from_numpy(values)
     if kind == "ns":
         raw = payload[node["at"] : node["at"] + node["n"]]
         return np.frombuffer(raw, dtype=np.dtype(node["d"]))[0]
@@ -179,25 +211,40 @@ def _decode(node: dict[str, Any], payload: memoryview) -> Any:
 
 @dataclass(frozen=True)
 class Native:
-    """One thawed record: the producer's complete output plus its provenance."""
+    """One thawed result: the producer's complete output plus its provenance.
+
+    `value` is whatever the producer returned -- a mapping, an array, a
+    tuple, a scalar, bytes. A mapping is one structural shape among many,
+    never the required root: demanding one would force a wrapper around
+    every non-mapping return, which is semantic narrowing at the door.
+    """
 
     producer: str
     producer_version: str
     container: str
-    record: dict[str, Any]
+    value: Any
+
+    @property
+    def record(self) -> dict[str, Any]:
+        """The value as the mapping older callers expect; refuses by type
+        when the root is not one, instead of wrapping or guessing."""
+        if not isinstance(self.value, dict):
+            raise TypeError(f"this result's root is {type(self.value).__name__}, not a mapping")
+        return self.value
 
 
-def freeze(record: dict[str, Any], *, producer: str, producer_version: str, container: str) -> bytes:
-    """The complete record as one durable blob. Walks by iteration; no field
-    is named. Raises `Unpreservable` -- never drops -- on a value the
-    envelope cannot carry."""
+def freeze(value: Any, *, producer: str, producer_version: str, container: str) -> bytes:
+    """The complete result as one durable blob. Walks by iteration; no field
+    is named, and any encodable root is accepted as returned. Raises
+    `Unpreservable` -- never drops -- on a value the envelope cannot carry."""
     payload = bytearray()
-    root = _encode(dict(record), "record", payload)
+    root = _encode(value, "result", payload)
     header = json.dumps(
         {"producer": producer, "producer_version": producer_version, "container": container, "root": root},
         separators=(",", ":"),
     ).encode("utf-8")
-    return b"".join((_MAGIC, len(header).to_bytes(4, "little"), header, bytes(payload)))
+    body = b"".join((_MAGIC, len(header).to_bytes(4, "little"), header, bytes(payload)))
+    return body + hashlib.sha256(body).digest()
 
 
 def thaw(blob: bytes) -> Native:
@@ -207,16 +254,16 @@ def thaw(blob: bytes) -> Native:
     or a foreign format must never read as an empty record."""
     if blob[: len(_MAGIC)] != _MAGIC:
         raise ValueError(f"not a face-native envelope: leads with {blob[:8]!r}")
-    header_len = int.from_bytes(blob[len(_MAGIC) : len(_MAGIC) + 4], "little")
+    body, trailer = blob[:-32], blob[-32:]
+    if hashlib.sha256(body).digest() != trailer:
+        raise ValueError("face-native envelope failed its digest: the stored bytes are not the bytes written")
+    header_len = int.from_bytes(body[len(_MAGIC) : len(_MAGIC) + 4], "little")
     body_at = len(_MAGIC) + 4
-    header = json.loads(blob[body_at : body_at + header_len].decode("utf-8"))
-    payload = memoryview(blob)[body_at + header_len :]
-    record = _decode(header["root"], payload)
-    if not isinstance(record, dict):
-        raise TypeError(f"envelope root is {type(record).__name__}, not a mapping")
+    header = json.loads(body[body_at : body_at + header_len].decode("utf-8"))
+    payload = memoryview(body)[body_at + header_len :]
     return Native(
         producer=str(header["producer"]),
         producer_version=str(header["producer_version"]),
         container=str(header["container"]),
-        record=record,
+        value=_decode(header["root"], payload),
     )

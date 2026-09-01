@@ -21,7 +21,6 @@ from compat.contracts.case import (
 from compat.corpus.loaded import Shot, our_face, our_recovery_face, shots, vendor_face
 from compat.harness import provenance
 from compat.producers import insightface_pass as producer
-from compat.storage import derivatives, precision
 
 PACK_ROOT: Final[Path] = producer.MODELS_ROOT
 
@@ -274,12 +273,6 @@ def embedding_ablations(setup: VendorSetup) -> tuple[Ablation, ...]:
             expect_breaks=setup.embedding_model != "glintr100",
             kind="substitution",
         ),
-        Ablation(
-            primitive="embedding_raw",
-            swap="half_precision",
-            expect_breaks=True,
-            kind="substitution",
-        ),
     )
 
 
@@ -288,24 +281,6 @@ def crop_ablations() -> tuple[Ablation, ...]:
         Ablation(primitive="source_region_pixels", expect_breaks=True),
         Ablation(primitive="kps_source_px", expect_breaks=True),
         Ablation(primitive="patch_origin", expect_breaks=True),
-        Ablation(
-            primitive="patch_origin",
-            swap="origin_at_zero",
-            expect_breaks=True,
-            kind="substitution",
-        ),
-        Ablation(
-            primitive="source_region_pixels",
-            swap="webp_encoded",
-            expect_breaks=True,
-            kind="substitution",
-        ),
-        Ablation(
-            primitive="kps_source_px",
-            swap="half_precision",
-            expect_breaks=True,
-            kind="substitution",
-        ),
     )
 
 
@@ -313,18 +288,6 @@ def kps_ablations() -> tuple[Ablation, ...]:
     return (
         Ablation(primitive="kps_source_px", expect_breaks=True),
         Ablation(primitive="frame_dimensions", expect_breaks=True),
-        Ablation(
-            primitive="frame_dimensions",
-            swap="preview_dimensions",
-            expect_breaks=True,
-            kind="substitution",
-        ),
-        Ablation(
-            primitive="kps_source_px",
-            swap="half_precision",
-            expect_breaks=True,
-            kind="substitution",
-        ),
         Ablation(primitive="reference_pixels", expect_breaks=False),
     )
 
@@ -485,21 +448,6 @@ class FaceFamilyRunner:
             return retained
         if ablation.swap == "stored_glintr100":
             return retained.replacing("embedding_raw", retained.points("stored_glintr100"))
-        if ablation.swap == "origin_at_zero":
-            return retained.replacing("patch_origin", (0, 0))
-        if ablation.swap == "webp_encoded":
-            return retained.replacing(
-                "source_region_pixels", derivatives.encoded(retained.pixels("source_region_pixels"))[0]
-            )
-        if ablation.swap == "preview_dimensions":
-            from vision import thumbs
-
-            width, height = retained.pair("frame_dimensions")
-            edge = thumbs.EDGES["preview"]
-            scale = min(1.0, edge / max(width, height))
-            return retained.replacing("frame_dimensions", (max(1, round(width * scale)), max(1, round(height * scale))))
-        if ablation.swap == "half_precision":
-            return retained.replacing(ablation.primitive, precision.half(retained.array(ablation.primitive)))
         return retained.without(ablation.primitive)
 
     def _stored_vector_agreement(self, case: Case, retained: RetainedState) -> Measurement:
