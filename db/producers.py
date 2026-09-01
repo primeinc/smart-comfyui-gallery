@@ -53,7 +53,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
+    from collections.abc import Callable, Mapping, Sequence
 
 __all__ = [
     "Contradicted",
@@ -65,6 +65,7 @@ __all__ = [
     "identity_of",
     "judge",
     "remember",
+    "resolve",
     "stored",
     "waive",
 ]
@@ -223,6 +224,52 @@ def stored(conn: sqlite3.Connection, identity: str, *, observed: Mapping[str, st
         codec_version=codec_version,
         envelope=envelope,
         was_hit=True,
+    )
+
+
+def resolve(
+    conn: sqlite3.Connection,
+    now: float,
+    *,
+    contract: str,
+    preimage: Mapping[str, Any],
+    runtime_observed: Mapping[str, str],
+    inputs: Sequence[InputRef],
+    codec_version: str,
+    execute: Callable[[], Any],
+    capture: Callable[[Any], bytes],
+) -> Stored:
+    """The single doorway to producer execution.
+
+    THE CACHE MANDATE, and it is one branch: on a HIT `execute` is never
+    called. Nothing reruns when the compute inputs are unchanged, and the
+    identity is a strict superset of every freshness key it replaces -- same
+    content digest, plus the weights, adapter, configuration, codec and
+    bit-affecting runtime those keys never carried.
+
+    On a MISS the producer runs once, its return is frozen, and the LIVE
+    OBJECT IS DROPPED: what comes back is decoded from bytes that are already
+    stored, so a projection built off this result cannot be reading something
+    the envelope failed to preserve. A value the envelope cannot carry raises
+    HERE -- at the pass that could still rerun -- rather than at a replay years
+    later discovering a hole.
+
+    `capture` is injected rather than imported so this module keeps knowing
+    nothing about what a producer emits.
+    """
+    identity = identity_of(preimage, inputs)
+    held = stored(conn, identity, observed=runtime_observed, now=now)
+    if held is not None:
+        return held
+    return remember(
+        conn,
+        now,
+        contract=contract,
+        preimage=preimage,
+        runtime_observed=runtime_observed,
+        inputs=inputs,
+        envelope=capture(execute()),
+        codec_version=codec_version,
     )
 
 
