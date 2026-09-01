@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Protocol, runtime_checkable
+from typing import Final, Protocol, runtime_checkable
 
 import numpy as np
 import numpy.typing as npt
@@ -20,6 +20,14 @@ class Tier(StrEnum):
 
 class MissingPrimitive(KeyError):
     pass
+
+
+#: The reasons an ablation may conclude nothing, as codes rather than prose.
+#: Closure holds the INCONCLUSIVE population to this ALLOWLIST and to a pin
+#: per cause. Adding one is a decision, and its pin comes with it.
+ABLATION_RETAINED_STATE_LACKS_PRIMITIVE: Final[str] = "retained_state_lacks_primitive"
+ABLATION_STATE_COULD_NOT_BE_BUILT: Final[str] = "ablated_state_could_not_be_built"
+ABLATION_SUBSTITUTE_WAS_IDENTICAL: Final[str] = "substitute_identical_to_retained"
 
 
 class Verdict(StrEnum):
@@ -226,6 +234,11 @@ class Ablation:
     observed_break: bool | None = None
     verdict: Verdict | None = None
     detail: str = ""
+
+    #: WHY an INCONCLUSIVE ablation concluded nothing, as a code the writer
+    #: chooses -- never parsed back out of `detail`, which would guard a
+    #: spelling. A count cannot see what it is counting.
+    cause: str = ""
 
     def __post_init__(self) -> None:
         if self.kind == "substitution" and not self.swap:

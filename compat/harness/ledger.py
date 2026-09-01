@@ -128,6 +128,86 @@ def _current(held: dict[str, Any] | None, digest: str) -> bool:
     return isinstance(recorded, dict) and recorded.get("digest") == digest
 
 
+def exercised_against_real_evidence(where: Path = GENERATED) -> dict[str, dict[str, int]]:
+    """Which declared stage fields any REAL writer actually emits.
+
+    Three of the six stages read under `durable`, and the control fixture
+    invents all three: no CaseResult carries that field, so those stages
+    are proven only for a shape existing nowhere outside the fixture --
+    and they are precisely the three that would demonstrate a store round
+    trip. Recording the split turns an artifact that overclaims into one
+    naming its own limit, and makes a real durable write a visible event
+    rather than a silent BLOCKED-to-VERIFIED flip.
+
+    COUNTS, through the ledger's own `emits`. A boolean made "one case of
+    302" and "all 302" the same claim, and having just replaced an
+    overclaiming 6/6, a threshold of one would be a softer version of it.
+    """
+    shipped = where / "cases.json"
+    if not shipped.is_file():
+        return {stage: {"carrying": 0, "of": 0} for stage in STAGE_EVIDENCE}
+    held = json.loads(shipped.read_text(encoding="utf-8"))
+    rows = held.get("results") or []
+    return {
+        stage: {"carrying": sum(1 for row in rows if emits(row, one.field)), "of": len(rows)}
+        for stage, one in STAGE_EVIDENCE.items()
+    }
+
+
+def declared_consumers(manifest: dict[str, Any]) -> tuple[list[str], frozenset[str]]:
+    """Who gets a row, and which of those are declared first-party.
+
+    ONE list, read by the build and by its controls. Two spellings of
+    this set is how the fixture came to declare 22 while the build made
+    28 rows, and the control went red on rows it had never been fed.
+
+    The union is DECLARED. Deriving it from the evidence instead would
+    make closure's row-coverage condition compare the cases against
+    themselves, which is the whole defect that condition exists to catch.
+    """
+    first_party = frozenset(one["id"] for one in manifest.get("first_party_consumers", []))
+    vendor = frozenset(one["id"] for one in manifest.get("consumers", []))
+    both = sorted(vendor & first_party)
+    if both:
+        # The contradictory grading catches this only through a PRESENT pin row,
+        # and nothing checks provenance.json's freshness, so on stale pins a
+        # double-declared id grades VERIFIED. Refusing here is unconditional.
+        raise KeyError(
+            f"{both} are declared BOTH vendored and first-party. One says its source is fetched at a "
+            f"pin, the other says this tree carries it; a consumer cannot be both."
+        )
+    return sorted(vendor | first_party), first_party
+
+
+def source_cell(is_first_party: bool, row: dict[str, Any] | None) -> Cell:
+    """G10's four states over the pair (declared first-party, pinned).
+
+    The two halves come from different files -- the classification from
+    the manifest, the pin from provenance.json -- so a consumer cannot
+    satisfy this by agreeing with itself. A DECLARATION THAT CAN BE WRONG
+    AND IS CHECKED, never a category granting exemption: the rejected
+    alternative graded first-party consumers by tree identity, which is
+    the staleness fact the BLOCKED cells already carry (two cells from
+    one object, the G2 defect) and an auto-pass door for reclassifying a
+    third-party consumer to dodge its pin.
+    """
+    if is_first_party and row is not None:
+        return Cell(FAILED, "declared first-party AND pinned: one of the two records is wrong about its source")
+    if is_first_party:
+        return Cell(VERIFIED, "declared first-party: carried by this tree's evidence identity, no upstream to pin")
+    if row is None:
+        return Cell(FAILED, "neither declared first-party nor pinned: nothing records where its source comes from")
+    if row.get("failures"):
+        return Cell(FAILED, str(row["failures"][0])[:140])
+    paths = row.get("paths", [])
+    unresolved = [one for one in paths if not one.get("present")]
+    if unresolved:
+        return Cell(FAILED, f"{len(unresolved)} declared path(s) absent at the pin")
+    if not paths:
+        return Cell(FAILED, "no declared path was opened at the pin")
+    return Cell(VERIFIED, f"{len(paths)} path(s) resolved at the pin")
+
+
 def lane_exits(where: Path = GENERATED) -> dict[str, int]:
     from compat.harness import lanes
 
@@ -140,7 +220,10 @@ def build(where: Path = GENERATED, *, digest: str) -> dict[str, Any]:
     # and keyword-only: omitting it is a TypeError, never a quiet recompute.
     stages_are_covered()
     manifest = provenance.load_manifest()
-    declared = sorted(one["id"] for one in manifest.get("consumers", []))
+    # Rows built from the vendored list alone left six consumers producing
+    # evidence that no row covered -- gallery_storage, the only runner doing a
+    # real application-store round trip, among them.
+    declared, first_party = declared_consumers(manifest)
     lanes = lane_exits(where)
 
     consumed: dict[str, str] = {}
@@ -161,20 +244,7 @@ def build(where: Path = GENERATED, *, digest: str) -> dict[str, Any]:
             if row["key"].startswith("consumer:")
         }
         for who in declared:
-            row = by_consumer.get(who)
-            if row is None:
-                source_ok[who] = Cell(FAILED, "no repo proof was recorded for it")
-            elif row.get("failures"):
-                source_ok[who] = Cell(FAILED, str(row["failures"][0])[:140])
-            else:
-                paths = row.get("paths", [])
-                unresolved = [one for one in paths if not one.get("present")]
-                if unresolved:
-                    source_ok[who] = Cell(FAILED, f"{len(unresolved)} declared path(s) absent at the pin")
-                elif not paths:
-                    source_ok[who] = Cell(FAILED, "no declared path was opened at the pin")
-                else:
-                    source_ok[who] = Cell(VERIFIED, f"{len(paths)} path(s) resolved at the pin")
+            source_ok[who] = source_cell(who in first_party, by_consumer.get(who))
 
     if pins is None:
         weights_cell = Cell(BLOCKED, "pins wrote no provenance.json")

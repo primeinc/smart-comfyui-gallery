@@ -1455,3 +1455,52 @@ constraint = "~5s; resampled to audio_vae.audio_sample_rate, default 44100"
 reference_seconds_recommended = 5
 vae_audio_sample_rate_default = 44100
 claim = "ref_tokens are recomputed by the consumer's own audio VAE from the waveform; the waveform and its sample rate are the durable inputs"
+
+# --- first-party consumers ---------------------------------------------------
+#
+# Consumers that are OUR OWN code, so no upstream repository exists to pin them
+# against. Every entry above this line is a third-party integration whose source
+# is fetched at a commit and graded by whether that pin resolves; these six are
+# written in compat/, move with this tree, and are covered by its evidence
+# identity rather than by a repo pin.
+#
+# THIS IS A DECLARATION THAT CAN BE WRONG, AND IT IS CHECKED. The ledger grades
+# `source_provenance` from the pair (declared here, pinned in provenance.json):
+# declared and unpinned is the only state that holds; declared AND pinned is
+# FAILED as contradictory, because one of the two records is lying about where
+# the code comes from; pinned and undeclared is graded as any vendored consumer
+# is; neither is FAILED as unclassified, so a new consumer fails until somebody
+# classifies it instead of defaulting into the excused bucket. The rejected
+# alternative was an auto-pass category keyed on tree identity -- six checks
+# that cannot fail, and the exact door for reclassifying a third-party consumer
+# to dodge the pin.
+
+[[first_party_consumers]]
+id = "gallery_storage"
+module = "compat/consumers/gallery_storage.py"
+reason = "the application store round trip -- ours by definition; there is no upstream that owns it"
+
+[[first_party_consumers]]
+id = "aligned_crop"
+module = "compat/consumers/aligned_crop.py"
+reason = "our own arcface-geometry crop, written to compare against the vendored ones rather than adopted from one"
+
+[[first_party_consumers]]
+id = "face_selection"
+module = "compat/consumers/face_selection.py"
+reason = "our selection policy over detected faces; the vendors it is compared with each carry their own"
+
+[[first_party_consumers]]
+id = "embedding_spaces"
+module = "compat/consumers/embedding_spaces.py"
+reason = "our comparison of embedding spaces across producers; no vendor ships this measurement"
+
+[[first_party_consumers]]
+id = "reference_sets"
+module = "compat/consumers/reference_sets.py"
+reason = "our reference-set construction; it READS vendored repos at their pins but is not one of them"
+
+[[first_party_consumers]]
+id = "insightface_producer"
+module = "compat/consumers/producer_derivations.py"
+reason = "our derivations over the insightface producer's own output; the producer is pinned, this reading of it is ours"

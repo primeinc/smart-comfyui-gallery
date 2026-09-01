@@ -9,6 +9,9 @@ from typing import Any, Final, Protocol, runtime_checkable
 
 from compat.assertions.arrays import Comparison, compare
 from compat.contracts.case import (
+    ABLATION_RETAINED_STATE_LACKS_PRIMITIVE,
+    ABLATION_STATE_COULD_NOT_BE_BUILT,
+    ABLATION_SUBSTITUTE_WAS_IDENTICAL,
     Ablation,
     Artifact,
     Case,
@@ -27,7 +30,7 @@ from compat.contracts.case import (
 from compat.contracts.case import (
     skipped as case_skips,
 )
-from compat.harness import failfast, observe, provenance
+from compat.harness import failfast, ledger, observe, provenance
 from compat.harness import identity as evidence_identity
 
 ROOT: Path = Path(__file__).resolve().parent.parent
@@ -54,7 +57,10 @@ def _values_of(artifact: Artifact) -> Any:
     return artifact.values
 
 
-def _inconclusive(declared: Ablation, why: str) -> Ablation:
+def _inconclusive(declared: Ablation, cause: str, why: str) -> Ablation:
+    # `cause` is REQUIRED and positional: defaulted, a new inconclusive site
+    # would land in the population carrying no cause at all, and the condition
+    # that enumerates causes would be judging a set with a hole in it.
     return Ablation(
         primitive=declared.primitive,
         expect_breaks=declared.expect_breaks,
@@ -63,6 +69,7 @@ def _inconclusive(declared: Ablation, why: str) -> Ablation:
         observed_break=None,
         verdict=Verdict.INCONCLUSIVE,
         detail=f"INCONCLUSIVE: {why}",
+        cause=cause,
     )
 
 
@@ -71,16 +78,19 @@ def run_ablation(
 ) -> Ablation:
     broke: bool | None
     method = ""
+    cause = ""
     try:
         degraded = runner.ablate(case, retained, declared)
     except MissingPrimitive as problem:
         return _inconclusive(
             declared,
+            ABLATION_RETAINED_STATE_LACKS_PRIMITIVE,
             f"{problem}. The replay indexes this key; it was not shown to need the value.",
         )
     except (KeyError, TypeError, ValueError, IndexError) as problem:
         return _inconclusive(
             declared,
+            ABLATION_STATE_COULD_NOT_BE_BUILT,
             f"the runner could not build the {declared.swap or declared.primitive!r} state: "
             f"{type(problem).__name__}: {problem}",
         )
@@ -89,6 +99,7 @@ def run_ablation(
         if declared.kind == "substitution" and degraded.same_as(retained):
             return _inconclusive(
                 declared,
+                ABLATION_SUBSTITUTE_WAS_IDENTICAL,
                 f"the {declared.swap!r} substitute is identical to the retained {declared.primitive!r}; "
                 f"no degradation was applied and nothing could be observed",
             )
@@ -106,6 +117,7 @@ def run_ablation(
         method = result.method
     except MissingPrimitive as problem:
         broke = None
+        cause = ABLATION_RETAINED_STATE_LACKS_PRIMITIVE
         detail = f"INCONCLUSIVE: {problem}. The replay indexes this key; it was not shown to need the value."
     except (KeyError, TypeError, ValueError, IndexError) as problem:
         broke = True
@@ -124,6 +136,7 @@ def run_ablation(
         observed_break=broke,
         verdict=verdict,
         detail=detail,
+        cause=cause,
     )
 
 
@@ -322,7 +335,10 @@ def run_all(only: str = "") -> dict[str, Any]:
     observed = watching.rows()
 
     manifest = provenance.load_manifest()
-    declared = {one["id"] for one in manifest.get("consumers", [])}
+    # The LEDGER's row set. Spelled as the vendored consumers alone, `unexercised`
+    # could not name a first-party consumer that stopped producing cases: it was
+    # never in `declared`, so `declared - covered` had nothing to miss it from.
+    declared = set(ledger.declared_consumers(manifest)[0])
 
     at_tier = {
         tier: {one.consumer_id for one in results if one.tier is tier} for tier in (Tier.PRIMITIVE, Tier.CONSUMER)

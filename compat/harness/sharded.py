@@ -10,7 +10,7 @@ from typing import Any, Final
 
 import proc
 from compat.contracts.case import CaseVerdict, Tier
-from compat.harness import failfast, provenance
+from compat.harness import failfast, ledger, provenance
 from compat.harness import identity as evidence_identity
 from compat.harness import run as case_runner
 from compat.harness.run import blocking_failures
@@ -99,7 +99,9 @@ def merge(partials: list[dict[str, Any]]) -> dict[str, Any]:
                 exited.append(f"shard {one.get('shard', '?')} exited {one['exit']} over declared findings")
 
     manifest = provenance.load_manifest()
-    declared = {one["id"] for one in manifest.get("consumers", [])}
+    # The LEDGER's row set, as in run.py: the vendored spelling left a
+    # first-party consumer that stopped producing cases out of `unexercised`.
+    declared = set(ledger.declared_consumers(manifest)[0])
     at_tier = {
         tier: {one["consumer_id"] for one in results if one["tier"] == tier}
         for tier in (Tier.PRIMITIVE.value, Tier.CONSUMER.value)

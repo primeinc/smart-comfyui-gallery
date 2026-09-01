@@ -58,6 +58,38 @@ def totals_are_read(digest: str) -> tuple[bool, str]:
         return True, f"a falsified `green` total is caught: {caught.detail}"
 
 
+def total_failure_is_not_excused(digest: str) -> tuple[bool, str]:
+    """A run where NOTHING succeeded is the worst case, not an excused one.
+
+    Declared over `results`, `no skipped input` and `no shard failed`
+    inverted their own severity: 22 results beside 10 skipped went RED,
+    while 0 results beside the SAME 10 skipped returned not-applicable --
+    "nothing was checked". Their population is everything CONSIDERED now,
+    so a total failure reads as the failure it is.
+
+    Asserted BY NAME, not off the verdict. Emptying `results` sends other
+    conditions not-applicable too, so a mutation judged on the verdict
+    alone would pass green without either of these ever having fired.
+    """
+    with tempfile.TemporaryDirectory(prefix="closure_total_") as raw:
+        where = Path(raw)
+        held = green_fixture(digest=digest)
+        held["cases.json"]["skipped"] = ["every input was skipped"]
+        held["cases.json"]["shards_failed"] = ["every shard died"]
+        held["cases.json"]["results"] = []
+        _write(where, held, digest=digest)
+
+        found = {one.name: one for one in closure.conditions(where)}
+        excused = [
+            f"{name} {found[name].state if name in found else 'absent'}"
+            for name in ("no skipped input", "no shard failed")
+            if name not in found or found[name].state != closure.FAILED
+        ]
+        if excused:
+            return False, f"a total failure was not reported as one: {excused}"
+        return True, "nothing succeeded and both considered-population conditions are red"
+
+
 def states_must_be_distinct(digest: str) -> tuple[bool, str]:
     """The allowlist is only an allowlist while VERIFIED spells its own string.
 
@@ -303,6 +335,14 @@ def _write(where: Path, held: dict[str, Any], *, digest: str) -> None:
         handle.write(json.dumps(built, indent=2, sort_keys=True, default=str))
         handle.write("\n")
 
+    # DERIVED from cases.json on the same terms, so a mutation reaches closure's
+    # staleness condition through the writer rather than an artifact somebody
+    # typed. Only the field that condition reads; the rest is the run's output.
+    controls = {"identity": digest, "exercised_against_real_evidence": ledger.exercised_against_real_evidence(where)}
+    with (where / "ledger_controls.json").open("w", encoding="utf-8", newline="") as handle:
+        handle.write(json.dumps(controls, indent=2, sort_keys=True, default=str))
+        handle.write("\n")
+
 
 def _closed(where: Path) -> tuple[bool, str]:
     held = closure.conditions(where)
@@ -363,6 +403,11 @@ def main() -> int:
     distinct, alias_told = states_must_be_distinct(digest)
     if not distinct:
         print(f"STATES NOT DISTINCT: {alias_told}")
+        return 1
+
+    severe, severity_told = total_failure_is_not_excused(digest)
+    if not severe:
+        print(f"SEVERITY INVERTED: {severity_told}")
         return 1
 
     pinned, why = allowance_within_the_pin()

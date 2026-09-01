@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Final
 
 from compat.harness import closure, closure_attack
+from compat.harness import identity as evidence_identity
 
 ROOT: Final[Path] = Path(__file__).resolve().parent.parent
 GENERATED: Final[Path] = ROOT / "generated"
@@ -51,7 +52,7 @@ def _strip_stamps(where: Path) -> None:
 
 def _empty(artifact: str, field_name: str) -> Callable[[Path], None]:
     def emptied(where: Path) -> None:
-        blank: Any = {} if field_name in ("lanes", "consumed") else []
+        blank: Any = {} if field_name in ("lanes", "consumed", "exercised_against_real_evidence") else []
         _rewrite(where, artifact, lambda held: held.__setitem__(field_name, blank))
 
     return emptied
@@ -82,10 +83,16 @@ def _malform(artifact: str, field_name: str, make: Callable[[], Any]) -> Callabl
 
 
 def _malform_ablation(where: Path) -> None:
+    # TWO members: two conditions read this population and judge different
+    # fields. A WOBBLE verdict is invisible to the cause condition, which
+    # looks only at INCONCLUSIVE rows, so that one needs its own member.
     def change(held: dict[str, Any]) -> None:
         rows = held.get("results") or []
         if rows:
             rows[0].setdefault("ablations", []).append({"primitive": "p", "verdict": "WOBBLE"})
+            rows[0]["ablations"].append(
+                {"primitive": "p", "verdict": "INCONCLUSIVE", "cause": "a_cause_nobody_declared"}
+            )
 
     _rewrite(where, "cases.json", change)
 
@@ -95,16 +102,37 @@ def _malform_stamp(where: Path) -> None:
 
 
 def _malform_case_offences(where: Path) -> None:
-    # The conditions over cases.json:results each read a DIFFERENT field from the
-    # one they declare, so a malformed member has to reach each of them by name.
+    # The row-coverage condition reads consumer_id: a case attributed to a
+    # consumer nothing declares is this population's unclassifiable member.
+    # `skipped` and `shards_failed` now have their own populations below.
     def change(held: dict[str, Any]) -> None:
-        held["skipped"] = [*(held.get("skipped") or []), {"why": "an input nobody classified"}]
-        held["shards_failed"] = [*(held.get("shards_failed") or []), "a shard nobody classified"]
-        # The row-coverage condition reads consumer_id: a case attributed to a
-        # consumer nothing declares is this population's unclassifiable member.
         held["results"] = [*(held.get("results") or []), {"consumer_id": "a_consumer_nobody_declared"}]
 
     _rewrite(where, "cases.json", change)
+
+
+def _empty_considered(field_name: str) -> Callable[[Path], None]:
+    # EVERYTHING CONSIDERED: the successes and the field the condition reads.
+    # Emptying only `results` left the offending members in place, which is
+    # how a total failure read as not-applicable rather than as a failure.
+    def emptied(where: Path) -> None:
+        def change(held: dict[str, Any]) -> None:
+            held["results"] = []
+            held[field_name] = []
+
+        _rewrite(where, "cases.json", change)
+
+    return emptied
+
+
+def _malform_considered(field_name: str, make: Callable[[], Any]) -> Callable[[Path], None]:
+    def spoiled(where: Path) -> None:
+        def change(held: dict[str, Any]) -> None:
+            held[field_name] = [*(held.get(field_name) or []), make()]
+
+        _rewrite(where, "cases.json", change)
+
+    return spoiled
 
 
 def _malform_ledger(where: Path) -> None:
@@ -180,6 +208,30 @@ SOURCES: Final[dict[str, Source]] = {
         writer="ledger.py:main() writes ledger.json",
         validator="closure.conditions() returns only `ledger present` when the file is absent",
     ),
+    "cases.json:results+skipped": Source(
+        empty=_empty_considered("skipped"),
+        malform=_malform_considered("skipped", lambda: {"why": "an input nobody classified"}),
+        writer="run.py records a skip through case.note_skip; sharded.py:main collects them",
+        validator="NONE re-derives a skip -- which is why every member of it is an offence",
+    ),
+    "cases.json:results+shards_failed": Source(
+        empty=_empty_considered("shards_failed"),
+        malform=_malform_considered("shards_failed", lambda: "a shard nobody classified"),
+        writer="sharded.py:main names a shard that did not complete",
+        validator="NONE -- a shard that did not finish leaves nothing to re-derive it from",
+    ),
+    "ledger_controls.json:exercised_against_real_evidence": Source(
+        empty=_empty("ledger_controls.json", "exercised_against_real_evidence"),
+        # A stage nothing derives. The comparison walks BOTH key sets, so this
+        # member is examined rather than riding along beside the six real ones.
+        malform=_malform(
+            "ledger_controls.json",
+            "exercised_against_real_evidence",
+            lambda: {"carrying": 1, "of": 1},
+        ),
+        writer="ledger_attack.py:main() records ledger.exercised_against_real_evidence(GENERATED)",
+        validator="closure._controls_describe_this_evidence re-derives it from cases.json and compares",
+    ),
 }
 
 
@@ -195,6 +247,10 @@ class Finding:
 class Audit:
     declared: dict[str, str] = field(default_factory=dict)
     emptied: dict[str, list[str]] = field(default_factory=dict)
+    #: What the SECOND degenerate shape COST, per population -- not which
+    #: conditions it asked, which is `emptied` again under another name. A
+    #: population in `emptied` and empty here was asked and cost nothing.
+    malformed: dict[str, list[str]] = field(default_factory=dict)
     findings: list[Finding] = field(default_factory=list)
 
     @property
@@ -281,6 +337,9 @@ def run(asked: Provider = closure.conditions) -> Audit:
                             f"still {found.state} with a member nothing classifies",
                         )
                     )
+            out.malformed[population] = sorted(
+                name for name in over if (spoiled.get(name) is not None and not spoiled[name].green)
+            )
     return out
 
 
@@ -342,7 +401,11 @@ def main() -> int:
         print(f"  {name:<38} over {population}")
     print()
     for population, over in sorted(out.emptied.items()):
-        print(f"  emptying {population:<28} -> {len(over)} condition(s) must stop holding")
+        cost = out.malformed.get(population, [])
+        print(
+            f"  emptying {population:<28} -> {len(over)} condition(s) must stop holding"
+            f"   |  a member nothing classifies cost {len(cost)}"
+        )
 
     if out.findings:
         print(f"\n{len(out.findings)} FINDING(S):")
@@ -354,9 +417,13 @@ def main() -> int:
 
     GENERATED.mkdir(parents=True, exist_ok=True)
     body = {
+        # Stamped for the same reason closure.json now is: an audit left by an
+        # earlier tree reads as this one's, and F28 named both files together.
+        "identity": str(evidence_identity.identity()["digest"]),
         "clean": out.clean,
         "declared": out.declared,
         "emptied": out.emptied,
+        "malformed": out.malformed,
         "findings": [asdict(one) for one in out.findings],
         "sources": {name: {"writer": one.writer, "validator": one.validator} for name, one in sorted(SOURCES.items())},
     }

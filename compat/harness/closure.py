@@ -24,6 +24,15 @@ ABLATION_INCONCLUSIVE_ALLOWANCE: Final[int] = 497
 
 ABLATION_INCONCLUSIVE: Final[str] = "INCONCLUSIVE"
 
+#: The causes an INCONCLUSIVE ablation may have, each under its OWN ceiling.
+#: The total is content-blind, so 497 tolerated inconclusives could become
+#: 497 of something else and nothing would say so. Ratchets, lower-only.
+ABLATION_INCONCLUSIVE_BY_CAUSE: Final[dict[str, int]] = {
+    "retained_state_lacks_primitive": 448,
+    "substitute_identical_to_retained": 45,
+    "ablated_state_could_not_be_built": 4,
+}
+
 #: Known-good ablation verdicts. Anything else -- including null, absent and a
 #: value nobody anticipated -- is unconcluded, because a denylist admits the rest.
 ABLATION_CONCLUDED: Final[frozenset[str]] = frozenset({"PASS", "INCONCLUSIVE"})
@@ -155,6 +164,58 @@ def _ablations_concluded(cases: dict[str, Any] | None) -> Condition:
     )
 
 
+def _inconclusive_causes_are_bounded(cases: dict[str, Any] | None) -> Condition:
+    """WHAT the tolerated inconclusives are, not just how many.
+
+    The count ratchet is content-blind. Reproduced by the adversary:
+    swapping every `detail` to "model weights failed to load" left `every
+    ablation concluded` HELD byte-identical, because a number cannot see
+    what it is counting -- a mass foreign-cause event fits inside 497 as
+    comfortably as the causes actually observed.
+
+    An ALLOWLIST over a code the WRITER chose, never a phrase parsed back
+    out of the prose: recovering the cause from `detail` would guard a
+    spelling, which is the same defect one layer down. A cause not named
+    here is an offence whatever its count, and each named one carries its
+    own pin, so the composition cannot drift under a total that holds.
+    """
+    held = [one for row in ((cases or {}).get("results") or []) for one in (row.get("ablations") or [])]
+    inconclusive = [one for one in held if one.get("verdict") == ABLATION_INCONCLUSIVE]
+
+    seen: dict[str, int] = {}
+    for one in inconclusive:
+        cause = str(one.get("cause") or "")
+        seen[cause] = seen.get(cause, 0) + 1
+
+    offending = [
+        f"{count} inconclusive with cause {cause or 'UNRECORDED'}, which is not an allowed cause"
+        for cause, count in sorted(seen.items())
+        if cause not in ABLATION_INCONCLUSIVE_BY_CAUSE
+    ]
+    offending += [
+        f"{cause}: {count} over its pin of {ABLATION_INCONCLUSIVE_BY_CAUSE[cause]}"
+        for cause, count in sorted(seen.items())
+        if cause in ABLATION_INCONCLUSIVE_BY_CAUSE and count > ABLATION_INCONCLUSIVE_BY_CAUSE[cause]
+    ]
+    # The two ratchets must not be able to disagree: per-cause pins summing
+    # above the total would tolerate, cause by cause, more than the total
+    # says. A fact about the CODE, so it is checked whatever the population.
+    pinned = sum(ABLATION_INCONCLUSIVE_BY_CAUSE.values())
+    if pinned > ABLATION_INCONCLUSIVE_ALLOWANCE:
+        said = f"the per-cause pins sum to {pinned}, over the total allowance of {ABLATION_INCONCLUSIVE_ALLOWANCE}"
+        offending.append(said)
+
+    spelled = ", ".join(f"{cause} {count}" for cause, count in sorted(seen.items()))
+    return _over(
+        "every inconclusive has an allowed cause",
+        "cases.json:ablations",
+        inconclusive,
+        offending,
+        f"{len(inconclusive)} inconclusive, each an allowed cause within its pin: {spelled}",
+        unit=f"offence(s) over {len(seen)} cause(s) in {len(inconclusive)} inconclusive ablation(s)",
+    )
+
+
 def _consumption_agrees(ledger: dict[str, Any], where: Path) -> Condition:
     # One-tree compares each artifact to the TREE, never to each other, so two
     # artifacts individually current for the tree but not built from one another
@@ -178,6 +239,57 @@ def _consumption_agrees(ledger: dict[str, Any], where: Path) -> Condition:
         drifted,
         f"{len(consumed)} artifact(s) still the bytes the ledger read",
     )
+
+
+def _controls_describe_this_evidence(where: Path) -> Condition:
+    """The ledger controls' recorded exercised-split, re-derived now.
+
+    ledger_controls.json records which of the six stages any REAL writer
+    emits -- the artifact that stopped the G2 control claiming six when
+    three of them were only ever exercised against a shape its own
+    fixture invents. NOTHING READ IT, so a run that regenerated cases.json
+    without re-running the control shipped a split describing evidence
+    that no longer exists, and the honest limit it was written to state
+    would have quietly stopped being true.
+
+    The reverse arrow of `every consumed artifact unchanged`: that asks
+    whether the bytes moved under a reader, this asks whether a claim
+    still describes the bytes. Re-deriving with the writer's own function
+    is the point -- the inputs differ (numbers frozen at lane time
+    against cases.json as it stands), which is exactly the drift.
+    """
+    from compat.harness.ledger import exercised_against_real_evidence
+
+    population = "ledger_controls.json:exercised_against_real_evidence"
+    name = "the ledger controls describe this evidence"
+    held = _read("ledger_controls.json", where)
+    if held is None:
+        why = "no ledger_controls.json: the ledger-attack lane wrote nothing to check"
+        return Condition(name, FAILED, why, population)
+
+    recorded: dict[str, Any] = held.get("exercised_against_real_evidence") or {}
+    now = exercised_against_real_evidence(where)
+    # BOTH directions: walking only the re-derived stages would never look at a
+    # key the artifact carries and the derivation does not, so a stage nothing
+    # recognises rides along unexamined -- present-but-unclassifiable, here.
+    offending = [
+        f"{stage}: recorded {_split(recorded.get(stage))}, the evidence now shows {_split(now.get(stage))}"
+        for stage in sorted(set(now) | set(recorded))
+        if recorded.get(stage) != now.get(stage)
+    ]
+    return _over(
+        name,
+        population,
+        recorded,
+        offending,
+        f"{len(recorded)} stage(s): the recorded split still matches cases.json",
+    )
+
+
+def _split(held: Any) -> str:
+    if not isinstance(held, dict):
+        return "nothing"
+    return f"{held.get('carrying', '?')}/{held.get('of', '?')}"
 
 
 def _evidence_has_a_row(ledger: dict[str, Any], cases: dict[str, Any] | None) -> Condition:
@@ -268,6 +380,7 @@ def conditions(where: Path = GENERATED) -> list[Condition]:
     out.append(_one_tree(stamped))
     out.append(_every_lane_green(lanes))
     out.append(_consumption_agrees(ledger, where))
+    out.append(_controls_describe_this_evidence(where))
 
     rows: list[dict[str, Any]] = ledger.get("rows") or []
     declared = int(ledger.get("totals", {}).get("declared", 0))
@@ -347,15 +460,31 @@ def conditions(where: Path = GENERATED) -> list[Condition]:
 
     results: list[dict[str, Any]] = (cases or {}).get("results") or []
     skipped = [str(one) for one in ((cases or {}).get("skipped") or [])]
+    # EVERYTHING CONSIDERED, not only what succeeded: declared over `results`
+    # these two inverted their severity -- 22 results beside 10 skipped went
+    # RED, 0 results beside the same 10 went not-applicable.
     out.append(
-        _over("no skipped input", "cases.json:results", results, skipped, f"{len(results)} case(s), none skipped")
+        _over(
+            "no skipped input",
+            "cases.json:results+skipped",
+            [*results, *skipped],
+            skipped,
+            f"{len(results) + len(skipped)} input(s) considered, none skipped",
+        )
     )
 
     out.append(_ablations_concluded(cases))
+    out.append(_inconclusive_causes_are_bounded(cases))
 
     shards = [str(one) for one in ((cases or {}).get("shards_failed") or [])]
     out.append(
-        _over("no shard failed", "cases.json:results", results, shards, f"{len(results)} case(s), no shard failed")
+        _over(
+            "no shard failed",
+            "cases.json:results+shards_failed",
+            [*results, *shards],
+            shards,
+            f"{len(results) + len(shards)} shard outcome(s), none failed",
+        )
     )
     return out
 
@@ -371,10 +500,15 @@ def main() -> int:
     if not closed:
         print("the missing-work ledger is compat/generated/ledger.md")
 
+    # STAMPED, like every artifact it judges. Carrying no identity, a
+    # closure.json left by an earlier run read as this run's answer; `run` now
+    # removes it before the lanes, so a failed run leaves none instead.
+    stamp = str(evidence_identity.identity()["digest"])
     with (GENERATED / "closure.json").open("w", encoding="utf-8", newline="") as handle:
         handle.write(
             json.dumps(
                 {
+                    "identity": stamp,
                     "closed": closed,
                     "conditions": [
                         {

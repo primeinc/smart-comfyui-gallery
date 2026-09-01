@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any, Final
 
 from compat.harness import identity as evidence_identity
-from compat.harness import provenance
+from compat.harness import ledger, provenance
 
 ROOT: Final[Path] = Path(__file__).resolve().parent.parent
 GENERATED: Final[Path] = ROOT / "generated"
@@ -67,7 +67,10 @@ def _current(held: dict[str, Any] | None, now: str) -> bool:
 def build() -> Report:
     now = evidence_identity.identity()
     manifest = provenance.load_manifest()
-    declared = sorted(one["id"] for one in manifest.get("consumers", []))
+    # The LEDGER's row set, not a second spelling of it: this report and the
+    # ledger both answer "which consumers are declared", and two readings of
+    # one manifest is how two artifacts come to disagree about the same number.
+    declared, _first_party = ledger.declared_consumers(manifest)
     out = Report(identity=now["digest"], declared=declared)
 
     pins = _read("provenance.json")
