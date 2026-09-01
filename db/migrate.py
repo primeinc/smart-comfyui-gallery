@@ -3920,3 +3920,251 @@ def _the_producers_record_survives_as_typed_bytes(conn: sqlite3.Connection) -> N
     """
     conn.execute("ALTER TABLE derived_face_instance DROP COLUMN attributes")
     conn.execute("ALTER TABLE derived_face_instance ADD COLUMN native BLOB")
+
+
+#: v47 -> v48 DDL, replayed from what `db/schema.sql` actually builds rather
+#: than retyped: a migrated database and a fresh one must hold byte-identical
+#: `sqlite_master` text, and 16 KB of hand-copied DDL is how that stops holding.
+_V48_OBJECTS = (
+    """CREATE TABLE table_class (
+    table_name  TEXT PRIMARY KEY,
+    -- canonical  = holds producer output; recomputing it costs a producer run
+    -- projection = derived from a canonical row; rebuildable at zero producer cost
+    -- authored   = a human said it; never recomputable at all
+    class       TEXT NOT NULL CHECK (class IN ('canonical','projection','authored')),
+    declared_at REAL NOT NULL
+) STRICT""",
+    """CREATE TABLE producer_invocation (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    -- The ResultIdentity: sha256 over the ORDERED complete preimage -- the
+    -- non-edge fields in `preimage_json` below plus this invocation's
+    -- `producer_input` rows in ordinal order.
+    --
+    -- Provenance record and cache key are deliberately THE SAME OBJECT. Two of
+    -- them drift, and the drift is invisible until a hit serves bytes that were
+    -- computed from something else. UNIQUE is what makes a resolver hit a
+    -- lookup rather than a search.
+    identity       TEXT NOT NULL UNIQUE CHECK (length(identity) = 64),
+    contract_name  TEXT NOT NULL,
+    -- Canonical JSON of the NON-EDGE preimage fields: contract revision,
+    -- implementation digest, adapter digest, weight file digests, invocation
+    -- configuration, bit-affecting runtime facts, capture codec version.
+    --
+    -- Stored rather than recomputed because re-verifying a stored identity
+    -- must not depend on live state that may no longer exist -- the weights
+    -- may be gone, the provider may have changed, the machine may be another
+    -- one. The input EDGES are not duplicated here; they are
+    -- `producer_input` rows, so every preimage fact has exactly one home and
+    -- no two records of it can disagree.
+    preimage_json  TEXT NOT NULL,
+    -- Runtime facts the contract declared NOT bit-affecting. Recorded, never
+    -- hashed into `identity` -- putting a machine's identity in the cache key
+    -- means moving machines invalidates the library. The resolver compares
+    -- this map on a HIT and raises a re-verification candidate when a
+    -- declared-neutral fact has in fact changed, which is what makes the
+    -- narrow key auditable instead of merely convenient.
+    runtime_observed TEXT NOT NULL,
+    invoked_at     REAL NOT NULL
+) STRICT""",
+    """CREATE INDEX producer_invocation_contract ON producer_invocation(contract_name)""",
+    """CREATE TABLE producer_input (
+    invocation_id      INTEGER NOT NULL REFERENCES producer_invocation(id) ON DELETE RESTRICT,
+    ordinal            INTEGER NOT NULL,
+    -- Which argument slot this input fills, in the producer's own words.
+    -- No CHECK: the slots are fixed PER CONTRACT (a face detector takes one
+    -- image) and open ACROSS them, so no single vocabulary can name them and a
+    -- CHECK would have to be edited for every new producer -- which is the
+    -- allowlist this whole class exists to remove.
+    slot               TEXT NOT NULL,
+    -- 'content': a leaf, identified by the digest of its bytes.
+    -- 'result':  an upstream producer result, identified by ITS identity.
+    kind               TEXT NOT NULL CHECK (kind IN ('content','result')),
+    content_sha256     TEXT CHECK (content_sha256 IS NULL OR length(content_sha256) = 64),
+    upstream_result_id INTEGER REFERENCES producer_result(id) ON DELETE RESTRICT,
+    PRIMARY KEY (invocation_id, ordinal),
+    -- Exactly one of the two, matching `kind`. A leaf with an upstream pointer
+    -- or a derived input with no parent is a preimage that cannot be recomputed.
+    CHECK ((kind = 'content' AND content_sha256 IS NOT NULL AND upstream_result_id IS NULL)
+        OR (kind = 'result'  AND upstream_result_id IS NOT NULL AND content_sha256 IS NULL))
+) STRICT""",
+    """CREATE INDEX producer_input_upstream ON producer_input(upstream_result_id)""",
+    """CREATE TABLE producer_result (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    -- One result per invocation. A second answer under the same identity is a
+    -- CONTRADICTION, recorded as one; it is never a second row here.
+    invocation_id  INTEGER NOT NULL UNIQUE REFERENCES producer_invocation(id) ON DELETE RESTRICT,
+    codec_version  TEXT NOT NULL,
+    envelope       BLOB NOT NULL,
+    envelope_sha256 TEXT NOT NULL CHECK (length(envelope_sha256) = 64),
+    byte_len       INTEGER NOT NULL CHECK (byte_len > 0),
+    captured_at    REAL NOT NULL
+) STRICT""",
+    """CREATE TRIGGER producer_result_is_immutable BEFORE UPDATE ON producer_result
+BEGIN
+  SELECT RAISE(ABORT,'producer_result rows are immutable: a different answer is a contradiction, not an edit');
+END""",
+    """CREATE TRIGGER producer_result_is_permanent BEFORE DELETE ON producer_result
+BEGIN
+  SELECT RAISE(ABORT,'producer_result rows are not deletable: re-deriving is free, re-running the producer is not');
+END""",
+    """CREATE TABLE producer_determinism (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    contract_name TEXT NOT NULL,
+    kind          TEXT NOT NULL CHECK (kind IN ('bitwise','approx')),
+    -- NULL exactly when bitwise: an approx class with no tolerance is a
+    -- tolerance nobody declared, which is the defaulting this table exists to
+    -- prevent.
+    rtol          REAL, atol REAL,
+    declared_at   REAL NOT NULL,
+    CHECK ((kind = 'bitwise' AND rtol IS NULL AND atol IS NULL)
+        OR (kind = 'approx'  AND rtol IS NOT NULL AND atol IS NOT NULL))
+) STRICT""",
+    """CREATE INDEX producer_determinism_contract ON producer_determinism(contract_name, declared_at)""",
+    """CREATE TRIGGER producer_determinism_is_immutable BEFORE UPDATE ON producer_determinism
+BEGIN
+  SELECT RAISE(ABORT,'a changed tolerance is a new declaration, not an edit');
+END""",
+    """CREATE TABLE producer_contradiction (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    identity        TEXT NOT NULL CHECK (length(identity) = 64),
+    held_result_id  INTEGER NOT NULL REFERENCES producer_result(id) ON DELETE RESTRICT,
+    offered_sha256  TEXT NOT NULL CHECK (length(offered_sha256) = 64),
+    offered_envelope BLOB NOT NULL,
+    -- The declaration in force when this was RAISED. A judgment recorded under
+    -- a later declaration is a re-blessing, which is what makes it detectable.
+    determinism_id  INTEGER NOT NULL REFERENCES producer_determinism(id) ON DELETE RESTRICT,
+    observed_at     REAL NOT NULL,
+    UNIQUE (identity, offered_sha256)
+) STRICT""",
+    """CREATE INDEX producer_contradiction_held ON producer_contradiction(held_result_id)""",
+    """CREATE INDEX producer_contradiction_declared ON producer_contradiction(determinism_id)""",
+    """CREATE TRIGGER producer_contradiction_is_immutable BEFORE UPDATE ON producer_contradiction
+BEGIN
+  SELECT RAISE(ABORT,'a contradiction is evidence: re-judge it, never edit it');
+END""",
+    """CREATE TRIGGER producer_contradiction_is_permanent BEFORE DELETE ON producer_contradiction
+BEGIN
+  SELECT RAISE(ABORT,'a contradiction is evidence: re-judge it, never delete it');
+END""",
+    """CREATE TABLE producer_contradiction_judgment (
+    contradiction_id INTEGER NOT NULL REFERENCES producer_contradiction(id) ON DELETE RESTRICT,
+    determinism_id   INTEGER NOT NULL REFERENCES producer_determinism(id) ON DELETE RESTRICT,
+    verdict          TEXT NOT NULL CHECK (verdict IN ('stands','within-tolerance')),
+    judged_at        REAL NOT NULL,
+    PRIMARY KEY (contradiction_id, determinism_id)
+) STRICT""",
+    """CREATE TRIGGER producer_contradiction_judgment_is_immutable
+BEFORE UPDATE ON producer_contradiction_judgment
+BEGIN
+  SELECT RAISE(ABORT,'a judgment is a recorded verdict: add another, never edit this one');
+END""",
+    """CREATE TRIGGER producer_contradiction_judgment_is_permanent
+BEFORE DELETE ON producer_contradiction_judgment
+BEGIN
+  SELECT RAISE(ABORT,'a judgment is a recorded verdict: it cannot be unmade');
+END""",
+    """CREATE TABLE producer_contradiction_waiver (
+    contradiction_id INTEGER NOT NULL REFERENCES producer_contradiction(id) ON DELETE RESTRICT,
+    determinism_id   INTEGER NOT NULL REFERENCES producer_determinism(id) ON DELETE RESTRICT,
+    waived_by        TEXT NOT NULL CHECK (length(trim(waived_by)) > 0),
+    reason           TEXT NOT NULL CHECK (length(trim(reason)) > 0),
+    waived_at        REAL NOT NULL,
+    PRIMARY KEY (contradiction_id, determinism_id)
+) STRICT""",
+    """CREATE TRIGGER producer_contradiction_waiver_is_immutable
+BEFORE UPDATE ON producer_contradiction_waiver
+BEGIN
+  SELECT RAISE(ABORT,'a waiver is a signed act: add a new one, never edit it');
+END""",
+    """CREATE TRIGGER producer_contradiction_waiver_is_permanent
+BEFORE DELETE ON producer_contradiction_waiver
+BEGIN
+  SELECT RAISE(ABORT,'a waiver is a signed act: it cannot be unsigned');
+END""",
+    """CREATE TABLE producer_variance (
+    result_id      INTEGER NOT NULL REFERENCES producer_result(id) ON DELETE RESTRICT,
+    observed_at    REAL NOT NULL,
+    population     TEXT NOT NULL CHECK (population IN ('same-runtime','changed-runtime')),
+    max_abs        REAL NOT NULL CHECK (max_abs >= 0),
+    max_rel        REAL NOT NULL CHECK (max_rel >= 0),
+    determinism_id INTEGER NOT NULL REFERENCES producer_determinism(id) ON DELETE RESTRICT,
+    PRIMARY KEY (result_id, observed_at)
+) STRICT""",
+    """CREATE INDEX producer_variance_pop ON producer_variance(population, result_id)""",
+    """CREATE INDEX producer_variance_declared ON producer_variance(determinism_id)""",
+    """CREATE TABLE producer_reverify_candidate (
+    result_id  INTEGER NOT NULL REFERENCES producer_result(id) ON DELETE RESTRICT,
+    field      TEXT NOT NULL,
+    stored     TEXT NOT NULL,
+    observed   TEXT NOT NULL,
+    first_seen REAL NOT NULL,
+    PRIMARY KEY (result_id, field)
+) STRICT""",
+)
+
+
+#: The ten tables v48 adds. Their currency triggers are GENERATED, the way v31
+#: generated the originals: thirty near-identical lines invite one typo, and
+#: the table that stopped invalidating cached answers would not say so.
+_V48_TABLES = (
+    "producer_contradiction",
+    "producer_contradiction_judgment",
+    "producer_contradiction_waiver",
+    "producer_determinism",
+    "producer_input",
+    "producer_invocation",
+    "producer_result",
+    "producer_reverify_candidate",
+    "producer_variance",
+    "table_class",
+)
+
+
+@step(47)
+def _a_producers_output_gets_its_own_class(conn: sqlite3.Connection) -> None:
+    """v47 -> v48: the canonical class -- what a producer actually emitted.
+
+    Until now the producer's complete record lived in one nullable column on a
+    projection table (`derived_face_instance.native`), which gave it the
+    projection's lifetime. `db/derived.py drop_all` sweeps `derived\\_%` and
+    DELETEs each match, so the one recovery operation this application offers
+    destroyed the only copy of an answer that costs a full re-read of the
+    library to recompute -- and, once the originals are gone, cannot be
+    recomputed at all. A projection is disposable by definition. Producer
+    output is not.
+
+    So canonical rows get their own tables outside that namespace, with
+    immutability and permanence triggers, and `table_class` DECLARES which
+    tables hold canonical data: drop_all asserts against the declaration rather
+    than against a name prefix, so renaming one into `derived_` fails the run
+    instead of quietly un-protecting it.
+
+    Purely additive. No backfill is possible and none is needed: an identity
+    cannot be computed for an existing `native` blob, because the weight
+    digests, adapter revision, configuration and runtime facts in force when it
+    was written were never recorded. Synthesising one would mint a key claiming
+    a completeness it does not have, and the first cache hit against it would be
+    exactly the lie this class exists to prevent. Existing rows keep their column
+    until the capture door lands; new work goes through the store.
+    """
+    for statement in _V48_OBJECTS:
+        conn.execute(statement)
+    for name in _V48_TABLES:
+        for verb, short in (("INSERT", "ins"), ("UPDATE", "upd"), ("DELETE", "del")):
+            conn.execute(
+                f"CREATE TRIGGER answer_moved_{name}_{short} AFTER {verb} ON {name}"
+                f" BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END"
+            )
+    for name, held in (
+        ("producer_invocation", "canonical"),
+        ("producer_input", "canonical"),
+        ("producer_result", "canonical"),
+        ("producer_determinism", "canonical"),
+        ("producer_contradiction", "canonical"),
+        ("producer_contradiction_judgment", "canonical"),
+        ("producer_contradiction_waiver", "canonical"),
+        ("producer_variance", "canonical"),
+        ("producer_reverify_candidate", "projection"),
+        ("table_class", "authored"),
+    ):
+        conn.execute("INSERT INTO table_class(table_name, class, declared_at) VALUES(?, ?, 0)", (name, held))

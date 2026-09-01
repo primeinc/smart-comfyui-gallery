@@ -55,9 +55,41 @@ _NOT_A_REFERENCE = {
     ("job_item", "item_id"),
 }
 
+
 # Guards that fire on INSERT and deliberately not on UPDATE. Each needs a
 # reason, because the default reading of an INSERT-only rule is that somebody
 # forgot the other half.
+def _guards_an_update_bypasses(conn) -> list[str]:
+    """Guards a plain UPDATE walks past, as `table: message`.
+
+    Extracted so the gate and its negative control run the SAME code: a
+    control that re-implements the classification proves the control, not
+    the rule.
+    """
+    guards: dict[tuple[str, str], set[str]] = {}
+    for name, sql in conn.execute(
+        "SELECT name, sql FROM sqlite_master WHERE type='trigger' AND sql LIKE '%RAISE(ABORT%'"
+    ):
+        match = re.search(r"(?:BEFORE|AFTER)\s+(\w+)[^;]*?\sON\s+(\w+)", sql, re.DOTALL)
+        if not match:
+            continue
+        event, table = match.group(1).upper(), match.group(2)
+        message = re.search(r"RAISE\(ABORT,\s*'([^']+)'", sql)
+        guards.setdefault((table, message.group(1) if message else name), set()).add(event)
+    covered = {table for (table, _), events in guards.items() if "UPDATE" in events}
+    found = []
+    for (table, message), events in sorted(guards.items()):
+        if "UPDATE" in events or f"{table}: {message}" in _INSERT_ONLY_ON_PURPOSE:
+            continue
+        # An INSERT-firing guard is never excused by a sibling: the sibling
+        # enforces a different rule, and this one is still one statement from
+        # useless. Only a pure DELETE half rides on its table's update cover.
+        if "INSERT" not in events and table in covered:
+            continue
+        found.append(f"{table}: {message}")
+    return found
+
+
 _INSERT_ONLY_ON_PURPOSE = {
     # FK cascade actions DO fire UPDATE triggers (verified). Guarding this on
     # UPDATE would abort the ON DELETE SET NULL that detaches a judged target,
@@ -1605,26 +1637,51 @@ def test_a_guard_that_only_fires_on_insert_is_declared_as_such(db):
     schema: FK cascade actions DO fire UPDATE triggers, so guarding it on
     UPDATE would abort the ON DELETE SET NULL that detaches a judged target,
     and losing the human judgement is worse than holding a nulled pointer.
-    """
-    insert_only = []
-    guards = {}
-    for name, sql in db.execute(
-        "SELECT name, sql FROM sqlite_master WHERE type='trigger' AND sql LIKE '%RAISE(ABORT%'"
-    ):
-        match = re.search(r"(?:BEFORE|AFTER)\s+(\w+)[^;]*?\sON\s+(\w+)", sql, re.DOTALL)
-        if not match:
-            continue
-        event, table = match.group(1).upper(), match.group(2)
-        message = re.search(r"RAISE\(ABORT,\s*'([^']+)'", sql)
-        guards.setdefault((table, message.group(1) if message else name), set()).add(event)
-    for (table, message), events in sorted(guards.items()):
-        if "UPDATE" not in events and f"{table}: {message}" not in _INSERT_ONLY_ON_PURPOSE:
-            insert_only.append(f"{table}: {message}")
 
-    assert insert_only == [], (
-        f"these rules are bypassed by an UPDATE: {insert_only}. Add the UPDATE "
+    Guards are keyed by MESSAGE, so a rule written as two halves under two
+    messages -- an immutability guard on UPDATE and a permanence guard on
+    DELETE, which is how the canonical class protects producer output -- read
+    as two incomplete rules. A DELETE-only half is covered when its table
+    carries an UPDATE guard of its own; a DELETE-only guard on a table with NO
+    update cover is still flagged, because that one genuinely is bypassable --
+    by gutting the row instead of removing it.
+    """
+    assert _guards_an_update_bypasses(db) == [], (
+        f"these rules are bypassed by an UPDATE: {_guards_an_update_bypasses(db)}. Add the UPDATE "
         f"counterpart, or add the guard to _INSERT_ONLY_ON_PURPOSE with the reason."
     )
+
+
+def test_the_update_bypass_rule_can_actually_fail(db):
+    """Control for the rule above, which was widened to let a permanence
+    guard ride on its table's immutability guard. A widening nobody attacks
+    is how a gate stops being able to fail, so both halves are held:
+
+      - a lone DELETE guard, no update cover -> still flagged (the real
+        bypass: gut the row instead of removing it);
+      - an INSERT guard on a table that HAS update cover -> still flagged,
+        because the sibling enforces a different rule;
+      - the pair -> not flagged.
+    """
+    db.execute("CREATE TABLE probe_lonely (id INTEGER PRIMARY KEY)")
+    db.execute(
+        "CREATE TRIGGER probe_lonely_del BEFORE DELETE ON probe_lonely"
+        " BEGIN SELECT RAISE(ABORT,'lonely delete guard'); END"
+    )
+    db.execute("CREATE TABLE probe_pair (id INTEGER PRIMARY KEY)")
+    db.execute(
+        "CREATE TRIGGER probe_pair_upd BEFORE UPDATE ON probe_pair BEGIN SELECT RAISE(ABORT,'pair immutable'); END"
+    )
+    db.execute(
+        "CREATE TRIGGER probe_pair_del BEFORE DELETE ON probe_pair BEGIN SELECT RAISE(ABORT,'pair permanent'); END"
+    )
+    db.execute(
+        "CREATE TRIGGER probe_pair_ins BEFORE INSERT ON probe_pair BEGIN SELECT RAISE(ABORT,'pair insert rule'); END"
+    )
+    found = _guards_an_update_bypasses(db)
+    assert "probe_lonely: lonely delete guard" in found, "a DELETE guard with no update cover must still be flagged"
+    assert "probe_pair: pair insert rule" in found, "an INSERT guard is not excused by a sibling's update cover"
+    assert "probe_pair: pair permanent" not in found, "a permanence half is covered by its immutability half"
 
 
 def test_a_subtype_row_cannot_be_repointed_at_another_entity(db):

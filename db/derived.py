@@ -66,6 +66,14 @@ def drop_all(conn) -> list[str]:
     claim by a region and, on video, by a sampled moment. Deleting either
     leaves the assertion without its discriminant and the FK nulls the
     pointer.
+
+    The sweep is a name pattern, and a name pattern is not a property. Rename
+    `producer_result` to `derived_producer_result` and this would delete the
+    only copy of an answer that costs a full re-read of the library to
+    recompute -- and, once the originals are gone, cannot be recomputed at all.
+    So canonical tables are DECLARED in `table_class` and asserted against
+    here: one caught in this sweep fails the run before anything is deleted,
+    rather than being quietly un-protected by its new spelling.
     """
     names = [
         row[0]
@@ -73,6 +81,17 @@ def drop_all(conn) -> list[str]:
             "SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'derived\\_%' ESCAPE '\\' ORDER BY name"
         )
     ]
+    # Against the DECLARATION, never against the name; the docstring says what
+    # a rename would otherwise delete.
+    canonical = {row[0] for row in conn.execute("SELECT table_name FROM table_class WHERE class = 'canonical'")}
+    caught = sorted(canonical.intersection(names))
+    if caught:
+        raise ValueError(
+            f"drop_all would delete canonical producer output: {', '.join(caught)}. "
+            f"These tables are declared canonical in `table_class` and hold the only copy of "
+            f"what a producer emitted. Rename them out of the derived_ namespace, or correct "
+            f"the declaration if they really are projections."
+        )
     for name in reversed(names):
         if name == "derived_media_sample":
             # A sample an assertion points at is the MOMENT the human's claim

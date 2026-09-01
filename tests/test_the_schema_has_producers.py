@@ -326,6 +326,63 @@ def test_dropping_every_derived_table_leaves_the_library_standing(db, a_library)
     assert db.execute("SELECT count(*) FROM derived_file_person WHERE person_id = ?", (person,)).fetchone()[0] == 1
 
 
+def _a_canonical_result(conn) -> int:
+    """One producer_invocation + producer_result pair, minimally filled."""
+    conn.execute(
+        "INSERT INTO producer_invocation(identity, contract_name, preimage_json, runtime_observed, invoked_at)"
+        " VALUES(?, 'insightface/antelopev2', '{}', '{}', 0)",
+        ("a" * 64,),
+    )
+    invocation = conn.execute("SELECT id FROM producer_invocation").fetchone()[0]
+    conn.execute(
+        "INSERT INTO producer_result(invocation_id, codec_version, envelope, envelope_sha256, byte_len, captured_at)"
+        " VALUES(?, 'sgface2', ?, ?, 3, 0)",
+        (invocation, b"abc", "b" * 64),
+    )
+    return invocation
+
+
+def test_dropping_the_derived_namespace_leaves_the_canonical_class_alone(db, a_library):
+    """The failure this class exists for: `drop_all` is offered as recovery,
+    and while a producer's complete record lived in a `derived_` column it
+    deleted the only copy of an answer that costs a full re-read of the
+    library to recompute -- recoverable only while the originals are still on
+    disk, and not at all after."""
+    _a_canonical_result(db)
+    derived.drop_all(db)
+    assert db.execute("SELECT count(*) FROM producer_result").fetchone()[0] == 1
+    assert db.execute("SELECT count(*) FROM producer_invocation").fetchone()[0] == 1
+
+
+def test_drop_all_refuses_when_a_canonical_table_is_renamed_into_the_sweep(db, a_library):
+    """The negative control that proves the DECLARATION is doing the work and
+    not the spelling.
+
+    Being outside `derived_%` dodges the sweep, but a prefix is a naming
+    convention enforced by a LIKE pattern over runtime sqlite_master: rename
+    the table and the protection silently evaporates. So the class is declared
+    and asserted, and the rename fails the run instead."""
+    _a_canonical_result(db)
+    db.execute("ALTER TABLE producer_result RENAME TO derived_producer_result")
+    db.execute("UPDATE table_class SET table_name = 'derived_producer_result' WHERE table_name = 'producer_result'")
+
+    with pytest.raises(ValueError, match="canonical producer output"):
+        derived.drop_all(db)
+    # and it refused BEFORE deleting anything, which is the half that matters
+    assert db.execute("SELECT count(*) FROM derived_producer_result").fetchone()[0] == 1
+
+
+def test_every_declared_canonical_table_exists(db):
+    """The rename attack closed from the other side.
+
+    A declaration naming a table that is not there is a protection pointing at
+    nothing -- which is exactly the state a rename leaves behind, and it would
+    otherwise be invisible until the sweep that needed it."""
+    declared = {row[0] for row in db.execute("SELECT table_name FROM table_class")}
+    present = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+    assert declared - present == set(), "table_class declares tables that do not exist"
+
+
 def test_a_video_naming_survives_the_rebuild(db, a_library):
     """The video form of the rebuild contract. A face on a video belongs
     to a MOMENT (`sample_id`), and the assertion names that moment. If the

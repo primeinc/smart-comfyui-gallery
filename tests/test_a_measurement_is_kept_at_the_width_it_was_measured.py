@@ -490,6 +490,20 @@ def test_the_v46_step_leaves_a_row_with_no_keypoints_alone(db, tmp_path):
 
 
 def test_the_version_this_build_writes_has_a_step_off_the_one_before_it():
-    """v47 is reachable from v46. A bump with no step bricks every database."""
-    assert connect.USER_VERSION == 47
-    assert 46 in migrate.STEPS, "v46 has no step off it; a v46 database cannot be opened by this build"
+    """Whatever version this build writes, the one before it must have a step.
+    A bump with no step bricks every database sitting at the older version.
+
+    Written against USER_VERSION rather than against a literal. A pinned number
+    tests the number, not the rule: it goes red on every bump including the
+    correct ones, which teaches a reader to edit the line rather than to read
+    it -- and the bump itself is already covered by the drift check and the
+    migration suite.
+    """
+    before = connect.USER_VERSION - 1
+    assert before in migrate.STEPS, f"v{before} has no step off it; a v{before} database cannot be opened by this build"
+    # The half that proves the membership test discriminates: there is no step
+    # off the version this build WRITES, because nothing has moved past it yet.
+    # Without this, `in STEPS` passing would say nothing.
+    assert connect.USER_VERSION not in migrate.STEPS, (
+        f"a step claims to move a database off v{connect.USER_VERSION}, the version this build writes"
+    )

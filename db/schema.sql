@@ -2337,6 +2337,337 @@ BEGIN
   SELECT RAISE(ABORT,'a story render is immutable; render again under a new policy');
 END;
 
+-- ======================= the canonical class ==============================
+--
+-- GOVERNING INVARIANT: if it is output by any producer, store it as whatever
+-- it actually is, without semantic narrowing, and prove that using the stored
+-- result is the same as doing it live.
+--
+-- These tables are deliberately NOT `derived_`-prefixed, and the prefix is the
+-- smaller half of the reason. `db/derived.py drop_all` sweeps
+-- `name LIKE 'derived\_%'` and DELETEs every match. Before this class existed,
+-- a producer's complete record lived in `derived_face_instance.native` -- so
+-- the one recovery operation the application offers destroyed the only copy of
+-- an answer that costs a full re-read of the library to recompute, and only
+-- while the originals are still on disk. A projection is disposable by
+-- definition. A producer's output is not. Different lifetimes, different
+-- tables.
+--
+-- The prefix alone would be a naming convention enforced by a LIKE pattern
+-- over runtime sqlite_master: rename one of these to `derived_producer_result`
+-- and it is silently swept. So `table_class` DECLARES the property and
+-- drop_all asserts against the declaration, which turns a rename into a failed
+-- run instead of a deleted last copy.
+CREATE TABLE table_class (
+    table_name  TEXT PRIMARY KEY,
+    -- canonical  = holds producer output; recomputing it costs a producer run
+    -- projection = derived from a canonical row; rebuildable at zero producer cost
+    -- authored   = a human said it; never recomputable at all
+    class       TEXT NOT NULL CHECK (class IN ('canonical','projection','authored')),
+    declared_at REAL NOT NULL
+) STRICT;
+
+-- One producer call over one ordered input tuple. The unit of capture: a
+-- result exists at this granularity and no finer.
+--
+-- Capturing per OUTPUT ELEMENT instead (the shape `vision/faces.py` had, one
+-- freeze per detected face) loses three things that are not recoverable later:
+-- the ordering of the emitted set, the ladder rung that answered, and the
+-- empty answer -- "this producer looked and emitted nothing" is a measurement,
+-- and a per-element capture cannot record it because there is no element to
+-- hang it on.
+CREATE TABLE producer_invocation (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    -- The ResultIdentity: sha256 over the ORDERED complete preimage -- the
+    -- non-edge fields in `preimage_json` below plus this invocation's
+    -- `producer_input` rows in ordinal order.
+    --
+    -- Provenance record and cache key are deliberately THE SAME OBJECT. Two of
+    -- them drift, and the drift is invisible until a hit serves bytes that were
+    -- computed from something else. UNIQUE is what makes a resolver hit a
+    -- lookup rather than a search.
+    identity       TEXT NOT NULL UNIQUE CHECK (length(identity) = 64),
+    contract_name  TEXT NOT NULL,
+    -- Canonical JSON of the NON-EDGE preimage fields: contract revision,
+    -- implementation digest, adapter digest, weight file digests, invocation
+    -- configuration, bit-affecting runtime facts, capture codec version.
+    --
+    -- Stored rather than recomputed because re-verifying a stored identity
+    -- must not depend on live state that may no longer exist -- the weights
+    -- may be gone, the provider may have changed, the machine may be another
+    -- one. The input EDGES are not duplicated here; they are
+    -- `producer_input` rows, so every preimage fact has exactly one home and
+    -- no two records of it can disagree.
+    preimage_json  TEXT NOT NULL,
+    -- Runtime facts the contract declared NOT bit-affecting. Recorded, never
+    -- hashed into `identity` -- putting a machine's identity in the cache key
+    -- means moving machines invalidates the library. The resolver compares
+    -- this map on a HIT and raises a re-verification candidate when a
+    -- declared-neutral fact has in fact changed, which is what makes the
+    -- narrow key auditable instead of merely convenient.
+    runtime_observed TEXT NOT NULL,
+    invoked_at     REAL NOT NULL
+) STRICT;
+CREATE INDEX producer_invocation_contract ON producer_invocation(contract_name);
+
+-- One input edge. Ordered, because argument order is identity-bearing: the
+-- same producer over the same two images in the other order is a different
+-- call with a different answer.
+--
+-- `upstream_result_id` is what makes this a DAG rather than a flat key. A face
+-- embedding computed from an aligned crop computed from a detection names the
+-- detection's result, so invalidating the detection invalidates everything
+-- downstream by construction, with no invalidation code to write and none to
+-- forget.
+CREATE TABLE producer_input (
+    invocation_id      INTEGER NOT NULL REFERENCES producer_invocation(id) ON DELETE RESTRICT,
+    ordinal            INTEGER NOT NULL,
+    -- Which argument slot this input fills, in the producer's own words.
+    -- No CHECK: the slots are fixed PER CONTRACT (a face detector takes one
+    -- image) and open ACROSS them, so no single vocabulary can name them and a
+    -- CHECK would have to be edited for every new producer -- which is the
+    -- allowlist this whole class exists to remove.
+    slot               TEXT NOT NULL,
+    -- 'content': a leaf, identified by the digest of its bytes.
+    -- 'result':  an upstream producer result, identified by ITS identity.
+    kind               TEXT NOT NULL CHECK (kind IN ('content','result')),
+    content_sha256     TEXT CHECK (content_sha256 IS NULL OR length(content_sha256) = 64),
+    upstream_result_id INTEGER REFERENCES producer_result(id) ON DELETE RESTRICT,
+    PRIMARY KEY (invocation_id, ordinal),
+    -- Exactly one of the two, matching `kind`. A leaf with an upstream pointer
+    -- or a derived input with no parent is a preimage that cannot be recomputed.
+    CHECK ((kind = 'content' AND content_sha256 IS NOT NULL AND upstream_result_id IS NULL)
+        OR (kind = 'result'  AND upstream_result_id IS NOT NULL AND content_sha256 IS NULL))
+) STRICT;
+CREATE INDEX producer_input_upstream ON producer_input(upstream_result_id);
+
+-- What the producer emitted, whole, as one `vision/facestore.py` envelope.
+--
+-- NOT NULL: the envelope is the point of the row. A nullable canonical column
+-- is what `derived_face_instance.native` was, and a nullable canonical is an
+-- optional one.
+CREATE TABLE producer_result (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    -- One result per invocation. A second answer under the same identity is a
+    -- CONTRADICTION, recorded as one; it is never a second row here.
+    invocation_id  INTEGER NOT NULL UNIQUE REFERENCES producer_invocation(id) ON DELETE RESTRICT,
+    codec_version  TEXT NOT NULL,
+    envelope       BLOB NOT NULL,
+    envelope_sha256 TEXT NOT NULL CHECK (length(envelope_sha256) = 64),
+    byte_len       INTEGER NOT NULL CHECK (byte_len > 0),
+    captured_at    REAL NOT NULL
+) STRICT;
+
+-- Immutable and permanent, for the reason `similarity_space` is immutable: a
+-- changed meaning is a new thing, not an edit. Here the stakes are higher --
+-- these bytes cost a producer run to recreate and, once the source files are
+-- gone, cannot be recreated at all.
+CREATE TRIGGER producer_result_is_immutable BEFORE UPDATE ON producer_result
+BEGIN
+  SELECT RAISE(ABORT,'producer_result rows are immutable: a different answer is a contradiction, not an edit');
+END;
+CREATE TRIGGER producer_result_is_permanent BEFORE DELETE ON producer_result
+BEGIN
+  SELECT RAISE(ABORT,'producer_result rows are not deletable: re-deriving is free, re-running the producer is not');
+END;
+
+-- How a contract's output is compared with itself on re-verification.
+--
+-- Two DIFFERENT claims live here and only one of them is bit-exact. FIDELITY
+-- -- the stored bytes are exactly what the producer emitted, and `thaw`
+-- returns them unchanged -- is bit-exact forever and is not this table's
+-- business. REPRODUCIBILITY -- recomputing under the same identity yields the
+-- same bytes -- is where GPU reduction order, thread count and batch width
+-- live, and a stored embedding differing from a fresh one by 2.2e-03 is not
+-- the store introducing error: two LIVE runs at different batch widths differ
+-- by the same amount.
+--
+-- Append-only. A loosened tolerance is a NEW row, never an UPDATE, so
+-- "was this contradiction re-blessed by a later loosening?" is a join rather
+-- than an absence. Deliberately NOT part of `identity`: a tolerance changes
+-- neither what the producer computes nor what a hit returns, so hashing it
+-- into the key would force a full library recompute over a judgment rule that
+-- moved no bytes.
+CREATE TABLE producer_determinism (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    contract_name TEXT NOT NULL,
+    kind          TEXT NOT NULL CHECK (kind IN ('bitwise','approx')),
+    -- NULL exactly when bitwise: an approx class with no tolerance is a
+    -- tolerance nobody declared, which is the defaulting this table exists to
+    -- prevent.
+    rtol          REAL, atol REAL,
+    declared_at   REAL NOT NULL,
+    CHECK ((kind = 'bitwise' AND rtol IS NULL AND atol IS NULL)
+        OR (kind = 'approx'  AND rtol IS NOT NULL AND atol IS NOT NULL))
+) STRICT;
+CREATE INDEX producer_determinism_contract ON producer_determinism(contract_name, declared_at);
+CREATE TRIGGER producer_determinism_is_immutable BEFORE UPDATE ON producer_determinism
+BEGIN
+  SELECT RAISE(ABORT,'a changed tolerance is a new declaration, not an edit');
+END;
+
+-- Same identity, different bytes. The disagreement IS the evidence, so the
+-- offered payload is kept rather than discarded.
+--
+-- BOTH triggers, and the pair is the point. An earlier draft gave
+-- `producer_result` immutability and permanence and gave this table neither,
+-- which inverts the protection: nobody needs to UPDATE a tolerance to clean
+-- the board, they DELETE these rows, and the re-blessing join then truthfully
+-- reports "nothing was re-blessed" because nothing remains. The audit trail
+-- survives and the evidence it indexes does not.
+CREATE TABLE producer_contradiction (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    identity        TEXT NOT NULL CHECK (length(identity) = 64),
+    held_result_id  INTEGER NOT NULL REFERENCES producer_result(id) ON DELETE RESTRICT,
+    offered_sha256  TEXT NOT NULL CHECK (length(offered_sha256) = 64),
+    offered_envelope BLOB NOT NULL,
+    -- The declaration in force when this was RAISED. A judgment recorded under
+    -- a later declaration is a re-blessing, which is what makes it detectable.
+    determinism_id  INTEGER NOT NULL REFERENCES producer_determinism(id) ON DELETE RESTRICT,
+    observed_at     REAL NOT NULL,
+    UNIQUE (identity, offered_sha256)
+) STRICT;
+CREATE INDEX producer_contradiction_held ON producer_contradiction(held_result_id);
+CREATE INDEX producer_contradiction_declared ON producer_contradiction(determinism_id);
+CREATE TRIGGER producer_contradiction_is_immutable BEFORE UPDATE ON producer_contradiction
+BEGIN
+  SELECT RAISE(ABORT,'a contradiction is evidence: re-judge it, never edit it');
+END;
+CREATE TRIGGER producer_contradiction_is_permanent BEFORE DELETE ON producer_contradiction
+BEGIN
+  SELECT RAISE(ABORT,'a contradiction is evidence: re-judge it, never delete it');
+END;
+
+-- Re-judging a contradiction under a declaration. Append-only: a verdict is
+-- added, never substituted for the contradiction.
+--
+-- This exists so that DELETE is not the only route. A tolerance gets loosened
+-- because somebody wants a backlog cleared; if re-judging is not a SUPPORTED
+-- operation people reach for the forbidden one regardless of intent, and a
+-- guarantee that depends on nobody wanting the forbidden thing is not a
+-- guarantee.
+CREATE TABLE producer_contradiction_judgment (
+    contradiction_id INTEGER NOT NULL REFERENCES producer_contradiction(id) ON DELETE RESTRICT,
+    determinism_id   INTEGER NOT NULL REFERENCES producer_determinism(id) ON DELETE RESTRICT,
+    verdict          TEXT NOT NULL CHECK (verdict IN ('stands','within-tolerance')),
+    judged_at        REAL NOT NULL,
+    PRIMARY KEY (contradiction_id, determinism_id)
+) STRICT;
+CREATE TRIGGER producer_contradiction_judgment_is_immutable
+BEFORE UPDATE ON producer_contradiction_judgment
+BEGIN
+  SELECT RAISE(ABORT,'a judgment is a recorded verdict: add another, never edit this one');
+END;
+CREATE TRIGGER producer_contradiction_judgment_is_permanent
+BEFORE DELETE ON producer_contradiction_judgment
+BEGIN
+  SELECT RAISE(ABORT,'a judgment is a recorded verdict: it cannot be unmade');
+END;
+
+-- A human accepting one contradiction under one declaration.
+--
+-- The load-bearing property is the COMPOSITE KEY, not the triggers: a waiver
+-- names one existing contradiction under one existing declaration, so it
+-- CANNOT pre-authorize. A later loosening mints a new `determinism_id` that
+-- this waiver does not cover and which therefore needs its own human act. A
+-- blanket waiver is unrepresentable, which is the difference between a
+-- signature and a mute button.
+--
+-- Bulk waiving remains possible and that is correct: after a deliberate
+-- loosening, a mass re-blessing is the legitimate operation and should cost
+-- attribution rather than be impossible. It is N signed rows, not a flag, and
+-- gate reporting distinguishes waivers accumulated individually from N rows
+-- sharing one author, timestamp and reason -- "0 unwaived" must not hide
+-- "47 waived in one act".
+CREATE TABLE producer_contradiction_waiver (
+    contradiction_id INTEGER NOT NULL REFERENCES producer_contradiction(id) ON DELETE RESTRICT,
+    determinism_id   INTEGER NOT NULL REFERENCES producer_determinism(id) ON DELETE RESTRICT,
+    waived_by        TEXT NOT NULL CHECK (length(trim(waived_by)) > 0),
+    reason           TEXT NOT NULL CHECK (length(trim(reason)) > 0),
+    waived_at        REAL NOT NULL,
+    PRIMARY KEY (contradiction_id, determinism_id)
+) STRICT;
+CREATE TRIGGER producer_contradiction_waiver_is_immutable
+BEFORE UPDATE ON producer_contradiction_waiver
+BEGIN
+  SELECT RAISE(ABORT,'a waiver is a signed act: add a new one, never edit it');
+END;
+CREATE TRIGGER producer_contradiction_waiver_is_permanent
+BEFORE DELETE ON producer_contradiction_waiver
+BEGIN
+  SELECT RAISE(ABORT,'a waiver is a signed act: it cannot be unsigned');
+END;
+
+-- Observed divergence on re-verification, KEPT EVEN WHEN IN TOLERANCE.
+--
+-- Keeping the in-tolerance observations is the whole point. A contract
+-- declaring rtol=1.0 on day one passes a two-sided attack trivially -- inject
+-- outside 1.0 and get a contradiction, inject inside and get none -- and
+-- silences everything forever. That attack tests whether a tolerance is
+-- ENFORCED and never whether it is JUSTIFIED. Only the recorded distribution
+-- can answer the second question.
+--
+-- `population` exists because the resolver targets re-verification at results
+-- whose declared-neutral observations CHANGED, which is exactly where variance
+-- is largest. Justifying a tolerance against that distribution would let the
+-- mechanism built to catch under-declaration inflate the baseline that excuses
+-- it. So the justification check reads ONLY the same-runtime floor -- and for
+-- a contract declared `bitwise`, a nonzero same-runtime variance is not a
+-- tolerance input at all but a larger separate finding, that the producer is
+-- nondeterministic under fixed inputs.
+CREATE TABLE producer_variance (
+    result_id      INTEGER NOT NULL REFERENCES producer_result(id) ON DELETE RESTRICT,
+    observed_at    REAL NOT NULL,
+    population     TEXT NOT NULL CHECK (population IN ('same-runtime','changed-runtime')),
+    max_abs        REAL NOT NULL CHECK (max_abs >= 0),
+    max_rel        REAL NOT NULL CHECK (max_rel >= 0),
+    determinism_id INTEGER NOT NULL REFERENCES producer_determinism(id) ON DELETE RESTRICT,
+    PRIMARY KEY (result_id, observed_at)
+) STRICT;
+CREATE INDEX producer_variance_pop ON producer_variance(population, result_id);
+CREATE INDEX producer_variance_declared ON producer_variance(determinism_id);
+
+-- A stored result being served under runtime conditions that differ from the
+-- ones that produced it, in a fact the contract declared neutral.
+--
+-- Raised on the HIT path at the cost of a dict comparison -- no producer runs
+-- -- and it is what makes re-verification affordable: the population that can
+-- expose an under-declaration is not the library, it is this table, so the
+-- re-verification budget is bounded by the number of distinct
+-- (contract, changed-fact) pairs and NOT by library size.
+CREATE TABLE producer_reverify_candidate (
+    result_id  INTEGER NOT NULL REFERENCES producer_result(id) ON DELETE RESTRICT,
+    field      TEXT NOT NULL,
+    stored     TEXT NOT NULL,
+    observed   TEXT NOT NULL,
+    first_seen REAL NOT NULL,
+    PRIMARY KEY (result_id, field)
+) STRICT;
+
+-- The declaration `db/derived.py drop_all` asserts against. A canonical table
+-- appearing in drop_all's sweep is a refused run, not a deleted last copy.
+--
+-- `producer_reverify_candidate` is honestly a projection: it is raised by
+-- comparing observations on the hit path and can be rebuilt at zero producer
+-- cost. Classifying it canonical would be tidier and would be a lie about what
+-- it costs to lose.
+--
+-- The rename attack -- move a canonical table into the derived_ namespace and
+-- its declaration no longer matches anything -- is closed from the other side:
+-- every declared canonical table MUST exist, asserted by the schema tests, so
+-- the rename fails the gate rather than silently un-protecting the rows.
+INSERT INTO table_class(table_name, class, declared_at) VALUES
+    ('producer_invocation',             'canonical',  0),
+    ('producer_input',                  'canonical',  0),
+    ('producer_result',                 'canonical',  0),
+    ('producer_determinism',            'canonical',  0),
+    ('producer_contradiction',          'canonical',  0),
+    ('producer_contradiction_judgment', 'canonical',  0),
+    ('producer_contradiction_waiver',   'canonical',  0),
+    ('producer_variance',               'canonical',  0),
+    ('producer_reverify_candidate',     'projection', 0),
+    ('table_class',                     'authored',   0);
+
 -- The generation of everything an ANSWER can be computed from.
 --
 -- db/resultset.py caches the whole ordered answer and pages it by
@@ -2504,6 +2835,33 @@ CREATE TRIGGER answer_moved_person_assertion_del AFTER DELETE ON person_assertio
 CREATE TRIGGER answer_moved_place_ins AFTER INSERT ON place BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
 CREATE TRIGGER answer_moved_place_upd AFTER UPDATE ON place BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
 CREATE TRIGGER answer_moved_place_del AFTER DELETE ON place BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_producer_contradiction_ins AFTER INSERT ON producer_contradiction BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_producer_contradiction_upd AFTER UPDATE ON producer_contradiction BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_producer_contradiction_del AFTER DELETE ON producer_contradiction BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_producer_contradiction_judgment_ins AFTER INSERT ON producer_contradiction_judgment BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_producer_contradiction_judgment_upd AFTER UPDATE ON producer_contradiction_judgment BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_producer_contradiction_judgment_del AFTER DELETE ON producer_contradiction_judgment BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_producer_contradiction_waiver_ins AFTER INSERT ON producer_contradiction_waiver BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_producer_contradiction_waiver_upd AFTER UPDATE ON producer_contradiction_waiver BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_producer_contradiction_waiver_del AFTER DELETE ON producer_contradiction_waiver BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_producer_determinism_ins AFTER INSERT ON producer_determinism BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_producer_determinism_upd AFTER UPDATE ON producer_determinism BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_producer_determinism_del AFTER DELETE ON producer_determinism BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_producer_input_ins AFTER INSERT ON producer_input BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_producer_input_upd AFTER UPDATE ON producer_input BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_producer_input_del AFTER DELETE ON producer_input BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_producer_invocation_ins AFTER INSERT ON producer_invocation BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_producer_invocation_upd AFTER UPDATE ON producer_invocation BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_producer_invocation_del AFTER DELETE ON producer_invocation BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_producer_result_ins AFTER INSERT ON producer_result BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_producer_result_upd AFTER UPDATE ON producer_result BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_producer_result_del AFTER DELETE ON producer_result BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_producer_reverify_candidate_ins AFTER INSERT ON producer_reverify_candidate BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_producer_reverify_candidate_upd AFTER UPDATE ON producer_reverify_candidate BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_producer_reverify_candidate_del AFTER DELETE ON producer_reverify_candidate BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_producer_variance_ins AFTER INSERT ON producer_variance BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_producer_variance_upd AFTER UPDATE ON producer_variance BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_producer_variance_del AFTER DELETE ON producer_variance BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
 CREATE TRIGGER answer_moved_prompt_ins AFTER INSERT ON prompt BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
 CREATE TRIGGER answer_moved_prompt_upd AFTER UPDATE ON prompt BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
 CREATE TRIGGER answer_moved_prompt_del AFTER DELETE ON prompt BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
@@ -2534,6 +2892,9 @@ CREATE TRIGGER answer_moved_story_render_del AFTER DELETE ON story_render BEGIN 
 CREATE TRIGGER answer_moved_story_snapshot_ins AFTER INSERT ON story_snapshot BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
 CREATE TRIGGER answer_moved_story_snapshot_upd AFTER UPDATE ON story_snapshot BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
 CREATE TRIGGER answer_moved_story_snapshot_del AFTER DELETE ON story_snapshot BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_table_class_ins AFTER INSERT ON table_class BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_table_class_upd AFTER UPDATE ON table_class BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
+CREATE TRIGGER answer_moved_table_class_del AFTER DELETE ON table_class BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
 CREATE TRIGGER answer_moved_tag_ins AFTER INSERT ON tag BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
 CREATE TRIGGER answer_moved_tag_upd AFTER UPDATE ON tag BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
 CREATE TRIGGER answer_moved_tag_del AFTER DELETE ON tag BEGIN UPDATE answer_generation SET value = value + 1 WHERE id = 1; END;
@@ -2546,7 +2907,7 @@ CREATE TRIGGER answer_moved_watched_folder_del AFTER DELETE ON watched_folder BE
 
 
 PRAGMA application_id = 0x53474C59;
-PRAGMA user_version   = 47;
+PRAGMA user_version   = 48;
 
 -- ============ the entity registry must agree with its subtypes ============
 -- The foreign key proves the entity row exists; nothing tied entity.kind to the
