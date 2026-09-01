@@ -56,9 +56,16 @@ provable and R1 being asserted.
       object assertion is a cheap tripwire underneath, NOT the proof — six equal-but-
       distinct cells from one boolean defeat it. [E1/B7; ledger.py:140-145; proof's
       shape-1-inside-the-fix catch]
-- G3  Evidence identity covers db/schema.sql, *.sql, compat.just, justfile, tests/,
-      pyproject.toml, uv.lock, metaparse/, conftest.py, compat/ root, ty/pyrefly configs.
-      Keep identity.py:147's incompleteness self-check. [D3/B17]
+- G3  Evidence identity covers db/schema.sql, *.sql, ALL *.just modules (globbed from
+      the filesystem, never a named list — the list this spec originally carried missed
+      api/bench/corpus/schema/web.just, the enumeration failure inside the spec itself),
+      justfile, pyproject.toml, uv.lock, metaparse/, conftest.py, tests/ (.py + .sql),
+      compat/ root, ty/pyrefly configs. Keep identity.py:147's incompleteness self-check.
+      LANDED 0658a03 with 14 controls separating COVERAGE (declared paths present, whole
+      trees cannot drop silently) from SENSITIVITY (every part moves the digest — a part
+      can be hashed and never fed to digest_of), plus a live filesystem probe and its
+      negative half (writes to generated/ must NOT move the digest). Widening the
+      identity stales all prior evidence — correct, not a regression. [D3/B17]
 - G4  THE EMPTY-POPULATION RULE, three-state conditions everywhere: no condition may
       report held on an empty population; empty is not-applicable; not-applicable is not
       green; every condition declares its non-empty predicate (weights: ≥1 weight row;
