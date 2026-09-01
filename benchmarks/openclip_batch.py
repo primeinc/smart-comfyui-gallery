@@ -33,6 +33,7 @@ Sources come from a run's own database, decoded through the same
 from __future__ import annotations
 
 import argparse
+import hashlib
 import itertools
 import json
 import pathlib
@@ -56,7 +57,65 @@ WORKERS = (1, 2, 4, 8, 16)
 OVERLAP_BATCHES = (32, 64, 128)
 
 
-def corpus(db: pathlib.Path, wanted: int, under: str | None) -> list[tuple[int, pathlib.Path]]:
+def pinned_ids(spec: str) -> list[int]:
+    """File ids from `1,2,3` or from `@path` holding one id per line."""
+    text = pathlib.Path(spec[1:]).read_text(encoding="utf-8") if spec.startswith("@") else spec
+    return [int(one) for one in text.replace("\n", ",").split(",") if one.strip()]
+
+
+def package_versions() -> dict:
+    """The versions that decide the numbers. Recorded beside the measurement so
+    a later run that disagrees can say whether the corpus moved or the stack
+    did -- two causes a bare figure cannot tell apart."""
+    import importlib.metadata
+
+    told: dict[str, str] = {}
+    for package in ("torch", "open_clip_torch", "torchvision", "numpy"):
+        try:
+            told[package] = importlib.metadata.version(package)
+        except importlib.metadata.PackageNotFoundError:
+            told[package] = "absent"
+    try:
+        import torch
+
+        told["cuda"] = str(torch.version.cuda)
+        told["cudnn"] = str(torch.backends.cudnn.version())
+    except (ImportError, AttributeError):
+        told["cuda"] = told["cudnn"] = "unknown"
+    return told
+
+
+def corpus_identity(db: pathlib.Path, files: list[tuple[int, pathlib.Path]], selector: str) -> dict:
+    """WHICH pictures this run measured, as something a later run can check.
+
+    The digest is over `(file_id, content_sha256)` pairs in order, so it moves
+    when the set changes AND when any member's bytes change. Recording a count
+    alone -- which is all this artifact carried before -- cannot tell two runs
+    over different pictures apart, and that is why the 2.2e-03 in
+    vision/semantic/openclip.py could never be reproduced: nothing said what it
+    had been measured over.
+    """
+    from db import connect
+
+    rows: list[tuple[int, str]] = []
+    with connect.connect(db, read_only=True) as conn:
+        for file_id, _path in files:
+            got = conn.execute("SELECT content_sha256 FROM file WHERE id = ?", (file_id,)).fetchone()
+            rows.append((file_id, str(got[0]) if got and got[0] else ""))
+    spelled = "\n".join(f"{one}:{two}" for one, two in rows)
+    return {
+        "selector": selector,
+        "count": len(rows),
+        "file_ids": [one for one, _ in rows],
+        "content_sha256": [two for _, two in rows],
+        "digest": hashlib.sha256(spelled.encode("utf-8")).hexdigest(),
+        "unhashed_members": sum(1 for _, two in rows if not two),
+    }
+
+
+def corpus(
+    db: pathlib.Path, wanted: int, under: str | None, pinned: list[int] | None = None
+) -> list[tuple[int, pathlib.Path]]:
     """`wanted` present pictures, optionally only from roots matching
     `under`.
 
@@ -72,6 +131,17 @@ def corpus(db: pathlib.Path, wanted: int, under: str | None) -> list[tuple[int, 
     from db import connect, detect
 
     found: list[tuple[int, pathlib.Path]] = []
+    if pinned:
+        # A pinned corpus that quietly shrinks is the defect this pinning exists
+        # to close, so a named id whose bytes are gone RAISES rather than
+        # measuring a smaller set under the same digest.
+        with connect.connect(db, read_only=True) as conn:
+            for file_id in pinned:
+                path = pathlib.Path(detect.path_of(conn, file_id))
+                if not path.is_file():
+                    raise SystemExit(f"pinned corpus names file {file_id}, whose bytes are not at {path}")
+                found.append((file_id, path))
+        return found
     with connect.connect(db, read_only=True) as conn:
         sql = (
             "SELECT f.id FROM file f "
@@ -241,6 +311,13 @@ def main() -> None:
     parser.add_argument("--count", type=int, default=128, help="pictures in the corpus")
     parser.add_argument("--under", default=None, help="only roots whose path contains this, e.g. swarm-mixed")
     parser.add_argument("--repeats", type=int, default=3, help="passes per batch size; the fastest is reported")
+    parser.add_argument(
+        "--corpus-ids",
+        default=None,
+        help="pin the corpus to these file ids: `1,2,3` or `@path` with one per line. "
+        "Without it the newest --count pictures are taken, which is a DIFFERENT set "
+        "every time the library grows -- the reason the recorded variance never reproduced.",
+    )
     parser.add_argument("--out", default=str(REPO / "benchmarks" / "results" / "openclip_batch.json"))
     asked = parser.parse_args()
 
@@ -252,10 +329,17 @@ def main() -> None:
     if not db.is_file():
         raise SystemExit(f"no database at {db}")
 
-    files = corpus(db, asked.count, asked.under)
+    held = pinned_ids(asked.corpus_ids) if asked.corpus_ids else None
+    files = corpus(db, asked.count, asked.under, held)
     if not files:
         raise SystemExit("no pictures in that library")
+    selector = "pinned" if held else f"newest-{asked.count}" + (f"-under-{asked.under}" if asked.under else "")
+    identity = corpus_identity(db, files, selector)
     print(f"corpus: {len(files)} pictures from {db}" + (f" under {asked.under!r}" if asked.under else ""))
+    print(f"corpus identity: {selector} digest {identity['digest']}")
+    if identity["unhashed_members"]:
+        missing = identity["unhashed_members"]
+        print(f"  WARNING {missing} member(s) carry no content hash; the digest cannot pin their bytes")
     pictures = frames(db, files)
     megapixels = sorted(picture.size[0] * picture.size[1] / 1e6 for picture in pictures)
     print(f"source megapixels: median {megapixels[len(megapixels) // 2]:.2f}, largest {megapixels[-1]:.2f}")
@@ -396,6 +480,8 @@ def main() -> None:
                 "device": backend.device,
                 "gpu": torch.cuda.get_device_name(0) if on_cuda else None,
                 "model": f"{backend.model_name}/{backend.checkpoint}",
+                "packages": package_versions(),
+                "corpus": identity,
                 "pictures": len(pictures),
                 "runs": rows,
                 "preprocess_equivalence": identical,

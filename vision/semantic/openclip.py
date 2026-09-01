@@ -366,10 +366,21 @@ class ClipBackend:
         max_abs_difference 0.0 at 2, 4, 8 and 16 workers.
 
         The VECTORS are not bit-identical across batch widths, which is a
-        different claim and the file records it separately:
-        `vector_equivalence` gives max_abs_difference 2.2e-03 and minimum
-        cosine 0.99995 against batch 1. Batching moves the last bits of a
-        vector; it does not move the preprocessing.
+        different claim and the file records it separately. Measured on a
+        PINNED corpus -- 128 pictures, digest
+        d51e1a11ecfe2e933b0ce734f7137fbf523d687b0ff57edc3a9ef79eaec37a1f,
+        recorded in the artifact beside the vectors -- `vector_equivalence`
+        gives max_abs_difference 6.44e-04 and minimum cosine 0.999997 against
+        batch 1, flat from batch 8 through 128. Batching moves the last bits
+        of a vector; it does not move the preprocessing.
+
+        This number replaces a 2.2e-03 that could not be reproduced, and the
+        reason is worth keeping: the benchmark selected `ORDER BY f.id DESC`
+        and recorded only a COUNT, so it measured the newest N pictures and
+        never said which. Two runs over different libraries were
+        indistinguishable in the artifact. The corpus is pinned and its
+        identity recorded now, so a later run that disagrees is a finding
+        rather than a mystery.
 
         Batch 64 is where throughput flattens on this hardware -- 375.9,
         400.5 and 395.2 img/s at 64, 128 and 256, a 6.5% spread for 1.6x
