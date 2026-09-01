@@ -101,6 +101,66 @@ guidance stands for residue of this class — but the same failure twice is not 
 a race repairs itself; a deterministic deletion only looks transient because someone
 repaired it. Ask the junction question on the second occurrence, not the third.
 
+Seams between two owners are where flavour-2 lives (recorded 2026-09-01, envelope's
+finding at 6684ba7): a question can go unasked not because either owner's checks are
+incomplete for their own scope but precisely BECAUSE each is complete for its own
+scope — a different generator from the lens's others, which are about how a check is
+written; this one is about who is looking. At every ownership boundary, ask what
+property crosses it and whose test reads it.
+
+Dilemmas dissolve before they trade (recorded 2026-09-01, architecture's observation
+across three instances — X1 closing capture-determinism, derive dissolving the trial
+question, one-adapter-per-file making the honest digest exist at the wanted
+granularity): ask what would have to be true rather than which horn to take. And its
+companion honesty: verifying the right thing without having specified it is not the
+same as having got it right.
+
+Approving a proposal is not reviewing it (recorded 2026-09-01, architecture, after
+accepting an uncomputable scoping it had the facts to refute): the reviewer who
+already agreed is the one least likely to look; walked-to-the-end review applies to
+proposals you endorsed, doubly.
+
+Verify with the instrument that gates (recorded 2026-09-01, proof, third instance in
+one session — `just compat check` omits sglint, twice; ruff run from .venv-compat while
+the gate runs .venv): a green check from a different tool is not evidence about the
+gate. Companion to "a count is not an enumeration".
+
+NO SILENT EXCEPT — USER RULING (recorded 2026-09-01, verbatim intent: "why is anyone
+swallowing output and or errors at all"): no except clause anywhere may swallow an
+error into silence. Every except either (a) propagates, (b) converts to a TYPED
+refusal the caller must handle, or (c) tolerates a narrow expected condition WITH THE
+OCCURRENCE RECORDED somewhere something reads — a cache may miss on a corrupt file,
+but the miss-on-error is counted and surfaced, never invisible. Tolerating an error
+and hiding it are independent choices; only the first is ever permitted. ENFORCEMENT
+IS A GATE, not prose: a new sglint rule flags any except clause that neither
+re-raises, nor raises a typed refusal, nor records — with the existing swallows
+enumerated and each converted or explicitly waived by recorded ruling. The G8b
+miss-preferable-to-crash decision stands ONLY in its recorded form. Known mirror
+(envelope): the READ side — _restore raises ValueError for a record naming an
+adapter this build lacks, and cache _read eats ValueError — covered by the same
+sweep, both directions of the boundary.
+
+Declaration-from-diff rule (recorded 2026-09-01, adversary, after THREE of four
+candidate declarations in one round stated a scope the worktree did not match —
+declaring intent while the tree holds everything in progress): under candidate-first
+the DECLARATION is the artifact, and a verdict on a mismatched declaration authorizes
+a commit the attacker never saw. Declare from `git diff --stat`, never memory, and
+STAGE the candidate so the declared set and the committable set are one set —
+staging is the stronger half (envelope): memory can be wrong about a diff, but the
+index cannot be wrong about itself, and an EMPTY unstaged diff makes the gate's green
+a statement about what will commit rather than about something adjacent.
+
+Forwarded-claim rule (recorded 2026-09-01, adversary, after TWO instances of the
+lead's forwarding recording a mechanism the commit does not contain — envelope's
+"genuine v2 blob" and architecture's "git-held schema.sql at 1032760"; both times the
+work was sound and the summary claimed more): a forwarded claim about HOW something
+was verified is an assertion and is checked against the diff before it is recorded.
+The summary channel is not exempt from the evidence standard the code is held to.
+EXTENDED (architecture's own request, after repeating the shape inside cec2860's
+commit message — "two independent controls" where only one is in the diff): the rule
+binds the AUTHOR's commit messages and reports too, not only the lead's forwarding. A
+one-off interactive verification that left no artifact is stated as exactly that.
+
 Probe-narration rule (recorded 2026-09-01, adversary self-catch on the census attack —
 its draft narration asserted conclusions its own output contradicted): a probe's
 narration is an assertion and must be written after its output, never before.
