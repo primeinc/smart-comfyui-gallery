@@ -3922,9 +3922,9 @@ def _the_producers_record_survives_as_typed_bytes(conn: sqlite3.Connection) -> N
     conn.execute("ALTER TABLE derived_face_instance ADD COLUMN native BLOB")
 
 
-#: v47 -> v48 DDL, replayed from what `db/schema.sql` actually builds rather
+#: v47 -> v48 DDL, replayed from what db/schema.sql actually builds rather
 #: than retyped: a migrated database and a fresh one must hold byte-identical
-#: `sqlite_master` text, and 16 KB of hand-copied DDL is how that stops holding.
+#: sqlite_master text, and 16 KB of hand-copied DDL is how that stops holding.
 _V48_OBJECTS = (
     """CREATE TABLE table_class (
     table_name  TEXT PRIMARY KEY,
@@ -3967,6 +3967,14 @@ _V48_OBJECTS = (
     invoked_at     REAL NOT NULL
 ) STRICT""",
     """CREATE INDEX producer_invocation_contract ON producer_invocation(contract_name)""",
+    """CREATE TRIGGER producer_invocation_is_immutable BEFORE UPDATE ON producer_invocation
+BEGIN
+  SELECT RAISE(ABORT,'an invocation is its identity and the preimage that produced it: neither can be edited');
+END""",
+    """CREATE TRIGGER producer_invocation_is_permanent BEFORE DELETE ON producer_invocation
+BEGIN
+  SELECT RAISE(ABORT,'an invocation is not deletable: it is what a stored result was computed from');
+END""",
     """CREATE TABLE producer_input (
     invocation_id      INTEGER NOT NULL REFERENCES producer_invocation(id) ON DELETE RESTRICT,
     ordinal            INTEGER NOT NULL,
@@ -3988,6 +3996,14 @@ _V48_OBJECTS = (
         OR (kind = 'result'  AND upstream_result_id IS NOT NULL AND content_sha256 IS NULL))
 ) STRICT""",
     """CREATE INDEX producer_input_upstream ON producer_input(upstream_result_id)""",
+    """CREATE TRIGGER producer_input_is_immutable BEFORE UPDATE ON producer_input
+BEGIN
+  SELECT RAISE(ABORT,'an input edge is part of the identity preimage and cannot be edited');
+END""",
+    """CREATE TRIGGER producer_input_is_permanent BEFORE DELETE ON producer_input
+BEGIN
+  SELECT RAISE(ABORT,'an input edge is part of the identity preimage and cannot be deleted');
+END""",
     """CREATE TABLE producer_result (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
     -- One result per invocation. A second answer under the same identity is a
@@ -4023,6 +4039,10 @@ END""",
     """CREATE TRIGGER producer_determinism_is_immutable BEFORE UPDATE ON producer_determinism
 BEGIN
   SELECT RAISE(ABORT,'a changed tolerance is a new declaration, not an edit');
+END""",
+    """CREATE TRIGGER producer_determinism_is_permanent BEFORE DELETE ON producer_determinism
+BEGIN
+  SELECT RAISE(ABORT,'a declaration is what contradictions were judged against: it cannot be deleted');
 END""",
     """CREATE TABLE producer_contradiction (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -4092,6 +4112,14 @@ END""",
 ) STRICT""",
     """CREATE INDEX producer_variance_pop ON producer_variance(population, result_id)""",
     """CREATE INDEX producer_variance_declared ON producer_variance(determinism_id)""",
+    """CREATE TRIGGER producer_variance_is_immutable BEFORE UPDATE ON producer_variance
+BEGIN
+  SELECT RAISE(ABORT,'an observation is evidence for a tolerance: record another, never edit this one');
+END""",
+    """CREATE TRIGGER producer_variance_is_permanent BEFORE DELETE ON producer_variance
+BEGIN
+  SELECT RAISE(ABORT,'an observation is evidence for a tolerance and cannot be deleted');
+END""",
     """CREATE TABLE producer_reverify_candidate (
     result_id  INTEGER NOT NULL REFERENCES producer_result(id) ON DELETE RESTRICT,
     field      TEXT NOT NULL,

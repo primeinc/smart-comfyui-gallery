@@ -9,6 +9,7 @@ outstanding, and that a worker which lost its lease cannot still write.
 
 import json
 import pathlib
+import re
 import sqlite3
 
 import pytest
@@ -381,6 +382,102 @@ def test_every_declared_canonical_table_exists(db):
     declared = {row[0] for row in db.execute("SELECT table_name FROM table_class")}
     present = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
     assert declared - present == set(), "table_class declares tables that do not exist"
+
+
+def test_every_producer_table_is_declared(db):
+    """The converse, and it is a different claim.
+
+    `declared - present` catches a declaration pointing at nothing. It says
+    nothing about a table nobody declared -- and drop_all reads only the
+    DECLARED canonical names, so an undeclared producer table would be
+    protected by nothing but its lack of a derived_ prefix, which is the naming
+    convention this whole class exists to replace.
+
+    The prefix here is how the TEST finds candidates, not how the protection
+    works: the protection is the declaration, and this asserts the two agree.
+    """
+    undeclared = _undeclared_producer_tables(db)
+    assert undeclared == set(), f"producer tables table_class does not classify: {sorted(undeclared)}"
+
+
+def test_the_declaration_completeness_check_can_actually_fail(db):
+    """Control. A completeness check that has never seen a gap is exactly the
+    shape it exists to catch, so a gap is manufactured and it must find it."""
+    assert _undeclared_producer_tables(db) == set()
+    db.execute("CREATE TABLE producer_undeclared_thing (id INTEGER PRIMARY KEY)")
+    assert _undeclared_producer_tables(db) == {"producer_undeclared_thing"}
+
+
+def _undeclared_producer_tables(conn) -> set[str]:
+    """Producer tables `table_class` says nothing about.
+
+    Shared by the check and its control, so the control exercises the rule
+    rather than a second implementation of it.
+    """
+    present = {
+        row[0]
+        for row in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'producer\\_%' ESCAPE '\\'"
+        )
+    }
+    assert present, "no producer tables found; this check would pass over an empty population"
+    return present - {row[0] for row in conn.execute("SELECT table_name FROM table_class")}
+
+
+def _abort_guards(conn) -> dict[str, set[str]]:
+    """Table -> the events its RAISE(ABORT) triggers fire on."""
+    guards: dict[str, set[str]] = {}
+    for (sql,) in conn.execute("SELECT sql FROM sqlite_master WHERE type = 'trigger' AND sql LIKE '%RAISE(ABORT%'"):
+        match = re.search(r"(?:BEFORE|AFTER)\s+(\w+)[^;]*?\sON\s+(\w+)", sql, re.DOTALL)
+        if match:
+            guards.setdefault(match.group(2), set()).add(match.group(1).upper())
+    return guards
+
+
+def test_every_declared_canonical_table_refuses_update_and_delete(db):
+    """Derived from the DECLARED set, which is why it can see a table with no
+    guards at all.
+
+    The insert-only rule in test_schema_contract builds its population by
+    iterating the triggers that EXIST, so a table carrying zero RAISE(ABORT)
+    triggers never becomes a key, is never classified, and is never flagged --
+    it audits the guards there are and has no notion of which tables ought to
+    have them. Four canonical tables were unguarded in at least one direction
+    and that check was structurally unable to say so. This one starts from
+    table_class instead.
+    """
+    declared = [row[0] for row in db.execute("SELECT table_name FROM table_class WHERE class = 'canonical' ORDER BY 1")]
+    assert declared, "no canonical tables are declared; this check would pass over an empty population"
+    guards = _abort_guards(db)
+    missing = [
+        f"{table}: no {event} guard"
+        for table in declared
+        for event in ("UPDATE", "DELETE")
+        if event not in guards.get(table, set())
+    ]
+    assert missing == [], f"declared canonical tables a plain statement can rewrite or remove: {missing}"
+
+
+def test_a_canonical_guard_covers_the_whole_row(db):
+    """A guard scoped to named columns, or gated on a WHEN, covers less than it
+    appears to -- and the insert-only rule's notion of "this table has UPDATE
+    cover" is presence-based, so a scoped guard would excuse a DELETE-only
+    sibling while protecting almost nothing.
+
+    Not exploitable while every canonical guard is whole-row. This is what
+    keeps it that way.
+    """
+    declared = {row[0] for row in db.execute("SELECT table_name FROM table_class WHERE class = 'canonical'")}
+    scoped = []
+    for name, sql in db.execute(
+        "SELECT name, sql FROM sqlite_master WHERE type = 'trigger' AND sql LIKE '%RAISE(ABORT%'"
+    ):
+        match = re.search(r"(?:BEFORE|AFTER)\s+\w+.*?\sON\s+(\w+)(.*?)BEGIN", sql, re.DOTALL)
+        if not match or match.group(1) not in declared:
+            continue
+        if re.search(r"\bUPDATE\s+OF\b", sql, re.IGNORECASE) or re.search(r"\bWHEN\b", match.group(2), re.IGNORECASE):
+            scoped.append(name)
+    assert scoped == [], f"canonical guards that do not cover the whole row: {scoped}"
 
 
 def test_a_video_naming_survives_the_rebuild(db, a_library):

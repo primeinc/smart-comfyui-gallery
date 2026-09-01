@@ -222,6 +222,96 @@ def test_the_same_bytes_twice_is_not_a_contradiction(db):
     assert db.execute("SELECT count(*) FROM producer_contradiction").fetchone()[0] == 0
 
 
+def test_an_identity_cannot_be_separated_from_the_preimage_it_names(db):
+    """The acceptance rule's last clause, and the hazard this schema's own
+    comment names: provenance record and cache key are one object.
+
+    `producer_result` was immutable from the start so the bytes could not move,
+    but the row holding the identity AND the preimage it was computed from
+    could be edited -- and one UPDATE left a hit serving real bytes under
+    provenance that no longer produces them."""
+    held = _keep(db, _Counted(b"one"))
+    with pytest.raises(sqlite3.IntegrityError, match="neither can be edited"):
+        db.execute(
+            "UPDATE producer_invocation SET preimage_json = ? WHERE id = ?",
+            ('{"impl": "something else entirely"}', held.invocation_id),
+        )
+    with pytest.raises(sqlite3.IntegrityError, match="not deletable"):
+        db.execute("DELETE FROM producer_invocation WHERE id = ?", (held.invocation_id,))
+
+
+def test_an_input_edge_cannot_be_edited_out_from_under_an_identity(db):
+    """The edges ARE part of the preimage, so repointing one is the same attack
+    through the other half of the key."""
+    held = _keep(db, _Counted(b"one"))
+    with pytest.raises(sqlite3.IntegrityError, match="cannot be edited"):
+        db.execute(
+            "UPDATE producer_input SET content_sha256 = ? WHERE invocation_id = ?", ("b" * 64, held.invocation_id)
+        )
+    with pytest.raises(sqlite3.IntegrityError, match="cannot be deleted"):
+        db.execute("DELETE FROM producer_input WHERE invocation_id = ?", (held.invocation_id,))
+
+
+def test_the_identity_detector_sees_a_disagreement_the_triggers_prevent(db):
+    """The detector's own control.
+
+    Prevention nobody can observe is indistinguishable from prevention that
+    quietly stopped working, so the guard is dropped here to manufacture the
+    state it forbids -- if `identity_disagreements` cannot see a swapped
+    preimage then reading it proves nothing about the rows it passes."""
+    held = _keep(db, _Counted(b"one"))
+    assert producers.identity_disagreements(db) == []
+
+    db.execute("DROP TRIGGER producer_invocation_is_immutable")
+    db.execute(
+        "UPDATE producer_invocation SET preimage_json = ? WHERE id = ?",
+        ('{"impl": "not what produced these bytes"}', held.invocation_id),
+    )
+    found = producers.identity_disagreements(db)
+    assert len(found) == 1, "the identity stopped matching its preimage and nothing said so"
+    assert found[0]["invocation_id"] == held.invocation_id
+    assert found[0]["stored"] == held.identity
+
+
+def test_the_identity_detector_is_quiet_when_the_dag_is_intact(db):
+    """The other half: a derived input's identity is recomputed through the
+    upstream join, so a clean DAG must read clean -- otherwise the detector
+    reports every composite result forever and gets muted."""
+    parent = _keep(db, _Counted(b"parent"))
+    _keep(
+        db,
+        _Counted(b"child"),
+        preimage={"impl": "crop"},
+        inputs=[producers.InputRef(slot="detection", kind="result", upstream_identity=parent.identity)],
+    )
+    assert producers.identity_disagreements(db) == []
+
+
+def test_a_declaration_cannot_be_deleted_to_hide_a_re_blessing(db):
+    """The argument against this is the one already written on
+    producer_contradiction: nobody needs to UPDATE a tolerance to clean the
+    board, they DELETE it. A judgment names the declaration it was made under,
+    so deleting declarations is how a re-blessing stops being visible."""
+    declaration = producers.determinism_for(db, CONTRACT)
+    with pytest.raises(sqlite3.IntegrityError, match="cannot be deleted"):
+        db.execute("DELETE FROM producer_determinism WHERE id = ?", (declaration,))
+
+
+def test_an_observation_cannot_be_edited_away_to_justify_a_tolerance(db):
+    """The recorded distribution is what makes a declared tolerance
+    defensible, so editing observations is how a wide one stops looking wide."""
+    held = _keep(db, _Counted(b"one"))
+    declaration = producers.determinism_for(db, CONTRACT)
+    assert declaration is not None
+    producers.record_variance(
+        db, held.result_id, NOW, population="same-runtime", max_abs=0.5, max_rel=0.5, determinism_id=declaration
+    )
+    with pytest.raises(sqlite3.IntegrityError, match="never edit this one"):
+        db.execute("UPDATE producer_variance SET max_abs = 0.0 WHERE result_id = ?", (held.result_id,))
+    with pytest.raises(sqlite3.IntegrityError, match="cannot be deleted"):
+        db.execute("DELETE FROM producer_variance WHERE result_id = ?", (held.result_id,))
+
+
 def test_a_stored_result_cannot_be_edited_or_deleted(db):
     held = _keep(db, _Counted(b"one"))
     with pytest.raises(sqlite3.IntegrityError, match="immutable"):

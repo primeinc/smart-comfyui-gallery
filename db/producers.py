@@ -481,6 +481,46 @@ def waive(
     )
 
 
+def identity_disagreements(conn: sqlite3.Connection) -> list[dict[str, Any]]:
+    """Stored identities that do NOT match the preimage they name.
+
+    The acceptance rule's last clause: identical result identities cannot
+    silently disagree. Provenance record and cache key are meant to be one
+    object, and until the invocation row was made immutable a single UPDATE to
+    preimage_json separated them -- the identity kept indexing immutable bytes
+    while naming a preimage that no longer produces it, so a hit served real
+    bytes under fabricated provenance.
+
+    The triggers prevent that; this reads it. Prevention nobody can observe is
+    indistinguishable from prevention that quietly stopped working, and a
+    relation no gate runs is a record produced and never read.
+    """
+    found: list[dict[str, Any]] = []
+    for invocation_id, identity, preimage_json in conn.execute(
+        "SELECT id, identity, preimage_json FROM producer_invocation ORDER BY id"
+    ).fetchall():
+        inputs = [
+            InputRef(
+                slot=str(slot),
+                kind=str(kind),
+                content_sha256=str(content) if kind == "content" else None,
+                upstream_identity=str(upstream) if kind == "result" else None,
+            )
+            for slot, kind, content, upstream in conn.execute(
+                "SELECT p.slot, p.kind, p.content_sha256, up.identity"
+                "  FROM producer_input p"
+                "  LEFT JOIN producer_result r ON r.id = p.upstream_result_id"
+                "  LEFT JOIN producer_invocation up ON up.id = r.invocation_id"
+                " WHERE p.invocation_id = ? ORDER BY p.ordinal",
+                (invocation_id,),
+            ).fetchall()
+        ]
+        recomputed = identity_of(json.loads(preimage_json), inputs)
+        if recomputed != identity:
+            found.append({"invocation_id": int(invocation_id), "stored": str(identity), "recomputed": recomputed})
+    return found
+
+
 def re_blessed(conn: sqlite3.Connection) -> list[dict[str, Any]]:
     """Contradictions whose most recent judgment cleared them under a
     declaration LATER than the one in force when they were raised.

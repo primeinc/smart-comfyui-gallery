@@ -2410,6 +2410,23 @@ CREATE TABLE producer_invocation (
 ) STRICT;
 CREATE INDEX producer_invocation_contract ON producer_invocation(contract_name);
 
+-- The identity and the preimage it was computed from live in one row, and the
+-- comment above promises they are the same object. Nothing enforced it: an
+-- UPDATE to preimage_json left the identity naming a preimage that no longer
+-- produces it, while producer_result stayed immutable -- so a hit served real
+-- bytes under fabricated provenance, which is the drift the promise exists to
+-- prevent, and the acceptance rule's last clause. SQLite cannot compute sha256
+-- in a trigger, so the prevention is that neither half moves after insert and
+-- the detection is producers.identity_disagreements().
+CREATE TRIGGER producer_invocation_is_immutable BEFORE UPDATE ON producer_invocation
+BEGIN
+  SELECT RAISE(ABORT,'an invocation is its identity and the preimage that produced it: neither can be edited');
+END;
+CREATE TRIGGER producer_invocation_is_permanent BEFORE DELETE ON producer_invocation
+BEGIN
+  SELECT RAISE(ABORT,'an invocation is not deletable: it is what a stored result was computed from');
+END;
+
 -- One input edge. Ordered, because argument order is identity-bearing: the
 -- same producer over the same two images in the other order is a different
 -- call with a different answer.
@@ -2440,6 +2457,17 @@ CREATE TABLE producer_input (
         OR (kind = 'result'  AND upstream_result_id IS NOT NULL AND content_sha256 IS NULL))
 ) STRICT;
 CREATE INDEX producer_input_upstream ON producer_input(upstream_result_id);
+
+-- These rows ARE part of the identity preimage, so they are exactly as
+-- editable as it is: not at all.
+CREATE TRIGGER producer_input_is_immutable BEFORE UPDATE ON producer_input
+BEGIN
+  SELECT RAISE(ABORT,'an input edge is part of the identity preimage and cannot be edited');
+END;
+CREATE TRIGGER producer_input_is_permanent BEFORE DELETE ON producer_input
+BEGIN
+  SELECT RAISE(ABORT,'an input edge is part of the identity preimage and cannot be deleted');
+END;
 
 -- What the producer emitted, whole, as one `vision/facestore.py` envelope.
 --
@@ -2504,6 +2532,14 @@ CREATE INDEX producer_determinism_contract ON producer_determinism(contract_name
 CREATE TRIGGER producer_determinism_is_immutable BEFORE UPDATE ON producer_determinism
 BEGIN
   SELECT RAISE(ABORT,'a changed tolerance is a new declaration, not an edit');
+END;
+-- The other half, and the argument for it is the one written on
+-- producer_contradiction below: nobody needs to UPDATE a tolerance to clean the
+-- board, they DELETE it. A judgment names the declaration it was made under, so
+-- deleting declarations is how a re-blessing stops being visible.
+CREATE TRIGGER producer_determinism_is_permanent BEFORE DELETE ON producer_determinism
+BEGIN
+  SELECT RAISE(ABORT,'a declaration is what contradictions were judged against: it cannot be deleted');
 END;
 
 -- Same identity, different bytes. The disagreement IS the evidence, so the
@@ -2626,6 +2662,18 @@ CREATE TABLE producer_variance (
 ) STRICT;
 CREATE INDEX producer_variance_pop ON producer_variance(population, result_id);
 CREATE INDEX producer_variance_declared ON producer_variance(determinism_id);
+
+-- The observed distribution is what makes a declared tolerance justifiable, so
+-- editing or deleting observations is how a wide tolerance stops being
+-- questionable.
+CREATE TRIGGER producer_variance_is_immutable BEFORE UPDATE ON producer_variance
+BEGIN
+  SELECT RAISE(ABORT,'an observation is evidence for a tolerance: record another, never edit this one');
+END;
+CREATE TRIGGER producer_variance_is_permanent BEFORE DELETE ON producer_variance
+BEGIN
+  SELECT RAISE(ABORT,'an observation is evidence for a tolerance and cannot be deleted');
+END;
 
 -- A stored result being served under runtime conditions that differ from the
 -- ones that produced it, in a fact the contract declared neutral.
