@@ -44,6 +44,12 @@ class FakeFace(dict):
         return self.get(name)
 
 
+# The backend names the producer's own class on the envelope, and a name no
+# adapter rebuilds is refused at capture. Declaring it here is what a real
+# producer's container does in `vision/facestore.py`.
+facestore.register_container(f"{FakeFace.__module__}.{FakeFace.__qualname__}", FakeFace)
+
+
 def replaying(found):
     """`InsightFaceBackend` with `_app` pinned, `detect` inherited unchanged.
 
