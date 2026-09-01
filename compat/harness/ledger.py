@@ -71,6 +71,23 @@ def _at(row: dict[str, Any], dotted: str) -> Any:
     return held
 
 
+def emits(row: dict[str, Any], dotted: str) -> bool:
+    # PRESENCE, not truth. A real durable write of zero bytes and a real thaw of
+    # no keys are arrivals, and `if _at(...)` read both as continued absence --
+    # the exact event the stage split exists to make visible.
+    parts = dotted.split(".")
+    held: Any = row
+    for part in parts[:-1]:
+        if not isinstance(held, dict):
+            return False
+        held = held.get(part)
+    if not isinstance(held, dict) or parts[-1] not in held:
+        return False
+    # Present AND not null. 0 bytes written and [] keys thawed are real arrivals;
+    # an explicit null is how a writer says it recorded nothing, so it is not one.
+    return held[parts[-1]] is not None
+
+
 @dataclass
 class Cell:
     state: str
@@ -87,15 +104,19 @@ class Row:
         return all(one.state == VERIFIED for one in self.cells.values())
 
 
-def _read(name: str, where: Path = GENERATED, consumed: dict[str, str] | None = None) -> dict[str, Any] | None:
+def _read(name: str, where: Path, consumed: dict[str, str]) -> dict[str, Any] | None:
+    # `consumed` is REQUIRED. Optional, an omitted argument opened a file and
+    # recorded nothing, so a fourth read left the graph at three and the control
+    # still passed. Omission is a TypeError now, not merely unlikely.
     path = where / name
     if not path.is_file():
+        # The ATTEMPT is the fact, not the success. Recording nothing here shrank
+        # the graph silently: three reads, two entries, and the condition over
+        # `consumed` held green over a population that had quietly lost a member.
+        consumed[name] = ""
         return None
     raw = path.read_bytes()
-    if consumed is not None:
-        # Recorded at the open, so the consumption graph is what the builder really
-        # read rather than a table someone maintains beside it.
-        consumed[name] = evidence_identity.sha256_of(raw)
+    consumed[name] = evidence_identity.sha256_of(raw)
     held: dict[str, Any] = json.loads(raw.decode("utf-8"))
     return held
 
@@ -113,9 +134,11 @@ def lane_exits(where: Path = GENERATED) -> dict[str, int]:
     return lanes.exits(where)
 
 
-def build(where: Path = GENERATED) -> dict[str, Any]:
+def build(where: Path = GENERATED, *, digest: str) -> dict[str, Any]:
+    # THREADED. The caller captures ONE tree identity and hands it here, so a
+    # fixture's stamps and this build cannot read two different values. Required
+    # and keyword-only: omitting it is a TypeError, never a quiet recompute.
     stages_are_covered()
-    now = evidence_identity.identity()
     manifest = provenance.load_manifest()
     declared = sorted(one["id"] for one in manifest.get("consumers", []))
     lanes = lane_exits(where)
@@ -125,7 +148,7 @@ def build(where: Path = GENERATED) -> dict[str, Any]:
     cases = _read("cases.json", where, consumed)
     _read("lanes.json", where, consumed)
 
-    current_cases: dict[str, Any] | None = cases if _current(cases, now["digest"]) else None
+    current_cases: dict[str, Any] | None = cases if _current(cases, digest) else None
 
     source_ok: dict[str, Cell] = {}
     if pins is None:
@@ -186,7 +209,10 @@ def build(where: Path = GENERATED) -> dict[str, Any]:
             rows.append(row)
             continue
 
-        mine = [one for one in current_cases.get("results", []) if one["consumer_id"] == who]
+        # `.get`, not `[...]`: a case naming no consumer belongs to no row, and a
+        # hard subscript made the RECORDER decide that by dying. Closure's
+        # row-coverage condition is what reports it, once the ledger survives it.
+        mine = [one for one in current_cases.get("results", []) if one.get("consumer_id") == who]
         if not mine:
             for stage in STAGES[2:]:
                 row.cells[stage] = Cell(FAILED, "no case was executed for it")
@@ -194,7 +220,7 @@ def build(where: Path = GENERATED) -> dict[str, Any]:
             continue
 
         for stage, evidence in STAGE_EVIDENCE.items():
-            carrying = [one for one in mine if _at(one, evidence.field)]
+            carrying = [one for one in mine if emits(one, evidence.field)]
             if not carrying:
                 row.cells[stage] = Cell(BLOCKED, f"{evidence.absent} ({evidence.field} absent from all {len(mine)})")
             elif len(carrying) < len(mine):
@@ -213,7 +239,7 @@ def build(where: Path = GENERATED) -> dict[str, Any]:
         rows.append(row)
 
     return {
-        "identity": now["digest"],
+        "identity": digest,
         "consumed": consumed,
         "lanes": lanes,
         "stages": list(STAGES),
@@ -268,7 +294,9 @@ def as_markdown(out: dict[str, Any]) -> str:
 
 
 def main() -> int:
-    out = build()
+    # The one capture for a real run. Everything downstream is handed this value
+    # rather than reading identity() again.
+    out = build(digest=str(evidence_identity.identity()["digest"]))
     print(f"tree identity: {out['identity']}")
     print(f"lanes: {out['lanes']}")
     totals = out["totals"]

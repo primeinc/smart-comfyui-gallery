@@ -35,8 +35,15 @@ class Probe:
         return {closure.HELD: "ok ", closure.FAILED: "RED", closure.NOT_APPLICABLE: "N/A"}[self.state]
 
 
+def _captured() -> str:
+    # ONE read of the tree identity, threaded into every fixture and build.
+    from compat.harness import identity as evidence_identity
+
+    return str(evidence_identity.identity()["digest"])
+
+
 def _verdict(where: Path, held: dict[str, Any]) -> tuple[bool, list[str]]:
-    closure_attack._write(where, held)
+    closure_attack._write(where, held, digest=_captured())
     conditions = closure.conditions(where)
     return all(one.green for one in conditions), [f"{one.name} [{one.state}]" for one in conditions if not one.green]
 
@@ -46,7 +53,7 @@ def _lane_red_over_a_green_run() -> Probe:
     # lanes red. This is the exact shape that printed GREEN before G1 landed.
     with tempfile.TemporaryDirectory(prefix="green_attack_") as raw:
         where = Path(raw)
-        held = ledger_attack.green_fixture()
+        held = ledger_attack.green_fixture(digest=_captured())
         held["lanes.json"]["lanes"] = {**held["lanes.json"]["lanes"], **RED_LANES}
         closed, red = _verdict(where, held)
     # The STATE beside the name, not the name alone: a bare substring is satisfied
@@ -92,9 +99,9 @@ def _no_waiver_to_defeat() -> Probe:
     # undetected. Behaviour, not spelling: a scratch directory gets no free pass.
     with tempfile.TemporaryDirectory(prefix="green_attack_") as raw:
         where = Path(raw)
-        held = ledger_attack.green_fixture()
+        held = ledger_attack.green_fixture(digest=_captured())
         held["cases.json"] = {**held["cases.json"], "identity": {"digest": "f" * 64}}
-        closure_attack._write(where, held)
+        closure_attack._write(where, held, digest=_captured())
         stale = [one for one in closure.conditions(where) if one.name == "evidence from one tree"]
 
     caught = bool(stale) and not stale[0].green

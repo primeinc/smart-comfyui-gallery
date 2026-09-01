@@ -1,12 +1,30 @@
 {
   "cells_distinct": true,
   "exercised_against_real_evidence": {
-    "consumer_replay": true,
-    "durable_read_back": false,
-    "durable_write": false,
-    "emitted_observation": true,
-    "native_reconstruction": false,
-    "producer_execution": true
+    "consumer_replay": {
+      "carrying": 302,
+      "of": 302
+    },
+    "durable_read_back": {
+      "carrying": 0,
+      "of": 302
+    },
+    "durable_write": {
+      "carrying": 0,
+      "of": 302
+    },
+    "emitted_observation": {
+      "carrying": 302,
+      "of": 302
+    },
+    "native_reconstruction": {
+      "carrying": 0,
+      "of": 302
+    },
+    "producer_execution": {
+      "carrying": 302,
+      "of": 302
+    }
   },
   "failing": [],
   "fixture_only": [
@@ -14,7 +32,7 @@
     "durable_write",
     "native_reconstruction"
   ],
-  "identity": "7fa515883c3c00828b9a45ed8147660534d589e199b58d198f818db6de6805da",
+  "identity": "f37d0f99dde88f685563107a6abd24b40c372aa3bb2a72bb3cf1b929be126042",
   "results": [
     {
       "detail": "-> producer_execution BLOCKED",

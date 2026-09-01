@@ -95,11 +95,14 @@ def _malform_stamp(where: Path) -> None:
 
 
 def _malform_case_offences(where: Path) -> None:
-    # Both conditions over cases.json:results read a DIFFERENT field from the one
-    # they declare, so a malformed member has to reach each of them by name.
+    # The conditions over cases.json:results each read a DIFFERENT field from the
+    # one they declare, so a malformed member has to reach each of them by name.
     def change(held: dict[str, Any]) -> None:
         held["skipped"] = [*(held.get("skipped") or []), {"why": "an input nobody classified"}]
         held["shards_failed"] = [*(held.get("shards_failed") or []), "a shard nobody classified"]
+        # The row-coverage condition reads consumer_id: a case attributed to a
+        # consumer nothing declares is this population's unclassifiable member.
+        held["results"] = [*(held.get("results") or []), {"consumer_id": "a_consumer_nobody_declared"}]
 
     _rewrite(where, "cases.json", change)
 
@@ -134,7 +137,10 @@ SOURCES: Final[dict[str, Source]] = {
     ),
     "lanes.json:lanes": Source(
         empty=_empty("lanes.json", "lanes"),
-        malform=_malform("lanes.json", "lanes", lambda: 1),
+        # A real unclassifiable member now that the condition classifies instead
+        # of coercing. It used to inject `1` -- an ordinary failing exit code the
+        # condition already rejects -- because the honest value made it raise.
+        malform=_malform("lanes.json", "lanes", lambda: "WOBBLE"),
         writer="compat.just `run` appends `<lane> <code>` per lane; lanes.py:_recorded parses it",
         validator="NONE beyond the int parse -- the exit code is the shell's, and nothing re-derives it",
     ),
@@ -205,8 +211,9 @@ def run(asked: Provider = closure.conditions) -> Audit:
     out = Audit()
     with tempfile.TemporaryDirectory(prefix="condition_audit_") as raw:
         where = Path(raw)
-        base = closure_attack.green_fixture()
-        closure_attack._write(where, base)
+        digest = closure_attack._captured()
+        base = closure_attack.green_fixture(digest=digest)
+        closure_attack._write(where, base, digest=digest)
         answered = asked(where)
         control = {one.name: one for one in answered}
         if len(control) != len(answered):
@@ -233,7 +240,7 @@ def run(asked: Provider = closure.conditions) -> Audit:
             over = sorted(n for n, one in control.items() if one.population == population)
             out.emptied[population] = over
 
-            closure_attack._write(where, base)
+            closure_attack._write(where, base, digest=digest)
             source.empty(where)
             after = {one.name: one for one in asked(where)}
 
@@ -257,12 +264,12 @@ def run(asked: Provider = closure.conditions) -> Audit:
             # The second degenerate shape. Empty was the only word this audit knew,
             # so a denylist condition holding over an unclassifiable member was
             # certified sound by a check that never showed it one.
-            closure_attack._write(where, base)
+            closure_attack._write(where, base, digest=digest)
             source.malform(where)
             spoiled = {one.name: one for one in asked(where)}
-            # The VERDICT must cost, not every condition over the population: a
-            # malformed cell does not concern a row-count condition, and demanding
-            # it would make the audit fail on conditions that are behaving.
+            # PER CONDITION, not per verdict. The weaker "the verdict must cost"
+            # rule was written here and withdrawn: it lets a vacuous condition hide
+            # behind a real failure elsewhere, and the self-control caught that.
             for name in over:
                 found = spoiled.get(name)
                 if found is not None and found.green:

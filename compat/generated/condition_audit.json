@@ -3,19 +3,22 @@
   "declared": {
     "every ablation concluded": "cases.json:ablations",
     "every consumed artifact unchanged": "ledger.json:consumed",
+    "every consumer in evidence has a ledger row": "cases.json:results",
     "every declared member accounted for": "ledger.json:rows",
     "every lane exited 0": "lanes.json:lanes",
     "every ledger cell VERIFIED": "ledger.json:rows",
     "every weight VERIFIED": "provenance.json:weights",
     "evidence from one tree": "generated:identity stamps",
     "no shard failed": "cases.json:results",
-    "no skipped input": "cases.json:results"
+    "no skipped input": "cases.json:results",
+    "the ledger's totals agree with its rows": "ledger.json:rows"
   },
   "emptied": {
     "cases.json:ablations": [
       "every ablation concluded"
     ],
     "cases.json:results": [
+      "every consumer in evidence has a ledger row",
       "no shard failed",
       "no skipped input"
     ],
@@ -31,7 +34,8 @@
     ],
     "ledger.json:rows": [
       "every declared member accounted for",
-      "every ledger cell VERIFIED"
+      "every ledger cell VERIFIED",
+      "the ledger's totals agree with its rows"
     ],
     "provenance.json:weights": [
       "every weight VERIFIED"

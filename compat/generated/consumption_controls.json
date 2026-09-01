@@ -1,6 +1,6 @@
 {
   "failing": [],
-  "identity": "a9972fd9af42a6c0b840a869c152efaef9a8068a3f89527c753668ed0ac8273a",
+  "identity": "f37d0f99dde88f685563107a6abd24b40c372aa3bb2a72bb3cf1b929be126042",
   "probes": [
     {
       "detail": "GREEN",
@@ -8,12 +8,12 @@
       "name": "the control closes"
     },
     {
-      "detail": "recorded ['cases.json', 'lanes.json', 'provenance.json']",
+      "detail": "3 recorded, matching the 3 open(s) in build()'s source",
       "held": true,
       "name": "the graph names every artifact build() opened"
     },
     {
-      "detail": "stamp a9972fd9af42 unchanged by the regeneration, so only the graph sees it",
+      "detail": "stamp f37d0f99dde8 unchanged by the regeneration, so only the graph sees it",
       "held": true,
       "name": "the regenerated input keeps its stamp"
     },

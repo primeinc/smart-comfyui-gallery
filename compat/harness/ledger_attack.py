@@ -32,10 +32,13 @@ def _case(who: str) -> dict[str, Any]:
     }
 
 
-def green_fixture() -> dict[str, Any]:
+def green_fixture(*, digest: str) -> dict[str, Any]:
+    # Stamped from a digest the CALLER captured, not from a fresh read. Required
+    # and keyword-only for the same reason build()'s is: a default would let the
+    # fixture and the build drift apart again without anyone writing a line.
     manifest = provenance.load_manifest()
     declared = sorted(one["id"] for one in manifest.get("consumers", []))
-    now = str(evidence_identity.identity()["digest"])
+    now = digest
     return {
         "provenance.json": {
             "identity": now,
@@ -59,7 +62,10 @@ def _suppress(held: dict[str, Any], dotted: str) -> None:
         for part in parts[:-1]:
             target = target.get(part) if isinstance(target, dict) else None
         if isinstance(target, dict):
-            target[parts[-1]] = {} if parts[-1] == "retained_bytes" else None
+            # DELETED, not nulled. Presence-based detection is the point: a writer
+            # that did not record the field omits it, and an empty dict left here
+            # read as a real emission of nothing once `emits` stopped using truth.
+            target.pop(parts[-1], None)
 
 
 def _write(where: Path, held: dict[str, Any]) -> None:
@@ -69,9 +75,9 @@ def _write(where: Path, held: dict[str, Any]) -> None:
             handle.write("\n")
 
 
-def _states(where: Path, held: dict[str, Any]) -> dict[str, dict[str, str]]:
+def _states(where: Path, held: dict[str, Any], digest: str) -> dict[str, dict[str, str]]:
     _write(where, held)
-    out = ledger.build(where)
+    out = ledger.build(where, digest=digest)
     row = out["rows"][0]
     return dict(row["cells"])
 
@@ -83,7 +89,7 @@ class Result:
     detail: str
 
 
-def exercised_against_real_evidence() -> dict[str, bool]:
+def exercised_against_real_evidence() -> dict[str, dict[str, int]]:
     """Which declared stage fields any real writer actually emits.
 
     Three of the six read under `durable`, and _case() invents all three: no
@@ -95,18 +101,24 @@ def exercised_against_real_evidence() -> dict[str, bool]:
     """
     shipped = GENERATED / "cases.json"
     if not shipped.is_file():
-        return dict.fromkeys(STAGE_EVIDENCE, False)
+        return {stage: {"carrying": 0, "of": 0} for stage in STAGE_EVIDENCE}
     held = json.loads(shipped.read_text(encoding="utf-8"))
     rows = held.get("results") or []
-    return {stage: any(ledger._at(row, one.field) for row in rows) for stage, one in STAGE_EVIDENCE.items()}
+    # COUNTS, through the ledger's own `emits`. A boolean made "one case of 302"
+    # and "all 302" the same claim, and having just replaced an overclaiming 6/6,
+    # a threshold of one would be a softer version of the same thing.
+    return {
+        stage: {"carrying": sum(1 for row in rows if ledger.emits(row, one.field)), "of": len(rows)}
+        for stage, one in STAGE_EVIDENCE.items()
+    }
 
 
-def run_all() -> tuple[list[Result], str, bool]:
+def run_all(digest: str) -> tuple[list[Result], str, bool]:
     out: list[Result] = []
     with tempfile.TemporaryDirectory(prefix="ledger_attack_") as raw:
         where = Path(raw)
-        base = green_fixture()
-        control = _states(where, base)
+        base = green_fixture(digest=digest)
+        control = _states(where, base, digest)
 
         green = [name for name, cell in control.items() if cell["state"] != VERIFIED]
         if green:
@@ -120,7 +132,7 @@ def run_all() -> tuple[list[Result], str, bool]:
         for stage, evidence in STAGE_EVIDENCE.items():
             held = copy.deepcopy(base)
             _suppress(held, evidence.field)
-            after = _states(where, held)
+            after = _states(where, held, digest)
             red = sorted(name for name, cell in after.items() if cell["state"] != VERIFIED)
             out.append(
                 Result(
@@ -133,7 +145,9 @@ def run_all() -> tuple[list[Result], str, bool]:
 
 
 def main() -> int:
-    results, why, distinct = run_all()
+    # ONE capture, threaded into the fixture and every build below.
+    digest = str(evidence_identity.identity()["digest"])
+    results, why, distinct = run_all(digest)
     if why:
         print(why)
         return 1
@@ -148,15 +162,17 @@ def main() -> int:
     print(f"tripwire -- six distinct cell reasons: {distinct}")
 
     real = exercised_against_real_evidence()
-    live = sorted(stage for stage, seen in real.items() if seen)
-    invented = sorted(stage for stage, seen in real.items() if not seen)
+    live = sorted(stage for stage, seen in real.items() if seen["carrying"])
+    invented = sorted(stage for stage, seen in real.items() if not seen["carrying"])
     print(f"\nexercised against real evidence: {len(live)}/{len(real)}")
-    for stage in invented:
-        print(f"  FIXTURE ONLY  {stage:<24} no shipped case carries {STAGE_EVIDENCE[stage].field}")
+    for stage in sorted(real):
+        seen = real[stage]
+        mark = "FIXTURE ONLY" if not seen["carrying"] else "real        "
+        print(f"  {mark}  {stage:<24} {seen['carrying']}/{seen['of']} case(s) carry {STAGE_EVIDENCE[stage].field}")
 
     GENERATED.mkdir(parents=True, exist_ok=True)
     body = {
-        "identity": str(evidence_identity.identity()["digest"]),
+        "identity": digest,
         "stages": sorted(STAGE_EVIDENCE),
         "results": [asdict(one) for one in results],
         "cells_distinct": distinct,

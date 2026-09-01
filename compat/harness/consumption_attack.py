@@ -30,15 +30,23 @@ def _put(where: Path, name: str, body: dict[str, Any]) -> None:
         handle.write("\n")
 
 
+def _captured() -> str:
+    # ONE read of the tree identity, threaded into every fixture and build.
+    from compat.harness import identity as evidence_identity
+
+    return str(evidence_identity.identity()["digest"])
+
+
 def _red(where: Path) -> list[str]:
     return [f"{one.name} [{one.state}]" for one in closure.conditions(where) if not one.green]
 
 
 def _control_is_green() -> tuple[Probe, dict[str, Any]]:
-    base = ledger_attack.green_fixture()
+    digest = _captured()
+    base = ledger_attack.green_fixture(digest=digest)
     with tempfile.TemporaryDirectory(prefix="consumption_attack_") as raw:
         where = Path(raw)
-        closure_attack._write(where, base)
+        closure_attack._write(where, base, digest=_captured())
         red = _red(where)
     return (
         Probe("the control closes", not red, "GREEN" if not red else f"NOT GREEN: {', '.join(red[:3])}"),
@@ -52,7 +60,7 @@ def _regenerated_input_is_caught(base: dict[str, Any]) -> Probe:
     # both artifacts remain individually stamped for the current tree.
     with tempfile.TemporaryDirectory(prefix="consumption_attack_") as raw:
         where = Path(raw)
-        closure_attack._write(where, base)
+        closure_attack._write(where, base, digest=_captured())
 
         spoiled = json.loads(json.dumps(base["provenance.json"]))
         spoiled["weights"][0]["state"] = "SKIPPED"
@@ -84,21 +92,47 @@ def _stamps_alone_would_not_catch_it(base: dict[str, Any]) -> Probe:
     )
 
 
+def _opens_in_build() -> set[str]:
+    """The artifact names build() actually opens, read out of its source.
+
+    The literal set this replaced could not see the miss it existed to catch: a
+    fourth _read leaves the recorded graph at three and `consumed == wanted`
+    still passes, in the control whose own comment claims derivation.
+    """
+    import ast
+    import inspect
+
+    tree = ast.parse(inspect.getsource(ledger.build))
+    return {
+        node.args[0].value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "_read"
+        and node.args
+        and isinstance(node.args[0], ast.Constant)
+        and isinstance(node.args[0].value, str)
+    }
+
+
 def _graph_is_derived_from_the_opens() -> Probe:
-    # Not a declared table: the digests are recorded where build() opens each file,
-    # so an input added to the builder joins the graph without anyone updating a list.
+    # Derived twice over: `consumed` is a required parameter, so an open that
+    # records nothing is a TypeError, and the expected set is read from build()'s
+    # own source rather than named here.
+    opens = _opens_in_build()
     with tempfile.TemporaryDirectory(prefix="consumption_attack_") as raw:
         where = Path(raw)
-        closure_attack._write(where, ledger_attack.green_fixture())
-        built = ledger.build(where)
+        digest = _captured()
+        closure_attack._write(where, ledger_attack.green_fixture(digest=digest), digest=digest)
+        built = ledger.build(where, digest=digest)
         consumed = set(built.get("consumed") or {})
-    wanted = {"provenance.json", "cases.json", "lanes.json"}
+    tripwire = {"provenance.json", "cases.json", "lanes.json"}
     return Probe(
         "the graph names every artifact build() opened",
-        consumed == wanted,
-        f"recorded {sorted(consumed)}"
-        if consumed == wanted
-        else f"recorded {sorted(consumed)}, expected {sorted(wanted)}",
+        bool(opens) and consumed == opens and consumed >= tripwire,
+        f"{len(consumed)} recorded, matching the {len(opens)} open(s) in build()'s source"
+        if consumed == opens
+        else f"recorded {sorted(consumed)}, build() opens {sorted(opens)}",
     )
 
 

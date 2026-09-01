@@ -63,7 +63,7 @@ def _stamp(held: dict[str, Any]) -> str:
     return str(found or "")
 
 
-def _over(name: str, population: str, over: Sized, offending: list[str], clean: str) -> Condition:
+def _over(name: str, population: str, over: Sized, offending: list[str], clean: str, *, unit: str = "") -> Condition:
     # `over` is the COLLECTION, not a count: with size passed separately the
     # declared population could name one collection while the verdict came from
     # another, and the audit then proved a set the condition never reads.
@@ -73,7 +73,11 @@ def _over(name: str, population: str, over: Sized, offending: list[str], clean: 
     if size == 0:
         return Condition(name, NOT_APPLICABLE, f"{population} is empty; nothing was checked", population)
     if offending:
-        return Condition(name, FAILED, f"{len(offending)} of {size}: {', '.join(offending[:4])}", population)
+        # `unit` exists because one condition counts offences in a different unit
+        # from its population, and the clean message said so while the failing one
+        # did not -- the reader lost the disambiguation exactly when it mattered.
+        scale = unit or f"of {size}"
+        return Condition(name, FAILED, f"{len(offending)} {scale}: {', '.join(offending[:4])}", population)
     return Condition(name, HELD, clean, population)
 
 
@@ -109,7 +113,15 @@ def _every_lane_green(lanes: dict[str, Any] | None) -> Condition:
             "lanes.json:lanes",
         )
 
-    offending = sorted(f"{name} exited {code}" for name, code in held.items() if int(code) != 0)
+    # CLASSIFY, do not coerce. `int(code)` raised on a code nothing recognises, so
+    # a hand-edited artifact got a traceback instead of a verdict and the audit
+    # could not show this condition its second degenerate shape at all.
+    offending: list[str] = []
+    for name, code in sorted(held.items()):
+        if isinstance(code, bool) or not isinstance(code, int):
+            offending.append(f"{name} recorded {code!r}, which is not an exit code")
+        elif code != 0:
+            offending.append(f"{name} exited {code}")
     offending += [f"{name} declared but never recorded" for name in want if name not in held]
     return _over(
         "every lane exited 0",
@@ -152,7 +164,12 @@ def _consumption_agrees(ledger: dict[str, Any], where: Path) -> Condition:
     for name, digest in sorted(consumed.items()):
         path = where / name
         now = evidence_identity.sha256_of(path.read_bytes()) if path.is_file() else ""
-        if now != digest:
+        if not digest:
+            # An attempted read that found no file. The ledger records the attempt
+            # so the miss is an offending MEMBER here rather than an absence from
+            # the population, which is how the graph used to shrink unremarked.
+            drifted.append(f"{name} was not there to read when the ledger was built")
+        elif now != digest:
             drifted.append(f"{name} was {digest[:8]}, is {now[:8] or 'absent'}")
     return _over(
         "every consumed artifact unchanged",
@@ -160,6 +177,77 @@ def _consumption_agrees(ledger: dict[str, Any], where: Path) -> Condition:
         consumed,
         drifted,
         f"{len(consumed)} artifact(s) still the bytes the ledger read",
+    )
+
+
+def _evidence_has_a_row(ledger: dict[str, Any], cases: dict[str, Any] | None) -> Condition:
+    # G10's general rule: a recorded set is checked against a DECLARED one. Every
+    # other coverage check measures the population it was handed; this one asks
+    # whether the right members are in it.
+
+    # The runner names a consumer on every case; the ledger builds rows from the
+    # declarations. Two producers, so unlike a set checked against itself they
+    # cannot be wrong in the same direction.
+    results: list[dict[str, Any]] = (cases or {}).get("results") or []
+    rows = {str(row.get("consumer")) for row in ledger.get("rows") or []}
+    seen = sorted({str(one.get("consumer_id")) for one in results if one.get("consumer_id")})
+    offending = [f"{who} produced evidence with no ledger row" for who in seen if who not in rows]
+
+    # A case naming no consumer cannot be covered by any row, and filtering it out
+    # of the set to be checked would be this file's own denylist mistake: the
+    # population is the cases, so an unattributable one is an offence, not a skip.
+    nameless = [one for one in results if not one.get("consumer_id")]
+    if nameless:
+        offending.append(f"{len(nameless)} case(s) name no consumer, so no row can cover them")
+
+    return _over(
+        "every consumer in evidence has a ledger row",
+        "cases.json:results",
+        results,
+        offending,
+        f"{len(results)} case(s) across {len(seen)} consumer(s), each with a ledger row",
+        unit=f"offence(s) over {len(seen)} consumer(s) in {len(results)} case(s)",
+    )
+
+
+def _totals_agree(ledger: dict[str, Any], rows: list[dict[str, Any]]) -> Condition:
+    # The ledger writes four totals and closure read one of them. Recomputing the
+    # other three from the rows on disk reads a record that was produced and never
+    # read -- and green disjoint from the bad counts survives a state alias.
+    from compat.harness.ledger import BLOCKED as CELL_BLOCKED
+    from compat.harness.ledger import FAILED as CELL_FAILED
+    from compat.harness.ledger import VERIFIED as CELL_VERIFIED
+
+    recorded = ledger.get("totals") or {}
+    # Row.ok is `all(... for cells.values())`, so the recomputation walks each
+    # row's own cells rather than the stage list; a differing basis would report
+    # a mismatch the ledger never made.
+    states = [[(one or {}).get("state") for one in (row.get("cells") or {}).values()] for row in rows]
+    again = {
+        "declared": len(rows),
+        "green": sum(1 for one in states if all(state == CELL_VERIFIED for state in one)),
+        "with_failed": sum(1 for one in states if any(state == CELL_FAILED for state in one)),
+        "with_blocked": sum(1 for one in states if any(state == CELL_BLOCKED for state in one)),
+    }
+    offending = [
+        f"{name}: recorded {recorded.get(name)}, the rows say {value}"
+        for name, value in again.items()
+        if recorded.get(name) != value
+    ]
+    # A row counted fully green cannot also carry a failed or blocked cell. This
+    # holds whatever the states spell, so aliasing VERIFIED onto a bad state
+    # cannot buy the sums back.
+    offending += [
+        f"green {again['green']} + {name} {again[name]} exceeds the {again['declared']} declared: a row cannot be both"
+        for name in ("with_failed", "with_blocked")
+        if again["green"] + again[name] > again["declared"]
+    ]
+    return _over(
+        "the ledger's totals agree with its rows",
+        "ledger.json:rows",
+        rows,
+        offending,
+        f"{len(rows)} row(s): all four totals recomputed, green disjoint from failed and blocked",
     )
 
 
@@ -211,7 +299,19 @@ def conditions(where: Path = GENERATED) -> list[Condition]:
 
     # The ledger's own VERIFIED, imported rather than re-spelled: two definitions
     # of the good state is how the closure/ledger predicates diverged in E10.
+    from compat.harness.ledger import BLOCKED as CELL_BLOCKED
+    from compat.harness.ledger import FAILED as CELL_FAILED
     from compat.harness.ledger import VERIFIED as CELL_VERIFIED
+
+    # Importing the good state closes one divergence and opens another: were
+    # VERIFIED ever to spell a bad state's string, ledger and closure would move
+    # together and blocked cells would grade green. An allowlist needs distinctness.
+    spelling = {"VERIFIED": CELL_VERIFIED, "FAILED": CELL_FAILED, "BLOCKED": CELL_BLOCKED}
+    collided = [
+        f"{a} and {b} both spell {spelling[a]!r}"
+        for a, b in (("VERIFIED", "FAILED"), ("VERIFIED", "BLOCKED"), ("FAILED", "BLOCKED"))
+        if spelling[a] == spelling[b]
+    ]
 
     stages: list[str] = ledger.get("stages") or []
     # ONE allowlist, not two denylists. `== "BLOCKED"` and `== "FAILED"` both
@@ -224,7 +324,17 @@ def conditions(where: Path = GENERATED) -> list[Condition]:
         if cell.get("state") != CELL_VERIFIED
     ]
     out.append(
-        _over(
+        # A collision is a fact about the CODE, so it cannot be left to ride on a
+        # per-datum population: with no cells to check, `_over` returns
+        # not-applicable and two constants spelling one string go unreported.
+        Condition(
+            "every ledger cell VERIFIED",
+            FAILED,
+            f"the state vocabulary is not a partition: {', '.join(collided)}",
+            "ledger.json:rows",
+        )
+        if collided
+        else _over(
             "every ledger cell VERIFIED",
             "ledger.json:rows",
             cells,
@@ -232,6 +342,8 @@ def conditions(where: Path = GENERATED) -> list[Condition]:
             f"{len(cells)} cell(s), all VERIFIED",
         )
     )
+    out.append(_totals_agree(ledger, rows))
+    out.append(_evidence_has_a_row(ledger, cases))
 
     results: list[dict[str, Any]] = (cases or {}).get("results") or []
     skipped = [str(one) for one in ((cases or {}).get("skipped") or [])]
