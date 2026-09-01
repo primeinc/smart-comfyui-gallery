@@ -28,6 +28,17 @@ SOURCE_DIRS: Final[tuple[str, ...]] = (
 )
 
 
+#: What decides WHETHER a gate runs and what it enforces. None of it was digested,
+#: so a lane could be deleted from a .just module and every staleness check would
+#: still report the evidence current. Globbed, because a named list misses modules.
+GATE_GLOBS: Final[tuple[str, ...]] = ("*.just", "justfile", "pyproject.toml", "uv.lock", "conftest.py")
+
+GATE_DIRS: Final[tuple[tuple[str, tuple[str, ...]], ...]] = (
+    ("tests", ("*.py", "*.sql")),
+    ("metaparse", ("*.py",)),
+)
+
+
 def sha256_of(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
@@ -40,6 +51,7 @@ PARTS: Final[tuple[str, ...]] = (
     "sources",
     "application",
     "corpus",
+    "gates",
 )
 
 
@@ -51,15 +63,39 @@ def digest_of(parts: dict[str, Any]) -> str:
 
 def source_digests() -> dict[str, str]:
     out: dict[str, str] = {}
+
+    # compat's own root: __init__.py, and the ty/pyrefly configs that decide what
+    # the `check` lane enforces. Only the named subdirectories were walked before.
+    for path in sorted(one for pattern in ("*.py", "*.json", "*.toml") for one in ROOT.glob(pattern)):
+        out[path.relative_to(ROOT).as_posix()] = sha256_of(path.read_bytes())
+
     for name in SOURCE_DIRS:
         folder = ROOT / name
         if not folder.is_dir():
             continue
 
-        for path in sorted(one for pattern in ("*.py", "*.json") for one in folder.rglob(pattern)):
+        for path in sorted(one for pattern in ("*.py", "*.json", "*.toml") for one in folder.rglob(pattern)):
             if "__pycache__" in path.parts:
                 continue
             out[path.relative_to(ROOT).as_posix()] = sha256_of(path.read_bytes())
+    return out
+
+
+def gate_digests() -> dict[str, str]:
+    repo = ROOT.parent
+    out: dict[str, str] = {}
+    for pattern in GATE_GLOBS:
+        for path in sorted(repo.glob(pattern)):
+            if path.is_file():
+                out[path.relative_to(repo).as_posix()] = sha256_of(path.read_bytes())
+    for name, patterns in GATE_DIRS:
+        folder = repo / name
+        if not folder.is_dir():
+            continue
+        for path in sorted(one for pattern in patterns for one in folder.rglob(pattern)):
+            if "__pycache__" in path.parts:
+                continue
+            out[path.relative_to(repo).as_posix()] = sha256_of(path.read_bytes())
     return out
 
 
@@ -70,7 +106,7 @@ def application_digests() -> dict[str, str]:
         folder = repo / name
         if not folder.is_dir():
             continue
-        for path in sorted(folder.rglob("*.py")):
+        for path in sorted(one for pattern in ("*.py", "*.sql") for one in folder.rglob(pattern)):
             if "__pycache__" in path.parts:
                 continue
             out[path.relative_to(repo).as_posix()] = sha256_of(path.read_bytes())
@@ -126,6 +162,7 @@ def identity() -> dict[str, Any]:
         "sources": source_digests(),
         "application": application_digests(),
         "corpus": corpus_digests(),
+        "gates": gate_digests(),
     }
     return {**parts, "digest": digest_of(parts)}
 
@@ -136,7 +173,7 @@ def compare_to(recorded: dict[str, Any]) -> list[str]:
         return []
 
     drift: list[str] = [key + " changed" for key in ("manifest", "runtime") if recorded.get(key) != now[key]]
-    for key in ("repos", "weights", "sources", "application", "corpus"):
+    for key in ("repos", "weights", "sources", "application", "corpus", "gates"):
         was: dict[str, str] = recorded.get(key) or {}
         has: dict[str, str] = now[key]
         drift.extend(
@@ -156,6 +193,7 @@ def main() -> int:
     print(f"  sources  : {len(now['sources'])} files")
     print(f"  app code : {len(now['application'])} files")
     print(f"  corpus   : {len(now['corpus'])} photographs")
+    print(f"  gates    : {len(now['gates'])} gate/config/test files")
 
     cases = ROOT / "generated" / "cases.json"
     if not cases.is_file():

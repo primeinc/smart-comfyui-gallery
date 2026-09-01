@@ -1,0 +1,76 @@
+{
+  "controls": [
+    {
+      "detail": "73 file(s); all 3 present",
+      "held": true,
+      "name": "sources digests its declared files"
+    },
+    {
+      "detail": "66 file(s); all 1 present",
+      "held": true,
+      "name": "application digests its declared files"
+    },
+    {
+      "detail": "168 file(s); all 5 present",
+      "held": true,
+      "name": "gates digests its declared files"
+    },
+    {
+      "detail": "every tree contributes at least one file",
+      "held": true,
+      "name": "gates reaches every declared tree"
+    },
+    {
+      "detail": "a change to it mints a new identity",
+      "held": true,
+      "name": "manifest moves the digest"
+    },
+    {
+      "detail": "a change to it mints a new identity",
+      "held": true,
+      "name": "repos moves the digest"
+    },
+    {
+      "detail": "a change to it mints a new identity",
+      "held": true,
+      "name": "weights moves the digest"
+    },
+    {
+      "detail": "a change to it mints a new identity",
+      "held": true,
+      "name": "runtime moves the digest"
+    },
+    {
+      "detail": "a change to it mints a new identity",
+      "held": true,
+      "name": "sources moves the digest"
+    },
+    {
+      "detail": "a change to it mints a new identity",
+      "held": true,
+      "name": "application moves the digest"
+    },
+    {
+      "detail": "a change to it mints a new identity",
+      "held": true,
+      "name": "corpus moves the digest"
+    },
+    {
+      "detail": "a change to it mints a new identity",
+      "held": true,
+      "name": "gates moves the digest"
+    },
+    {
+      "detail": "be46b659b228 -> be36db31becd -> be46b659b228",
+      "held": true,
+      "name": "a new .just module moves the live digest"
+    },
+    {
+      "detail": "writing evidence does not invalidate evidence",
+      "held": true,
+      "name": "generated output does NOT move the digest"
+    }
+  ],
+  "failing": [],
+  "identity": "be46b659b228eabc0cfbf5f69a401e6a85ae2130d9f08c59e3cf97d550b015e1"
+}
