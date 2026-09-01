@@ -319,6 +319,22 @@ def test_the_rebuilt_face_is_named_by_the_record_it_came_from():
     assert thawed.record["age"] == live["age"]
 
 
+def test_a_superseded_envelope_is_refused_by_name_rather_than_reinterpreted():
+    """Version 2 wrote a nested root node and version 3 writes a flat table
+    indexed by integer, so one blob's bytes mean something else under the
+    other codec.
+
+    The refusal names the version because that is what tells a reader the
+    record is intact and its producer must re-run; a generic "not this
+    format" sends them looking for a corruption that is not there.
+    """
+    with pytest.raises(ValueError, match="version 2"):
+        facestore.thaw(b"sgface2\n" + bytes(64))
+
+    with pytest.raises(ValueError, match="not a face-native envelope"):
+        facestore.thaw(b"PK\x03\x04" + bytes(64))
+
+
 def test_a_non_contiguous_array_keeps_its_values_while_its_strides_normalize():
     """A strided view's values are the producer's output; its strides are an
     artifact of how the producer sliced. The envelope keeps the first and
