@@ -11,7 +11,7 @@ Every comment must be:
 - necessary: removing it would hide a constraint, invariant, external requirement, or non-obvious behaviour
 - minimal: no more text than the fact needs
 
-A comment block outside a docstring must not exceed two sentences or three physical lines. Consecutive comment lines are one block. Longer explanations belong in a test, an ADR, a documentation artifact, or an upstream reference.
+A comment block outside a docstring must not exceed two sentences or three physical lines. Consecutive comment lines are one block; an empty comment line (a lone `#` or `#:`) separates blocks the way a blank line does and counts in neither, while `##` and longer banners are content. Longer explanations belong in a test, an ADR, a documentation artifact, or an upstream reference.
 
 A comment must not contain:
 

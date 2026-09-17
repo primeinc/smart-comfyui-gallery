@@ -35,7 +35,9 @@ prove:
     # not be stamped with a proof that ran against its parent. The capture
     # has to happen first, so these are inline calls rather than deps.
     tree=$(git rev-parse 'HEAD^{tree}')
+    just check
     just check-deep
+    just test
     just test-slow
     if [ -n "$(git status --porcelain)" ] || [ "$(git rev-parse 'HEAD^{tree}')" != "$tree" ]; then
         echo "the tree moved while the proof ran: everything was green, but nothing is recorded"
@@ -75,9 +77,9 @@ prove:
 # `sg_web/__main__.py interpreter()` looks at that exact path and nothing
 # else, and the two tests below assert it resolves to the running python.
 
-# They are DESELECTED rather than satisfied by a link: `git worktree remove
-# --force` follows a link and deletes the environment it points at. A
-# pre-push gate must not be able to do that.
+# They are DESELECTED rather than satisfied by a link: this gate deletes
+# its worktree with --force, and no environment may sit where the cleanup
+# of a disposable tree can reach it.
 
 # So they run IN THE CHECKOUT at the end of this recipe. A test the gate
 # never runs is not gating anything, and both ask about the installation
@@ -119,26 +121,68 @@ prove-push: web::build
     # Without it every rung reports UNKNOWN_NOT_MEASURED, which those tests
     # correctly refuse to read as reached.
     if [ -d "$root/../sg-run" ]; then export SG_HOME="$root/../sg-run"; fi
-    # The slice's log goes to a FILE, not the console: lefthook buffers a
-    # job's stdout and replays it as ONE write, and on 2026-09-01 a
-    # multi-megabyte replay into a wedged ConPTY host held a push for hours.
+    # The gate's log goes to a FILE, not the console: lefthook buffers a
+    # job's stdout and replays it as ONE unbounded write
+    # (internal/run/controller/run.go at the pinned v2.1.10).
 
-    # Red prints the tail and names the file; green removes it.
+    # Red prints the tail, then names the failing lane and the file; green
+    # removes the file.
 
     # `|| settled=$?`, not `settled=$?` on the next line: under -e a bare
-    # capture after a failing pytest is dead code -- the failure exits the
+    # capture after a failing command is dead code -- the failure exits the
     # script first, and the testmon copy-back below never runs on red.
     log=$(mktemp -t prove-push.XXXXXX)
     settled=0
-    PATH="$root/.venv/Scripts:$root/.venv/bin:$PATH" PYTHONPATH=. \
-      "$root/{{ python }}" -m pytest tests/ -m slow -n 4 --dist loadfile \
-      --deselect "$launch::test_an_interpreter_without_a_server_is_handed_to_the_one_that_has_it" \
-      --deselect "$launch::test_the_environment_this_suite_runs_in_is_the_one_the_handover_targets" \
-      -p pytest-testmon --testmon --testmon-forceselect > "$log" 2>&1 || settled=$?
-    if [ -f "$pushed/.testmondata" ]; then cp "$pushed/.testmondata" "$root/.testmondata"; fi
+    lane=""
+
+    # A LEFTHOOK=0 or --no-verify commit skipped `just check` and `just
+    # test`; nothing that skipped may reach origin unchecked. So every lane
+    # that can run in a bare worktree runs again here, against HEAD.
+
+    # The web lanes cannot (a disposable tree has no node_modules and gets
+    # no environment); vale, the probes and db-check read this machine,
+    # not the commit. All of those stay with `just check` and `just prove`.
+
+    # Lanes stop at the first red, so the tail below is the failing lane's
+    # output and never a later lane's green scroll.
+
+    # ty resolves the environment from the interpreter running it; pyrefly
+    # must be handed the interpreter, or it queries a global python and
+    # reports hundreds of false unresolved imports.
+    if [ "$settled" -eq 0 ]; then lane="sglint"
+        "$root/{{ python }}" -m sglint >> "$log" 2>&1 || settled=$?; fi
+    if [ "$settled" -eq 0 ]; then lane="ruff check"
+        "$root/{{ python }}" -m ruff check . >> "$log" 2>&1 || settled=$?; fi
+    if [ "$settled" -eq 0 ]; then lane="ruff format"
+        "$root/{{ python }}" -m ruff format --check . >> "$log" 2>&1 || settled=$?; fi
+    if [ "$settled" -eq 0 ]; then lane="ty"
+        "$root/{{ python }}" -m ty check >> "$log" 2>&1 || settled=$?; fi
+    if [ "$settled" -eq 0 ]; then lane="pyrefly"
+        "$root/{{ python }}" -m pyrefly check --python-interpreter-path "$root/{{ python }}" >> "$log" 2>&1 || settled=$?; fi
+    if [ "$settled" -eq 0 ]; then lane="api schema"
+        SG_PYTHON="$root/{{ python }}" just api schema-fresh >> "$log" 2>&1 || settled=$?; fi
+    # The same two deselects as the slice below, for the same reason: both
+    # ask whether a `.venv` sits beside pyproject.toml, which a worktree
+    # cannot carry, and both run in the checkout at the end of this recipe.
+    if [ "$settled" -eq 0 ]; then lane="fast tests"
+        PATH="$root/.venv/Scripts:$root/.venv/bin:$PATH" PYTHONPATH=. \
+          "$root/{{ python }}" -m pytest tests/ -m "not slow" \
+          --deselect "$launch::test_an_interpreter_without_a_server_is_handed_to_the_one_that_has_it" \
+          --deselect "$launch::test_the_environment_this_suite_runs_in_is_the_one_the_handover_targets" \
+          >> "$log" 2>&1 || settled=$?; fi
+    if [ "$settled" -eq 0 ]; then lane="affected slice"
+        PATH="$root/.venv/Scripts:$root/.venv/bin:$PATH" PYTHONPATH=. \
+          "$root/{{ python }}" -m pytest tests/ -m slow -n 4 --dist loadfile \
+          --deselect "$launch::test_an_interpreter_without_a_server_is_handed_to_the_one_that_has_it" \
+          --deselect "$launch::test_the_environment_this_suite_runs_in_is_the_one_the_handover_targets" \
+          -p pytest-testmon --testmon --testmon-forceselect >> "$log" 2>&1 || settled=$?
+        if [ -f "$pushed/.testmondata" ]; then cp "$pushed/.testmondata" "$root/.testmondata"; fi
+    fi
     if [ "$settled" -ne 0 ]; then
         tail -n 200 "$log"
-        echo "the affected slice failed (exit $settled); full log: $log"
+        shown="$log"
+        if command -v cygpath >/dev/null 2>&1; then shown=$(cygpath -m "$log"); fi
+        echo "the $lane lane failed (exit $settled); full log: $shown"
     else
         rm -f "$log"
     fi

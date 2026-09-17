@@ -1699,6 +1699,15 @@ def rule_capability_has_a_way_in(root: pathlib.Path = REPO_ROOT) -> list[Finding
     return found
 
 
+#: A comment line with nothing to say: a lone `#` or `#:`, whitespace after.
+#: It is a blank line wearing the comment prefix -- the one paragraph break an
+#: attribute doc can use, since a true blank detaches the doc from its target.
+#:
+#: A LONE hash: `##`, `####` and every other banner is content, so a divider
+#: cannot launder a long block past the limit.
+_EMPTY_COMMENT = re.compile(r"#:?\s*")
+
+
 def rule_comment_blocks(root: pathlib.Path = REPO_ROOT) -> list[Finding]:
     """SG013: a comment block outside a docstring runs past three lines.
 
@@ -1710,38 +1719,49 @@ def rule_comment_blocks(root: pathlib.Path = REPO_ROOT) -> list[Finding]:
     physical lines needs the file, which is why this lives here.
 
     Only standalone `#` comments count. A trailing comment is one line by
-    construction, and a docstring is exempt by the standard.
+    construction, and a docstring is exempt by the standard. An empty comment
+    line (a lone `#` or `#:`) separates blocks the way a blank line does,
+    and counts in neither.
     """
     found: list[Finding] = []
     for source in every_source():
         if not source.is_relative_to(root):
             continue
-        try:
-            with tokenize.open(source) as handle:
-                comments = [
-                    tok
-                    for tok in tokenize.generate_tokens(handle.readline)
-                    if tok.type == tokenize.COMMENT and not tok.line[: tok.start[1]].strip()
-                ]
-        except (OSError, SyntaxError, tokenize.TokenError, UnicodeDecodeError):
-            continue
-        run: list[tokenize.TokenInfo] = []
-        for tok in [*comments, None]:
-            if run and (tok is None or tok.start[0] != run[-1].start[0] + 1):
-                if len(run) > 3:
-                    found.append(
-                        Finding(
-                            source,
-                            run[0].start[0],
-                            run[0].start[1],
-                            "SG013",
-                            f"comment block runs to {len(run)} lines; the limit is three",
-                        )
-                    )
-                run = []
-            if tok is not None:
-                run.append(tok)
+        found += _python_comment_blocks(source)
     found += _just_comment_blocks(root)
+    return found
+
+
+def _python_comment_blocks(source: pathlib.Path) -> list[Finding]:
+    """SG013 over one Python file; the rule sweeps `every_source` with it."""
+    found: list[Finding] = []
+    try:
+        with tokenize.open(source) as handle:
+            comments = [
+                tok
+                for tok in tokenize.generate_tokens(handle.readline)
+                if tok.type == tokenize.COMMENT
+                and not tok.line[: tok.start[1]].strip()
+                and not _EMPTY_COMMENT.fullmatch(tok.string)
+            ]
+    except (OSError, SyntaxError, tokenize.TokenError, UnicodeDecodeError):
+        return found
+    run: list[tokenize.TokenInfo] = []
+    for tok in [*comments, None]:
+        if run and (tok is None or tok.start[0] != run[-1].start[0] + 1):
+            if len(run) > 3:
+                found.append(
+                    Finding(
+                        source,
+                        run[0].start[0],
+                        run[0].start[1],
+                        "SG013",
+                        f"comment block runs to {len(run)} lines; the limit is three",
+                    )
+                )
+            run = []
+        if tok is not None:
+            run.append(tok)
     return found
 
 
@@ -1756,7 +1776,7 @@ def every_just(root: pathlib.Path = REPO_ROOT) -> list[pathlib.Path]:
 
 
 def _just_comment_blocks(root: pathlib.Path) -> list[Finding]:
-    """SG013 over justfiles, which tokenize cannot read.
+    """SG013 over justfiles and the lefthook configs, which tokenize cannot read.
 
     The standard is about COMMENTS, not about Python: CONTRIBUTING.md says a
     comment block outside a docstring holds to two sentences or three physical
@@ -1764,18 +1784,27 @@ def _just_comment_blocks(root: pathlib.Path) -> list[Finding]:
     `compat.just` -- the file that runs the whole compatibility suite -- was
     the one place in the repository where a comment could say anything at any
     length, and it accumulated twenty blocks over the limit.
+
+    lefthook.yml is here for the same reason: it decides whether the gates
+    run at all, and no other prose gate reads YAML.
     """
     found: list[Finding] = []
-    for source in every_just(root):
+    sources = list(every_just(root))
+    sources.extend(one for name in ("lefthook.yml", "lefthook-local.yml") if (one := root / name).is_file())
+    for source in sources:
         try:
             lines = source.read_text(encoding="utf-8").splitlines()
         except (OSError, UnicodeDecodeError):
             continue
         run: list[int] = []
         for number, line in enumerate([*lines, ""], start=1):
-            # A standalone comment only. A trailing `#` is one line by
-            # construction, and a shebang is not a comment.
-            standalone = line.lstrip().startswith("#") and not line.lstrip().startswith("#!")
+            # A standalone comment with content. A trailing `#` is one line by
+            # construction, a shebang is not a comment, and an empty comment
+            # separates blocks the way a blank line does.
+            stripped = line.lstrip()
+            standalone = (
+                stripped.startswith("#") and not stripped.startswith("#!") and not _EMPTY_COMMENT.fullmatch(stripped)
+            )
             if run and not (standalone and number == run[-1] + 1):
                 if len(run) > 3:
                     found.append(

@@ -10,7 +10,10 @@ set script-interpreter := ['bash', '-euo', 'pipefail']
 
 # venv interpreter path differs by OS: Scripts/ on Windows, bin/ elsewhere.
 # Exported rather than interpolated so the body reads it as a value.
-export PYTHON := if os_family() == 'windows' { './.venv/Scripts/python.exe' } else { './.venv/bin/python' }
+#
+# SG_PYTHON overrides it for a caller running these recipes from a tree
+# that has no venv of its own (prove-push's detached worktree).
+export PYTHON := env('SG_PYTHON', if os_family() == 'windows' { './.venv/Scripts/python.exe' } else { './.venv/bin/python' })
 
 # The application's OpenAPI document, written the way litestar's own command
 # writes it (litestar/cli/commands/schema.py _generate_openapi_schema). Built

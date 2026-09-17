@@ -942,6 +942,67 @@ def test_the_comment_rule_reaches_justfiles(tmp_path):
     assert "runs to 4 lines" in found[0].message
 
 
+def test_an_empty_comment_line_separates_python_blocks(tmp_path):
+    """SG013 treats `#:` and bare `#` as blank lines: separators, counted in neither.
+
+    An attribute doc cannot use a true blank line -- that detaches the doc
+    from its target -- so its only paragraph break is an empty `#:`. The rule
+    once counted straight through that, welding paragraphs into one block.
+    """
+    source = tmp_path / "thing.py"
+    source.write_text(
+        "#: one\n#: two\n#: three\n#:\n#: five\n#: six\nNAME = 1\n\n# one\n# two\n# three\n# four\nOTHER = 2\n\n"
+        "# p\n# q\n#\n# r\n# s\nTHIRD = 3\n",
+        encoding="utf-8",
+    )
+    found = rules._python_comment_blocks(source)
+    assert [(f.code, f.line) for f in found] == [("SG013", 9)], (
+        f"expected the four-line block at line 9 and nothing else, got {[(f.code, f.line) for f in found]}"
+    )
+    assert "runs to 4 lines" in found[0].message
+
+
+def test_a_banner_is_content_and_cannot_launder_a_block(tmp_path):
+    """`##` and longer dividers count toward the limit instead of splitting it.
+
+    Only a LONE `#` or `#:` is a blank line in comment clothing; a banner
+    that separated would let any essay pass by ruling itself into stanzas.
+    """
+    source = tmp_path / "thing.py"
+    source.write_text("# a\n# b\n####\n# c\nX = 1\n", encoding="utf-8")
+    found = rules._python_comment_blocks(source)
+    assert [(f.code, f.line) for f in found] == [("SG013", 1)], (
+        f"expected the banner-joined four-line block at line 1, got {[(f.code, f.line) for f in found]}"
+    )
+    assert "runs to 4 lines" in found[0].message
+
+
+def test_the_comment_rule_reaches_the_hook_config(tmp_path):
+    """lefthook.yml decides whether the gates run; no other prose gate reads YAML."""
+    (tmp_path / "lefthook.yml").write_text(
+        "# one\n# two\n# three\n# four\nmin_version: 1.10.0\n\n# a\n# b\n#\n# c\n# d\npre-push:\n",
+        encoding="utf-8",
+    )
+    found = rules._just_comment_blocks(tmp_path)
+    assert [(f.code, f.line) for f in found] == [("SG013", 1)], (
+        f"expected the four-line block at line 1 and nothing else, got {[(f.code, f.line) for f in found]}"
+    )
+    assert "runs to 4 lines" in found[0].message
+
+
+def test_an_empty_comment_line_separates_justfile_blocks(tmp_path):
+    """The same blank-line reading of an empty `#` in the justfile half."""
+    (tmp_path / "thing.just").write_text(
+        "# one\n# two\n# three\n#\n# five\n# six\n\n# a\n# b\n# c\n# d\nrecipe:\n    echo hi\n",
+        encoding="utf-8",
+    )
+    found = rules._just_comment_blocks(tmp_path)
+    assert [(f.code, f.line) for f in found] == [("SG013", 8)], (
+        f"expected the four-line block at line 8 and nothing else, got {[(f.code, f.line) for f in found]}"
+    )
+    assert "runs to 4 lines" in found[0].message
+
+
 def test_the_justfile_sweep_reaches_a_nested_file(tmp_path):
     """`every_just` finds a justfile at any depth, and skips vendored trees."""
     (tmp_path / "a" / "b" / "c").mkdir(parents=True)

@@ -6,21 +6,37 @@
 #
 #   per commit   `just check`       lint, format, types over both
 #                                   languages, web unit
+#
 #   per commit   `just test`        the fast lane: everything that does
 #                                   not drive a browser, boot a server or
 #                                   open a database
+#
 #   per push     `just prove-push`  an already-proven tree exits at once;
-#                                   otherwise the testmon-selected slice
-#   the proof    `just prove`       check-deep + the whole suite; on green
-#                                   it records the tree hash in
-#                                   .proven-tree, which is what lets a
-#                                   push skip
+#                                   otherwise every worktree-runnable lane
+#                                   plus the testmon-selected slice, at HEAD
+#
+#   the proof    `just prove`       both gates + both test lanes; on green
+#                                   it records the tree hash in .proven-tree,
+#                                   which is what lets a push skip
 #
 # `just check` does NOT depend on `just test`, so the per-commit tier
 # needs both named here. A check that exists but is unreachable from the
 # hook is not a check. `just budget` holds each lane to its own clock.
 #
-# `LEFTHOOK=0 git commit` skips, deliberately and visibly.
+# LEFTHOOK=0 is BANNED here, and cannot be blocked locally: the generated
+# hook file exits on the env var before the rc file is even sourced
+# (lefthook's hook.tmpl at v2.1.10), and `--no-verify` is git's own.
+#
+# What holds instead: `just prove-push` re-derives every worktree-runnable
+# lane -- sglint, ruff, both type checkers, the OpenAPI freshness check,
+# the fast tests -- plus the affected slice, against HEAD in a worktree.
+#
+# The boundaries, stated: web lanes, vale, probes and db-check stay
+# commit-side; the gate reads HEAD, so pushing another ref re-derives
+# nothing; a skipped PUSH needs a server-side check, and none exists.
+#
+# `.proven-tree` short-circuits the push gate only after `just prove`,
+# which runs both gates and both test lanes in full.
 #
 # The per-commit gate is on commit-msg, not pre-commit.
 #
@@ -34,34 +50,39 @@
 #     newGuard(
 #         c.git, c.logger, c.filesToStage,
 #         !opts.NoStageFixed && config.HookUsesStagedFiles(hook.Name),
+#
 #         opts.FailOnChanges, opts.FailOnChangesDiff,
 #     )
 #
 # That fourth argument is the guard's `stashUnstagedChanges`. In guard.go,
 # `withHiddenUnstagedChanges`: when it is true AND `PartiallyStagedFiles()`
-# is non-empty, the guard saves the unstaged changes, REVERTS them, runs the
-# hook, then restores -- and if `CanRestoreUnstagedChanges()` is false it
-# reverts everything and returns errRestorationConflict.
+# is non-empty, the guard saves the unstaged changes, REVERTS them,
+#
+# runs the hook, then restores -- and if `CanRestoreUnstagedChanges()` is
+# false it reverts everything and returns errRestorationConflict.
 #
 # So the trigger is the HOOK NAME, via `HookUsesStagedFiles(hook.Name)`, and
 # the only switch is `opts.NoStageFixed` -- the `--no-stage-fixed` CLI flag
-# on `lefthook run` ("ignore 'stage_fixed: true' setting"). It is a FLAG, not
-# a config key, and the hook file lefthook generates calls
-# `lefthook run "pre-commit" "$@"` with no flag. Config cannot inject one.
+# on `lefthook run` ("ignore 'stage_fixed: true' setting").
 #
-# And there is no config key for it. lefthook ships its own JSON Schema at
-# node_modules/lefthook/schema.json (2.1.10, stamped 2026.07.03), and it is
-# CLOSED -- `"additionalProperties": false` on the root and on every one of
-# Hook, Job, Group, Command, Script. No `no_stash`, no `stash`, no
-# `skip_stash`, no `hide_unstaged`. A `stash: false` here would be REJECTED,
-# not ignored. The only stash-adjacent key that exists is `stage_fixed`,
-# which does the opposite.
+# It is a FLAG, not a config key, and the hook file lefthook generates
+# calls `lefthook run "pre-commit" "$@"` with no flag. Config cannot
+# inject one.
+#
+# And there is no config key for it. lefthook ships its own JSON Schema
+# (node_modules/lefthook/schema.json, 2.1.10) and it is CLOSED --
+# `"additionalProperties": false` on the root, Hook, Job, Group, Command, Script.
+#
+# No `no_stash`, no `stash`, no `skip_stash`, no `hide_unstaged`. A
+# `stash: false` here would be REJECTED, not ignored. The only
+# stash-adjacent key that exists is `stage_fixed`, which does the opposite.
 #
 # To reproduce: a scratch repo whose worktree holds "four" and whose index
 # holds "three" (status `MM`), with one job that is `cat a.txt`. Under
-# `pre-commit` the job reads "three"; add `--no-stage-fixed` and it reads
-# "four". Nothing is printed either way -- lefthook logs the git command
-# only when it errors, so the revert is silent on success.
+# `pre-commit` the job reads "three"; `--no-stage-fixed` reads "four".
+#
+# Nothing is printed either way -- lefthook logs the git command only when
+# it errors, so the revert is silent on success.
 #
 # commit-msg is not in `HookUsesStagedFiles`, so its guard is constructed
 # with stashUnstagedChanges=false and the revert cannot happen: by
@@ -69,43 +90,41 @@
 #
 # The revert buys this repository nothing anyway. It exists so a hook
 # reading a partially staged file sees staged content rather than
-# staged+unstaged. Every lane in `just check` walks the whole tree --
-# `ruff check .`, `ruff format --check .`, `biome lint`, `tsc -p frontend`,
-# `ty check`, `pyrefly check` -- and not one takes `{staged_files}`.
+# staged+unstaged.
+#
+# Every lane in `just check` walks the whole tree -- `ruff check .`,
+# `ruff format --check .`, `biome lint`, `tsc -p frontend`, `ty check`,
+# `pyrefly check` -- and not one takes `{staged_files}`.
 #
 # It can also deadlock. `git commit -a` holds .git/index.lock, the guard's
-# revert needs that same lock, and the hook subtree then sits at zero CPU
-# until the parent git is killed, leaving the lock behind so the next
-# commit wedges identically.
+# revert needs that same lock, and the hook subtree sits at zero CPU until
+# the parent git is killed -- leaving the lock to wedge the next commit.
 #
 # commit-msg gets the same trigger (every commit, `-m` and `-a` included)
 # and aborts the commit identically on non-zero exit.
 #
 # `prove-push` in the justfile states the same invariant for its own tier:
 # "The worktree, not a stash: a gate that moves the developer's files to
-# inspect them can lose them." There is no config-only way to hold that on
-# `pre-commit`.
+# inspect them can lose them."
+#
+# There is no config-only way to hold that on `pre-commit`.
 
 min_version: 1.10.0
 
-# What lefthook prints, not what the jobs run. Absent this key the default is
-# EVERYTHING: a nil `output` falls to the default arm of NewExecutionLogger
-# (internal/logger/execution_logger.go) and enables executionFull, which
-# replays every green job's entire captured stdout after the job exits -- as
-# ONE console write (internal/run/controller/run.go buffers stdout to a
-# bytes.Buffer and prints it whole). A green pre-push slice log is megabytes,
-# and on 2026-09-01 that single write into a looping ConPTY host blocked
-# `git push` for five hours.
+# What lefthook prints, not what the jobs run. Absent this key the default
+# enables EVERYTHING, and a green job's whole captured stdout replays into
+# the console as ONE unbounded write.
 #
-# With this list a green job prints the banner, its checkmark and the
-# summary, and nothing else. A FAILED job still prints its captured output:
-# LogExecution short-circuits the replay only when err == nil
-# (internal/logger/execution_logger.go), so red keeps its evidence.
+# The mechanism, at the pinned v2.1.10: a nil `output` takes the default
+# arm of NewExecutionLogger (internal/logger/execution_logger.go), and job
+# stdout is buffered whole (internal/run/controller/run.go:37-39).
+#
+# `summary` implies `success` and `failure` (execution_settings.go:48). A
+# FAILED job still prints its captured output: LogExecution short-circuits
+# the replay only when err == nil.
 output:
   - meta
   - summary
-  - success
-  - failure
   - skips
 
 # A missing binary must FAIL, not silently pass. Without this the hook is a
@@ -124,13 +143,13 @@ commit-msg:
   jobs:
     - name: gate
       run: just check
-      fail_text: "`just check` failed. Fix it or LEFTHOOK=0 to commit anyway."
+      fail_text: "`just check` failed. Fix it."
     - name: fast tests
       run: just test
-      fail_text: "`just test` failed. Fix it or LEFTHOOK=0 to commit anyway."
+      fail_text: "`just test` failed. Fix it."
 
 pre-push:
   jobs:
     - name: prove or skip
       run: just prove-push
-      fail_text: "the affected slice failed. `just prove` runs and records the whole picture."
+      fail_text: "the push gate failed; its output names the lane and the log. `just prove` runs and records the whole picture."
