@@ -11,7 +11,7 @@
       "name": "B unreachable_loader"
     },
     {
-      "detail": "no site carries two artifacts",
+      "detail": "each site carries exactly its own artifact",
       "held": true,
       "name": "C two_loaders_one_file"
     },
@@ -21,12 +21,12 @@
       "name": "D parameter_default"
     },
     {
-      "detail": "artifacts=['UNRESOLVED_ARTIFACT:control/repo@99b216cc88ac545b0262b15f8a6303bc5d1c3838:entry.py:6', 'org/real']",
+      "detail": "artifacts=['UNRESOLVED_ARTIFACT:control/repo@4d86420be9ab2599f644b6e3bdf4231d476c04be:entry.py:6', 'org/real']",
       "held": true,
       "name": "E unrelated_slash_string"
     },
     {
-      "detail": "variants=['UNRESOLVED_VARIANT:control/repo@85924d4717a14ad78ca38eceed2a93f3bc4d0583:entry.py:5']",
+      "detail": "variants=['UNRESOLVED_VARIANT:control/repo@1fc744565cbea21264e88d475304fe6666a998f0:entry.py:5']",
       "held": true,
       "name": "F unresolved_dispatch"
     },
@@ -59,6 +59,41 @@
       "detail": "both found=True; both CONDITIONAL=True; conditional=['org/big', 'org/small']",
       "held": true,
       "name": "L branch_specific_selection"
+    },
+    {
+      "detail": "bound=['org/fromcaller']; after changing the caller=['org/othercaller']",
+      "held": true,
+      "name": "M call_site_argument"
+    },
+    {
+      "detail": "inner=['weights.pth']; wrapper-site edges=0",
+      "held": true,
+      "name": "N wrapper_descent"
+    },
+    {
+      "detail": "default bound=True; required-with-no-default stays unresolved=True",
+      "held": true,
+      "name": "O argparse_default"
+    },
+    {
+      "detail": "required=['antelopev2']",
+      "held": true,
+      "name": "P pack_name"
+    },
+    {
+      "detail": "1 edge(s); artifacts=['org/repo/file.safetensors']",
+      "held": true,
+      "name": "Q hub_pair"
+    },
+    {
+      "detail": "2 edge(s); artifacts=['weights.safetensors']",
+      "held": true,
+      "name": "R slice_dataflow"
+    },
+    {
+      "detail": "applies to unresolved=True; dangling matches nothing=True; bound site kept=True",
+      "held": true,
+      "name": "S rulings"
     }
   ],
   "failing": [],
@@ -72,7 +107,7 @@
     },
     {
       "control": "C two_loaders_one_file",
-      "detail": "under mutation: FAN-OUT {'entry.py:5': ['beta.pth', 'org/alpha']}",
+      "detail": "under mutation: FAN-OUT {}; artifacts=['beta.pth', 'org/alpha/beta.pth']",
       "green_after_restore": true,
       "name": "file_wide_literals",
       "red_under_mutation": true

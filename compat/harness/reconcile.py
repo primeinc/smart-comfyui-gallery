@@ -13,6 +13,22 @@ AGREED: Final[str] = "AGREED"
 UNEXERCISED: Final[str] = "UNEXERCISED"
 POPULATION_DEFECT: Final[str] = "POPULATION_DEFECT"
 
+#: What a pack or registry NAME opens on disk. A population edge claims the
+#: name a consumer wrote; the observer records the files the library then
+#: reads. This is the library's own mapping, held here so the two agree.
+#:
+#: insightface packs: the pinned pack directories (manifest.toml [[weights]]
+#: rows). facexlib registry: facexlib/{detection,parsing,recognition}/
+#: __init__.py model_url filenames at the installed pin.
+PACK_MEMBERS: Final[dict[str, tuple[str, ...]]] = {
+    "antelopev2": ("1k3d68.onnx", "2d106det.onnx", "genderage.onnx", "glintr100.onnx", "scrfd_10g_bnkps.onnx"),
+    "buffalo_l": ("1k3d68.onnx", "2d106det.onnx", "det_10g.onnx", "genderage.onnx", "w600k_r50.onnx"),
+    "retinaface_resnet50": ("detection_Resnet50_Final.pth",),
+    "bisenet": ("parsing_bisenet.pth",),
+    "parsenet": ("parsing_parsenet.pth",),
+    "arcface": ("recognition_arcface_ir_se50.pth",),
+}
+
 
 @dataclass
 class Reconciled:
@@ -64,6 +80,13 @@ def reconcile(population: dict[str, Any], observed: list[dict[str, Any]]) -> lis
         for stem in _stems(identity):
             claimed.setdefault(stem, set()).add(identity)
 
+    members: dict[str, set[str]] = {}
+    for identity in static:
+        for stem in _stems(identity):
+            for file in PACK_MEMBERS.get(stem, ()):
+                for one in _stems(file):
+                    members.setdefault(one, set()).add(identity)
+
     out: list[Reconciled] = []
     for row in observed:
         identity = str(row.get("identity", ""))
@@ -72,6 +95,20 @@ def reconcile(population: dict[str, Any], observed: list[dict[str, Any]]) -> lis
         if loader == observe.NATIVE_UNSEEN:
             continue
         matched, ambiguous = _resolve(identity, claimed)
+        if not matched and not ambiguous:
+            # A member file of a claimed pack: the same bytes, opened by the
+            # library under the pack the population already names. A file in
+            # SEVERAL claimed packs agrees with each -- packs share members.
+            packs = {one for stem in _stems(identity) for one in members.get(stem, set())}
+            if packs:
+                for holder in sorted(packs):
+                    held = static[holder]
+                    held.verdict = AGREED
+                    if loader and loader not in held.loaders:
+                        held.loaders.append(loader)
+                    joined = f"member {identity!r} observed through {loader}"
+                    held.detail = f"{held.detail}; {joined}" if held.detail else joined
+                continue
         if ambiguous:
             out.append(
                 Reconciled(

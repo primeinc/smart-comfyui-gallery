@@ -145,6 +145,13 @@ class WholeReferenceRunner:
         self._durables: dict[str, tuple[UInt8Array, int]] = {}
         self._previews: dict[str, tuple[UInt8Array, int]] = {}
 
+    def _preview_differs(self, label: str) -> bool:
+        #: The substitute is the preview this application already keeps; the
+        #: expectation is what the vendor preprocess actually did with it.
+        shot = self._shots[label]
+        preview, _ = self._preview(shot)
+        return not np.array_equal(vendor_preprocess(self.setup, preview), vendor_preprocess(self.setup, shot.frame))
+
     def cases(self) -> tuple[Case, ...]:
         return tuple(
             Case(
@@ -157,7 +164,15 @@ class WholeReferenceRunner:
                 rtol=0.0,
                 atol=0.0,
                 retained=("whole_reference_image",),
-                ablations=(Ablation(primitive="whole_reference_image", expect_breaks=True),),
+                ablations=(
+                    Ablation(primitive="whole_reference_image", expect_breaks=True),
+                    Ablation(
+                        primitive="whole_reference_image",
+                        swap="stored_preview",
+                        expect_breaks=self._preview_differs(label),
+                        kind="substitution",
+                    ),
+                ),
                 measurements=("bytes_whole_against_face_patch", "bytes_to_retain_the_picture"),
                 note=f"vendor setup at {self.setup.commit[:12]}; cited {'; '.join(self.setup.cited)}",
             )
@@ -196,7 +211,9 @@ class WholeReferenceRunner:
         return _artifact(case.boundary, vendor_preprocess(self.setup, pixels))
 
     def ablate(self, case: Case, retained: RetainedState, ablation: Ablation) -> RetainedState:
-        del case
+        if ablation.swap == "stored_preview":
+            preview, _ = self._preview(self._shot(case))
+            return retained.replacing("whole_reference_image", preview)
         return retained.without(ablation.primitive)
 
     def measure(self, case: Case, retained: RetainedState, name: str) -> Measurement:

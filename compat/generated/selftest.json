@@ -9,9 +9,9 @@
     },
     {
       "applicable": true,
-      "detail": "anystory reads NOT EXERCISED; not_exercised=1",
+      "detail": "aligned_crop reads NOT EXERCISED; not_exercised=1",
       "detected": true,
-      "mechanism": "anystory dropped, then rebuilt through matrices.build",
+      "mechanism": "aligned_crop dropped, then rebuilt through matrices.build",
       "name": "missing_consumer"
     },
     {
@@ -37,7 +37,7 @@
     },
     {
       "applicable": true,
-      "detail": "sources: consumers/aligned_crop.py 000000000000 -> c0b61798e521",
+      "detail": "sources: consumers/aligned_crop.py 000000000000 -> d2289f0ae925",
       "detected": true,
       "mechanism": "one consumer's source digest altered",
       "name": "changed_runner_source"
@@ -65,7 +65,7 @@
     },
     {
       "applicable": true,
-      "detail": "sources: harness/answer.py 000000000000 -> 88ef3a359406",
+      "detail": "sources: harness/attack.py 000000000000 -> da386392a573",
       "detected": true,
       "mechanism": "evidence recorded against an older harness source",
       "name": "stale_evidence"
@@ -107,7 +107,7 @@
     },
     {
       "applicable": true,
-      "detail": "application: db/__init__.py 000000000000 -> e3b0c44298fc",
+      "detail": "application: .vale/styles/SmartGallery/CommentSentences.yml 000000000000 -> c80f5becf426",
       "detected": true,
       "mechanism": "one application source digest altered",
       "name": "changed_application_source"
@@ -128,8 +128,8 @@
     },
     {
       "applicable": true,
-      "detail": "types and bytes preserved=True; a corrupt entry read as a miss=True",
-      "detected": true,
+      "detail": "types and bytes preserved=True; a corrupt entry read as a miss=False",
+      "detected": false,
       "mechanism": "round-trip a Face of arrays, an np.float32, two ints and a str; then truncate it",
       "name": "cache_preserves_every_value_type"
     },
@@ -162,5 +162,7 @@
       "name": "vendor_asset_host"
     }
   ],
-  "undetected": []
+  "undetected": [
+    "cache_preserves_every_value_type"
+  ]
 }

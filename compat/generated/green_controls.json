@@ -1,6 +1,6 @@
 {
   "failing": [],
-  "identity": "f37d0f99dde88f685563107a6abd24b40c372aa3bb2a72bb3cf1b929be126042",
+  "identity": "cfe487c36d68e2017e1ff33188686d2160a536167dbdef5e4980729155fcfcdd",
   "ledger_stages": [
     "source_provenance",
     "weight_provenance",
@@ -19,7 +19,7 @@
       "state": "held"
     },
     {
-      "detail": "closure RED on every lane exited 0 [failed], every ledger cell VERIFIED [failed], every consumer in evidence has a ledger row [failed]",
+      "detail": "closure RED on every lane exited 0 [failed], every ledger cell VERIFIED [failed]",
       "name": "shipped evidence re-stamped cannot close",
       "state": "held"
     },

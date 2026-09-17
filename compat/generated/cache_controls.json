@@ -18,7 +18,7 @@
     ]
   },
   "failing": [],
-  "identity": "f37d0f99dde88f685563107a6abd24b40c372aa3bb2a72bb3cf1b929be126042",
+  "identity": "cfe487c36d68e2017e1ff33188686d2160a536167dbdef5e4980729155fcfcdd",
   "probes": [
     {
       "detail": "2 kind(s), all naming 2 codec file(s) that exist",
@@ -44,6 +44,21 @@
       "detail": "face_put returned quietly",
       "held": true,
       "name": "an uncarryable value misses, never crashes"
+    },
+    {
+      "detail": "propagated: no adapter registered for vision.facestore.Face",
+      "held": true,
+      "name": "an unregistered container propagates"
+    },
+    {
+      "detail": "an uncarryable value misses AND says so",
+      "held": true,
+      "name": "a tolerated miss moves a counter"
+    },
+    {
+      "detail": "missed, and ours_miss_not_a_mapping moved 1",
+      "held": true,
+      "name": "a non-mapping root misses, never crashes"
     }
   ]
 }

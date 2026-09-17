@@ -1,26 +1,36 @@
 {
-  "identity": "4a39d667391f596ba6d52971b43dff1fdc6bba00655b9d9db8c60fd731c6bb11",
+  "consumed": {
+    "cases.json": "3ab6cc18a4c92c56281d575d8912cc2dc16044e32b013902bcafffe09354af94",
+    "lanes.json": "25f17652b29ad0baddf6e29c47d076b8ec5a5388d0402f381f97ec1caeb39f89",
+    "provenance.json": "52596b0a059084fc7bf0550f83206a9ae48f400a06afb1c8ff56de9e942f0b39"
+  },
+  "identity": "cfe487c36d68e2017e1ff33188686d2160a536167dbdef5e4980729155fcfcdd",
   "lanes": {
     "acceptance": 0,
-    "answer": 0,
     "attack": 1,
-    "cases": 1,
+    "cache-attack": 0,
+    "cases": 0,
     "check": 0,
     "citations": 0,
     "closure-attack": 0,
+    "condition-audit": 1,
+    "consumption-attack": 0,
+    "green-attack": 0,
     "hf": 0,
-    "matrices": 1,
+    "identity-attack": 0,
+    "ledger-attack": 0,
+    "matrices": 0,
     "missing": 1,
     "observe-attack": 0,
     "pins": 0,
-    "population": 1,
+    "population": 0,
     "population-attack": 0,
     "proc-attack": 0,
     "producer": 0,
     "reconcile": 1,
     "reconcile-attack": 0,
-    "selftest": 0,
-    "staleness": 1,
+    "selftest": 1,
+    "staleness": 0,
     "union": 0,
     "vendor": 0,
     "weights": 0,
@@ -30,32 +40,73 @@
     {
       "cells": {
         "comparison_verdict": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "25 case(s) reproduced",
+          "state": "VERIFIED"
         },
         "consumer_replay": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "25 case(s) record replay.sha256",
+          "state": "VERIFIED"
         },
         "durable_read_back": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "reason": "no read-back recorded; nothing was re-opened (durable.read_back_sha256 absent from all 25)",
           "state": "BLOCKED"
         },
         "durable_write": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "reason": "no durable write recorded; the runner replays from memory (durable.written_bytes absent from all 25)",
           "state": "BLOCKED"
         },
         "emitted_observation": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "25 case(s) record retained_bytes",
+          "state": "VERIFIED"
         },
         "native_reconstruction": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "reason": "no thaw recorded; no native record was rebuilt (durable.thawed_keys absent from all 25)",
           "state": "BLOCKED"
         },
         "producer_execution": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "reason": "25 case(s) record baseline.sha256",
+          "state": "VERIFIED"
+        },
+        "source_provenance": {
+          "reason": "declared first-party: carried by this tree's evidence identity, no upstream to pin",
+          "state": "VERIFIED"
+        },
+        "weight_provenance": {
+          "reason": "13 weights VERIFIED",
+          "state": "VERIFIED"
+        }
+      },
+      "consumer": "aligned_crop"
+    },
+    {
+      "cells": {
+        "comparison_verdict": {
+          "reason": "7 case(s) reproduced",
+          "state": "VERIFIED"
+        },
+        "consumer_replay": {
+          "reason": "7 case(s) record replay.sha256",
+          "state": "VERIFIED"
+        },
+        "durable_read_back": {
+          "reason": "no read-back recorded; nothing was re-opened (durable.read_back_sha256 absent from all 7)",
           "state": "BLOCKED"
+        },
+        "durable_write": {
+          "reason": "no durable write recorded; the runner replays from memory (durable.written_bytes absent from all 7)",
+          "state": "BLOCKED"
+        },
+        "emitted_observation": {
+          "reason": "7 case(s) record retained_bytes",
+          "state": "VERIFIED"
+        },
+        "native_reconstruction": {
+          "reason": "no thaw recorded; no native record was rebuilt (durable.thawed_keys absent from all 7)",
+          "state": "BLOCKED"
+        },
+        "producer_execution": {
+          "reason": "7 case(s) record baseline.sha256",
+          "state": "VERIFIED"
         },
         "source_provenance": {
           "reason": "1 path(s) resolved at the pin",
@@ -71,32 +122,32 @@
     {
       "cells": {
         "comparison_verdict": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "4 case(s) reproduced",
+          "state": "VERIFIED"
         },
         "consumer_replay": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "4 case(s) record replay.sha256",
+          "state": "VERIFIED"
         },
         "durable_read_back": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "reason": "no read-back recorded; nothing was re-opened (durable.read_back_sha256 absent from all 4)",
           "state": "BLOCKED"
         },
         "durable_write": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "reason": "no durable write recorded; the runner replays from memory (durable.written_bytes absent from all 4)",
           "state": "BLOCKED"
         },
         "emitted_observation": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "4 case(s) record retained_bytes",
+          "state": "VERIFIED"
         },
         "native_reconstruction": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "reason": "no thaw recorded; no native record was rebuilt (durable.thawed_keys absent from all 4)",
           "state": "BLOCKED"
         },
         "producer_execution": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "4 case(s) record baseline.sha256",
+          "state": "VERIFIED"
         },
         "source_provenance": {
           "reason": "1 path(s) resolved at the pin",
@@ -112,32 +163,155 @@
     {
       "cells": {
         "comparison_verdict": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "16 case(s) reproduced",
+          "state": "VERIFIED"
         },
         "consumer_replay": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "16 case(s) record replay.sha256",
+          "state": "VERIFIED"
         },
         "durable_read_back": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "reason": "no read-back recorded; nothing was re-opened (durable.read_back_sha256 absent from all 16)",
           "state": "BLOCKED"
         },
         "durable_write": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "reason": "no durable write recorded; the runner replays from memory (durable.written_bytes absent from all 16)",
           "state": "BLOCKED"
         },
         "emitted_observation": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "16 case(s) record retained_bytes",
+          "state": "VERIFIED"
         },
         "native_reconstruction": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "reason": "no thaw recorded; no native record was rebuilt (durable.thawed_keys absent from all 16)",
           "state": "BLOCKED"
         },
         "producer_execution": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "reason": "16 case(s) record baseline.sha256",
+          "state": "VERIFIED"
+        },
+        "source_provenance": {
+          "reason": "declared first-party: carried by this tree's evidence identity, no upstream to pin",
+          "state": "VERIFIED"
+        },
+        "weight_provenance": {
+          "reason": "13 weights VERIFIED",
+          "state": "VERIFIED"
+        }
+      },
+      "consumer": "embedding_spaces"
+    },
+    {
+      "cells": {
+        "comparison_verdict": {
+          "reason": "39 case(s) reproduced",
+          "state": "VERIFIED"
+        },
+        "consumer_replay": {
+          "reason": "39 case(s) record replay.sha256",
+          "state": "VERIFIED"
+        },
+        "durable_read_back": {
+          "reason": "no read-back recorded; nothing was re-opened (durable.read_back_sha256 absent from all 39)",
           "state": "BLOCKED"
+        },
+        "durable_write": {
+          "reason": "no durable write recorded; the runner replays from memory (durable.written_bytes absent from all 39)",
+          "state": "BLOCKED"
+        },
+        "emitted_observation": {
+          "reason": "39 case(s) record retained_bytes",
+          "state": "VERIFIED"
+        },
+        "native_reconstruction": {
+          "reason": "no thaw recorded; no native record was rebuilt (durable.thawed_keys absent from all 39)",
+          "state": "BLOCKED"
+        },
+        "producer_execution": {
+          "reason": "39 case(s) record baseline.sha256",
+          "state": "VERIFIED"
+        },
+        "source_provenance": {
+          "reason": "declared first-party: carried by this tree's evidence identity, no upstream to pin",
+          "state": "VERIFIED"
+        },
+        "weight_provenance": {
+          "reason": "13 weights VERIFIED",
+          "state": "VERIFIED"
+        }
+      },
+      "consumer": "face_selection"
+    },
+    {
+      "cells": {
+        "comparison_verdict": {
+          "reason": "40 case(s) reproduced",
+          "state": "VERIFIED"
+        },
+        "consumer_replay": {
+          "reason": "40 case(s) record replay.sha256",
+          "state": "VERIFIED"
+        },
+        "durable_read_back": {
+          "reason": "no read-back recorded; nothing was re-opened (durable.read_back_sha256 absent from all 40)",
+          "state": "BLOCKED"
+        },
+        "durable_write": {
+          "reason": "no durable write recorded; the runner replays from memory (durable.written_bytes absent from all 40)",
+          "state": "BLOCKED"
+        },
+        "emitted_observation": {
+          "reason": "40 case(s) record retained_bytes",
+          "state": "VERIFIED"
+        },
+        "native_reconstruction": {
+          "reason": "no thaw recorded; no native record was rebuilt (durable.thawed_keys absent from all 40)",
+          "state": "BLOCKED"
+        },
+        "producer_execution": {
+          "reason": "40 case(s) record baseline.sha256",
+          "state": "VERIFIED"
+        },
+        "source_provenance": {
+          "reason": "declared first-party: carried by this tree's evidence identity, no upstream to pin",
+          "state": "VERIFIED"
+        },
+        "weight_provenance": {
+          "reason": "13 weights VERIFIED",
+          "state": "VERIFIED"
+        }
+      },
+      "consumer": "gallery_storage"
+    },
+    {
+      "cells": {
+        "comparison_verdict": {
+          "reason": "1 case(s) reproduced",
+          "state": "VERIFIED"
+        },
+        "consumer_replay": {
+          "reason": "1 case(s) record replay.sha256",
+          "state": "VERIFIED"
+        },
+        "durable_read_back": {
+          "reason": "no read-back recorded; nothing was re-opened (durable.read_back_sha256 absent from all 1)",
+          "state": "BLOCKED"
+        },
+        "durable_write": {
+          "reason": "no durable write recorded; the runner replays from memory (durable.written_bytes absent from all 1)",
+          "state": "BLOCKED"
+        },
+        "emitted_observation": {
+          "reason": "1 case(s) record retained_bytes",
+          "state": "VERIFIED"
+        },
+        "native_reconstruction": {
+          "reason": "no thaw recorded; no native record was rebuilt (durable.thawed_keys absent from all 1)",
+          "state": "BLOCKED"
+        },
+        "producer_execution": {
+          "reason": "1 case(s) record baseline.sha256",
+          "state": "VERIFIED"
         },
         "source_provenance": {
           "reason": "1 path(s) resolved at the pin",
@@ -153,32 +327,32 @@
     {
       "cells": {
         "comparison_verdict": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "16 case(s) reproduced",
+          "state": "VERIFIED"
         },
         "consumer_replay": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "16 case(s) record replay.sha256",
+          "state": "VERIFIED"
         },
         "durable_read_back": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "reason": "no read-back recorded; nothing was re-opened (durable.read_back_sha256 absent from all 16)",
           "state": "BLOCKED"
         },
         "durable_write": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "reason": "no durable write recorded; the runner replays from memory (durable.written_bytes absent from all 16)",
           "state": "BLOCKED"
         },
         "emitted_observation": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "16 case(s) record retained_bytes",
+          "state": "VERIFIED"
         },
         "native_reconstruction": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "reason": "no thaw recorded; no native record was rebuilt (durable.thawed_keys absent from all 16)",
           "state": "BLOCKED"
         },
         "producer_execution": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "16 case(s) record baseline.sha256",
+          "state": "VERIFIED"
         },
         "source_provenance": {
           "reason": "3 path(s) resolved at the pin",
@@ -194,32 +368,32 @@
     {
       "cells": {
         "comparison_verdict": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "18 case(s) reproduced",
+          "state": "VERIFIED"
         },
         "consumer_replay": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "18 case(s) record replay.sha256",
+          "state": "VERIFIED"
         },
         "durable_read_back": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "reason": "no read-back recorded; nothing was re-opened (durable.read_back_sha256 absent from all 18)",
           "state": "BLOCKED"
         },
         "durable_write": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "reason": "no durable write recorded; the runner replays from memory (durable.written_bytes absent from all 18)",
           "state": "BLOCKED"
         },
         "emitted_observation": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "18 case(s) record retained_bytes",
+          "state": "VERIFIED"
         },
         "native_reconstruction": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "reason": "no thaw recorded; no native record was rebuilt (durable.thawed_keys absent from all 18)",
           "state": "BLOCKED"
         },
         "producer_execution": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "18 case(s) record baseline.sha256",
+          "state": "VERIFIED"
         },
         "source_provenance": {
           "reason": "3 path(s) resolved at the pin",
@@ -235,32 +409,73 @@
     {
       "cells": {
         "comparison_verdict": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "18 case(s) reproduced",
+          "state": "VERIFIED"
         },
         "consumer_replay": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "18 case(s) record replay.sha256",
+          "state": "VERIFIED"
         },
         "durable_read_back": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "reason": "no read-back recorded; nothing was re-opened (durable.read_back_sha256 absent from all 18)",
           "state": "BLOCKED"
         },
         "durable_write": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "reason": "no durable write recorded; the runner replays from memory (durable.written_bytes absent from all 18)",
           "state": "BLOCKED"
         },
         "emitted_observation": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "18 case(s) record retained_bytes",
+          "state": "VERIFIED"
         },
         "native_reconstruction": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "reason": "no thaw recorded; no native record was rebuilt (durable.thawed_keys absent from all 18)",
           "state": "BLOCKED"
         },
         "producer_execution": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "reason": "18 case(s) record baseline.sha256",
+          "state": "VERIFIED"
+        },
+        "source_provenance": {
+          "reason": "declared first-party: carried by this tree's evidence identity, no upstream to pin",
+          "state": "VERIFIED"
+        },
+        "weight_provenance": {
+          "reason": "13 weights VERIFIED",
+          "state": "VERIFIED"
+        }
+      },
+      "consumer": "insightface_producer"
+    },
+    {
+      "cells": {
+        "comparison_verdict": {
+          "reason": "6 case(s) reproduced",
+          "state": "VERIFIED"
+        },
+        "consumer_replay": {
+          "reason": "6 case(s) record replay.sha256",
+          "state": "VERIFIED"
+        },
+        "durable_read_back": {
+          "reason": "no read-back recorded; nothing was re-opened (durable.read_back_sha256 absent from all 6)",
           "state": "BLOCKED"
+        },
+        "durable_write": {
+          "reason": "no durable write recorded; the runner replays from memory (durable.written_bytes absent from all 6)",
+          "state": "BLOCKED"
+        },
+        "emitted_observation": {
+          "reason": "6 case(s) record retained_bytes",
+          "state": "VERIFIED"
+        },
+        "native_reconstruction": {
+          "reason": "no thaw recorded; no native record was rebuilt (durable.thawed_keys absent from all 6)",
+          "state": "BLOCKED"
+        },
+        "producer_execution": {
+          "reason": "6 case(s) record baseline.sha256",
+          "state": "VERIFIED"
         },
         "source_provenance": {
           "reason": "1 path(s) resolved at the pin",
@@ -276,32 +491,32 @@
     {
       "cells": {
         "comparison_verdict": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "10 case(s) reproduced",
+          "state": "VERIFIED"
         },
         "consumer_replay": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "10 case(s) record replay.sha256",
+          "state": "VERIFIED"
         },
         "durable_read_back": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "reason": "no read-back recorded; nothing was re-opened (durable.read_back_sha256 absent from all 10)",
           "state": "BLOCKED"
         },
         "durable_write": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "reason": "no durable write recorded; the runner replays from memory (durable.written_bytes absent from all 10)",
           "state": "BLOCKED"
         },
         "emitted_observation": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "10 case(s) record retained_bytes",
+          "state": "VERIFIED"
         },
         "native_reconstruction": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "reason": "no thaw recorded; no native record was rebuilt (durable.thawed_keys absent from all 10)",
           "state": "BLOCKED"
         },
         "producer_execution": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "10 case(s) record baseline.sha256",
+          "state": "VERIFIED"
         },
         "source_provenance": {
           "reason": "2 path(s) resolved at the pin",
@@ -317,32 +532,32 @@
     {
       "cells": {
         "comparison_verdict": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "12 case(s) reproduced",
+          "state": "VERIFIED"
         },
         "consumer_replay": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "12 case(s) record replay.sha256",
+          "state": "VERIFIED"
         },
         "durable_read_back": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "reason": "no read-back recorded; nothing was re-opened (durable.read_back_sha256 absent from all 12)",
           "state": "BLOCKED"
         },
         "durable_write": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "reason": "no durable write recorded; the runner replays from memory (durable.written_bytes absent from all 12)",
           "state": "BLOCKED"
         },
         "emitted_observation": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "12 case(s) record retained_bytes",
+          "state": "VERIFIED"
         },
         "native_reconstruction": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "reason": "no thaw recorded; no native record was rebuilt (durable.thawed_keys absent from all 12)",
           "state": "BLOCKED"
         },
         "producer_execution": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "12 case(s) record baseline.sha256",
+          "state": "VERIFIED"
         },
         "source_provenance": {
           "reason": "2 path(s) resolved at the pin",
@@ -358,32 +573,32 @@
     {
       "cells": {
         "comparison_verdict": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "6 case(s) reproduced",
+          "state": "VERIFIED"
         },
         "consumer_replay": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "6 case(s) record replay.sha256",
+          "state": "VERIFIED"
         },
         "durable_read_back": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "reason": "no read-back recorded; nothing was re-opened (durable.read_back_sha256 absent from all 6)",
           "state": "BLOCKED"
         },
         "durable_write": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "reason": "no durable write recorded; the runner replays from memory (durable.written_bytes absent from all 6)",
           "state": "BLOCKED"
         },
         "emitted_observation": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "6 case(s) record retained_bytes",
+          "state": "VERIFIED"
         },
         "native_reconstruction": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "reason": "no thaw recorded; no native record was rebuilt (durable.thawed_keys absent from all 6)",
           "state": "BLOCKED"
         },
         "producer_execution": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "6 case(s) record baseline.sha256",
+          "state": "VERIFIED"
         },
         "source_provenance": {
           "reason": "1 path(s) resolved at the pin",
@@ -399,32 +614,32 @@
     {
       "cells": {
         "comparison_verdict": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "24 case(s) reproduced",
+          "state": "VERIFIED"
         },
         "consumer_replay": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "24 case(s) record replay.sha256",
+          "state": "VERIFIED"
         },
         "durable_read_back": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "reason": "no read-back recorded; nothing was re-opened (durable.read_back_sha256 absent from all 24)",
           "state": "BLOCKED"
         },
         "durable_write": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "reason": "no durable write recorded; the runner replays from memory (durable.written_bytes absent from all 24)",
           "state": "BLOCKED"
         },
         "emitted_observation": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "24 case(s) record retained_bytes",
+          "state": "VERIFIED"
         },
         "native_reconstruction": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "reason": "no thaw recorded; no native record was rebuilt (durable.thawed_keys absent from all 24)",
           "state": "BLOCKED"
         },
         "producer_execution": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "24 case(s) record baseline.sha256",
+          "state": "VERIFIED"
         },
         "source_provenance": {
           "reason": "1 path(s) resolved at the pin",
@@ -440,32 +655,32 @@
     {
       "cells": {
         "comparison_verdict": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "5 case(s) reproduced",
+          "state": "VERIFIED"
         },
         "consumer_replay": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "5 case(s) record replay.sha256",
+          "state": "VERIFIED"
         },
         "durable_read_back": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "reason": "no read-back recorded; nothing was re-opened (durable.read_back_sha256 absent from all 5)",
           "state": "BLOCKED"
         },
         "durable_write": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "reason": "no durable write recorded; the runner replays from memory (durable.written_bytes absent from all 5)",
           "state": "BLOCKED"
         },
         "emitted_observation": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "5 case(s) record retained_bytes",
+          "state": "VERIFIED"
         },
         "native_reconstruction": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "reason": "no thaw recorded; no native record was rebuilt (durable.thawed_keys absent from all 5)",
           "state": "BLOCKED"
         },
         "producer_execution": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "5 case(s) record baseline.sha256",
+          "state": "VERIFIED"
         },
         "source_provenance": {
           "reason": "1 path(s) resolved at the pin",
@@ -481,32 +696,32 @@
     {
       "cells": {
         "comparison_verdict": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "6 case(s) reproduced",
+          "state": "VERIFIED"
         },
         "consumer_replay": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "6 case(s) record replay.sha256",
+          "state": "VERIFIED"
         },
         "durable_read_back": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "reason": "no read-back recorded; nothing was re-opened (durable.read_back_sha256 absent from all 6)",
           "state": "BLOCKED"
         },
         "durable_write": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "reason": "no durable write recorded; the runner replays from memory (durable.written_bytes absent from all 6)",
           "state": "BLOCKED"
         },
         "emitted_observation": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "6 case(s) record retained_bytes",
+          "state": "VERIFIED"
         },
         "native_reconstruction": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "reason": "no thaw recorded; no native record was rebuilt (durable.thawed_keys absent from all 6)",
           "state": "BLOCKED"
         },
         "producer_execution": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "6 case(s) record baseline.sha256",
+          "state": "VERIFIED"
         },
         "source_provenance": {
           "reason": "1 path(s) resolved at the pin",
@@ -522,32 +737,32 @@
     {
       "cells": {
         "comparison_verdict": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "6 case(s) reproduced",
+          "state": "VERIFIED"
         },
         "consumer_replay": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "6 case(s) record replay.sha256",
+          "state": "VERIFIED"
         },
         "durable_read_back": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "reason": "no read-back recorded; nothing was re-opened (durable.read_back_sha256 absent from all 6)",
           "state": "BLOCKED"
         },
         "durable_write": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "reason": "no durable write recorded; the runner replays from memory (durable.written_bytes absent from all 6)",
           "state": "BLOCKED"
         },
         "emitted_observation": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "6 case(s) record retained_bytes",
+          "state": "VERIFIED"
         },
         "native_reconstruction": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "reason": "no thaw recorded; no native record was rebuilt (durable.thawed_keys absent from all 6)",
           "state": "BLOCKED"
         },
         "producer_execution": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "6 case(s) record baseline.sha256",
+          "state": "VERIFIED"
         },
         "source_provenance": {
           "reason": "1 path(s) resolved at the pin",
@@ -563,32 +778,32 @@
     {
       "cells": {
         "comparison_verdict": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "6 case(s) reproduced",
+          "state": "VERIFIED"
         },
         "consumer_replay": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "6 case(s) record replay.sha256",
+          "state": "VERIFIED"
         },
         "durable_read_back": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "reason": "no read-back recorded; nothing was re-opened (durable.read_back_sha256 absent from all 6)",
           "state": "BLOCKED"
         },
         "durable_write": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "reason": "no durable write recorded; the runner replays from memory (durable.written_bytes absent from all 6)",
           "state": "BLOCKED"
         },
         "emitted_observation": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "6 case(s) record retained_bytes",
+          "state": "VERIFIED"
         },
         "native_reconstruction": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "reason": "no thaw recorded; no native record was rebuilt (durable.thawed_keys absent from all 6)",
           "state": "BLOCKED"
         },
         "producer_execution": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "6 case(s) record baseline.sha256",
+          "state": "VERIFIED"
         },
         "source_provenance": {
           "reason": "1 path(s) resolved at the pin",
@@ -604,32 +819,32 @@
     {
       "cells": {
         "comparison_verdict": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "6 case(s) reproduced",
+          "state": "VERIFIED"
         },
         "consumer_replay": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "6 case(s) record replay.sha256",
+          "state": "VERIFIED"
         },
         "durable_read_back": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "reason": "no read-back recorded; nothing was re-opened (durable.read_back_sha256 absent from all 6)",
           "state": "BLOCKED"
         },
         "durable_write": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "reason": "no durable write recorded; the runner replays from memory (durable.written_bytes absent from all 6)",
           "state": "BLOCKED"
         },
         "emitted_observation": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "6 case(s) record retained_bytes",
+          "state": "VERIFIED"
         },
         "native_reconstruction": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "reason": "no thaw recorded; no native record was rebuilt (durable.thawed_keys absent from all 6)",
           "state": "BLOCKED"
         },
         "producer_execution": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "6 case(s) record baseline.sha256",
+          "state": "VERIFIED"
         },
         "source_provenance": {
           "reason": "1 path(s) resolved at the pin",
@@ -645,32 +860,32 @@
     {
       "cells": {
         "comparison_verdict": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "6 case(s) reproduced",
+          "state": "VERIFIED"
         },
         "consumer_replay": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "6 case(s) record replay.sha256",
+          "state": "VERIFIED"
         },
         "durable_read_back": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "reason": "no read-back recorded; nothing was re-opened (durable.read_back_sha256 absent from all 6)",
           "state": "BLOCKED"
         },
         "durable_write": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "reason": "no durable write recorded; the runner replays from memory (durable.written_bytes absent from all 6)",
           "state": "BLOCKED"
         },
         "emitted_observation": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "6 case(s) record retained_bytes",
+          "state": "VERIFIED"
         },
         "native_reconstruction": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "reason": "no thaw recorded; no native record was rebuilt (durable.thawed_keys absent from all 6)",
           "state": "BLOCKED"
         },
         "producer_execution": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "6 case(s) record baseline.sha256",
+          "state": "VERIFIED"
         },
         "source_provenance": {
           "reason": "1 path(s) resolved at the pin",
@@ -686,32 +901,32 @@
     {
       "cells": {
         "comparison_verdict": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "12 case(s) reproduced",
+          "state": "VERIFIED"
         },
         "consumer_replay": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "12 case(s) record replay.sha256",
+          "state": "VERIFIED"
         },
         "durable_read_back": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "reason": "no read-back recorded; nothing was re-opened (durable.read_back_sha256 absent from all 12)",
           "state": "BLOCKED"
         },
         "durable_write": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "reason": "no durable write recorded; the runner replays from memory (durable.written_bytes absent from all 12)",
           "state": "BLOCKED"
         },
         "emitted_observation": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "12 case(s) record retained_bytes",
+          "state": "VERIFIED"
         },
         "native_reconstruction": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "reason": "no thaw recorded; no native record was rebuilt (durable.thawed_keys absent from all 12)",
           "state": "BLOCKED"
         },
         "producer_execution": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "12 case(s) record baseline.sha256",
+          "state": "VERIFIED"
         },
         "source_provenance": {
           "reason": "1 path(s) resolved at the pin",
@@ -727,32 +942,73 @@
     {
       "cells": {
         "comparison_verdict": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "14 case(s) reproduced",
+          "state": "VERIFIED"
         },
         "consumer_replay": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "14 case(s) record replay.sha256",
+          "state": "VERIFIED"
         },
         "durable_read_back": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "reason": "no read-back recorded; nothing was re-opened (durable.read_back_sha256 absent from all 14)",
           "state": "BLOCKED"
         },
         "durable_write": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "reason": "no durable write recorded; the runner replays from memory (durable.written_bytes absent from all 14)",
           "state": "BLOCKED"
         },
         "emitted_observation": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "14 case(s) record retained_bytes",
+          "state": "VERIFIED"
         },
         "native_reconstruction": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "reason": "no thaw recorded; no native record was rebuilt (durable.thawed_keys absent from all 14)",
           "state": "BLOCKED"
         },
         "producer_execution": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "reason": "14 case(s) record baseline.sha256",
+          "state": "VERIFIED"
+        },
+        "source_provenance": {
+          "reason": "declared first-party: carried by this tree's evidence identity, no upstream to pin",
+          "state": "VERIFIED"
+        },
+        "weight_provenance": {
+          "reason": "13 weights VERIFIED",
+          "state": "VERIFIED"
+        }
+      },
+      "consumer": "reference_sets"
+    },
+    {
+      "cells": {
+        "comparison_verdict": {
+          "reason": "6 case(s) reproduced",
+          "state": "VERIFIED"
+        },
+        "consumer_replay": {
+          "reason": "6 case(s) record replay.sha256",
+          "state": "VERIFIED"
+        },
+        "durable_read_back": {
+          "reason": "no read-back recorded; nothing was re-opened (durable.read_back_sha256 absent from all 6)",
           "state": "BLOCKED"
+        },
+        "durable_write": {
+          "reason": "no durable write recorded; the runner replays from memory (durable.written_bytes absent from all 6)",
+          "state": "BLOCKED"
+        },
+        "emitted_observation": {
+          "reason": "6 case(s) record retained_bytes",
+          "state": "VERIFIED"
+        },
+        "native_reconstruction": {
+          "reason": "no thaw recorded; no native record was rebuilt (durable.thawed_keys absent from all 6)",
+          "state": "BLOCKED"
+        },
+        "producer_execution": {
+          "reason": "6 case(s) record baseline.sha256",
+          "state": "VERIFIED"
         },
         "source_provenance": {
           "reason": "1 path(s) resolved at the pin",
@@ -768,32 +1024,32 @@
     {
       "cells": {
         "comparison_verdict": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "6 case(s) reproduced",
+          "state": "VERIFIED"
         },
         "consumer_replay": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "6 case(s) record replay.sha256",
+          "state": "VERIFIED"
         },
         "durable_read_back": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "reason": "no read-back recorded; nothing was re-opened (durable.read_back_sha256 absent from all 6)",
           "state": "BLOCKED"
         },
         "durable_write": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "reason": "no durable write recorded; the runner replays from memory (durable.written_bytes absent from all 6)",
           "state": "BLOCKED"
         },
         "emitted_observation": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "6 case(s) record retained_bytes",
+          "state": "VERIFIED"
         },
         "native_reconstruction": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "reason": "no thaw recorded; no native record was rebuilt (durable.thawed_keys absent from all 6)",
           "state": "BLOCKED"
         },
         "producer_execution": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "6 case(s) record baseline.sha256",
+          "state": "VERIFIED"
         },
         "source_provenance": {
           "reason": "2 path(s) resolved at the pin",
@@ -809,32 +1065,32 @@
     {
       "cells": {
         "comparison_verdict": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "6 case(s) reproduced",
+          "state": "VERIFIED"
         },
         "consumer_replay": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "6 case(s) record replay.sha256",
+          "state": "VERIFIED"
         },
         "durable_read_back": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "reason": "no read-back recorded; nothing was re-opened (durable.read_back_sha256 absent from all 6)",
           "state": "BLOCKED"
         },
         "durable_write": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "reason": "no durable write recorded; the runner replays from memory (durable.written_bytes absent from all 6)",
           "state": "BLOCKED"
         },
         "emitted_observation": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "6 case(s) record retained_bytes",
+          "state": "VERIFIED"
         },
         "native_reconstruction": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "reason": "no thaw recorded; no native record was rebuilt (durable.thawed_keys absent from all 6)",
           "state": "BLOCKED"
         },
         "producer_execution": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "6 case(s) record baseline.sha256",
+          "state": "VERIFIED"
         },
         "source_provenance": {
           "reason": "1 path(s) resolved at the pin",
@@ -850,32 +1106,32 @@
     {
       "cells": {
         "comparison_verdict": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "6 case(s) reproduced",
+          "state": "VERIFIED"
         },
         "consumer_replay": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "6 case(s) record replay.sha256",
+          "state": "VERIFIED"
         },
         "durable_read_back": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "reason": "no read-back recorded; nothing was re-opened (durable.read_back_sha256 absent from all 6)",
           "state": "BLOCKED"
         },
         "durable_write": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "reason": "no durable write recorded; the runner replays from memory (durable.written_bytes absent from all 6)",
           "state": "BLOCKED"
         },
         "emitted_observation": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "6 case(s) record retained_bytes",
+          "state": "VERIFIED"
         },
         "native_reconstruction": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "reason": "no thaw recorded; no native record was rebuilt (durable.thawed_keys absent from all 6)",
           "state": "BLOCKED"
         },
         "producer_execution": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "6 case(s) record baseline.sha256",
+          "state": "VERIFIED"
         },
         "source_provenance": {
           "reason": "1 path(s) resolved at the pin",
@@ -891,32 +1147,32 @@
     {
       "cells": {
         "comparison_verdict": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "6 case(s) reproduced",
+          "state": "VERIFIED"
         },
         "consumer_replay": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "6 case(s) record replay.sha256",
+          "state": "VERIFIED"
         },
         "durable_read_back": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "reason": "no read-back recorded; nothing was re-opened (durable.read_back_sha256 absent from all 6)",
           "state": "BLOCKED"
         },
         "durable_write": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "reason": "no durable write recorded; the runner replays from memory (durable.written_bytes absent from all 6)",
           "state": "BLOCKED"
         },
         "emitted_observation": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "6 case(s) record retained_bytes",
+          "state": "VERIFIED"
         },
         "native_reconstruction": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
+          "reason": "no thaw recorded; no native record was rebuilt (durable.thawed_keys absent from all 6)",
           "state": "BLOCKED"
         },
         "producer_execution": {
-          "reason": "cases.json records a different tree (lane `cases exited 1`)",
-          "state": "BLOCKED"
+          "reason": "6 case(s) record baseline.sha256",
+          "state": "VERIFIED"
         },
         "source_provenance": {
           "reason": "1 path(s) resolved at the pin",
@@ -942,9 +1198,9 @@
     "comparison_verdict"
   ],
   "totals": {
-    "declared": 22,
+    "declared": 28,
     "green": 0,
-    "with_blocked": 22,
+    "with_blocked": 28,
     "with_failed": 0
   }
 }

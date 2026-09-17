@@ -163,3 +163,9 @@ compat/generated/shards/*.timings.json
 # (compat/harness/sharded.py `only_one_run`). It exists only while a run is in
 # flight, and a lock left behind by a killed run is a machine-local fact.
 compat/generated/shards.lock
+
+# One run's lane exits, mid-flight and stamped. lanes.raw exists only while
+# `just compat run` is in flight (compat/harness/lanes.py deletes it), and
+# lanes.json is that run's record, superseded whole by the next run.
+compat/generated/lanes.raw
+compat/generated/lanes.json

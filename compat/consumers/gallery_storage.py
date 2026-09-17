@@ -52,6 +52,23 @@ class GalleryStorageRunner:
         for shot in self._shots.values():
             emitted = self.emitted(shot)
             for candidate in self._candidates.values():
+                # The consumer boundary: the WHOLE observation round-trips,
+                # every key at once, not one key at a time.
+                out.append(
+                    Case(
+                        name=f"store_consumer_{candidate.name}_{shot.label}",
+                        consumer_id=CONSUMER_ID,
+                        tier=Tier.CONSUMER,
+                        fixture=shot.fixture,
+                        boundary=f"{candidate.name}|__all__|{shot.label}",
+                        rtol=0.0,
+                        atol=0.0,
+                        exact_bytes=False,
+                        retained=tuple(sorted(emitted)),
+                        measurements=(),
+                        note=f"whole-observation round trip; {candidate.described}",
+                    )
+                )
                 out.extend(
                     Case(
                         name=f"store_{candidate.name}_{key}_{shot.label}",
@@ -70,13 +87,23 @@ class GalleryStorageRunner:
                 )
         return tuple(out)
 
+    def _joined(self, observation: Observation, keys: tuple[str, ...]) -> np.ndarray:
+        parts = [np.asarray(observation[key], dtype=np.float64).reshape(-1) for key in keys]
+        return np.concatenate(parts) if parts else np.zeros(0, dtype=np.float64)
+
     def retained_for(self, case: Case) -> RetainedState:
         candidate, key, shot = self._parts(case)
         stored = self.stored(candidate, shot)
-        held = stored.get(key)
-        if held is None:
-            held = np.zeros(0, dtype=self.emitted(shot)[key].dtype)
-        return RetainedState(**{key: held})
+        if key == "__all__":
+            held = {
+                name: stored.get(name) if stored.get(name) is not None else np.zeros(0, dtype=np.float64)
+                for name in self.emitted(shot)
+            }
+            return RetainedState(**held)
+        found = stored.get(key)
+        if found is None:
+            found = np.zeros(0, dtype=self.emitted(shot)[key].dtype)
+        return RetainedState(**{key: found})
 
     def _artifact(self, name: str, values: np.ndarray) -> Artifact:
         return Artifact(
@@ -89,10 +116,18 @@ class GalleryStorageRunner:
 
     def baseline(self, case: Case) -> Artifact:
         _, key, shot = self._parts(case)
+        if key == "__all__":
+            emitted = self.emitted(shot)
+            return self._artifact(case.boundary, self._joined(emitted, tuple(sorted(emitted))))
         return self._artifact(case.boundary, self.emitted(shot)[key])
 
     def replay(self, case: Case, retained: RetainedState) -> Artifact:
-        _, key, _ = self._parts(case)
+        _, key, shot = self._parts(case)
+        if key == "__all__":
+            keys = tuple(sorted(self.emitted(shot)))
+            parts = [np.asarray(retained.array(name), dtype=np.float64).reshape(-1) for name in keys]
+            joined = np.concatenate(parts) if parts else np.zeros(0, dtype=np.float64)
+            return self._artifact(case.boundary, joined)
         return self._artifact(case.boundary, np.asarray(retained.array(key)))
 
     def measure(self, case: Case, retained: RetainedState, name: str) -> Measurement:

@@ -1,6 +1,22 @@
 {
   "consumers": [
     {
+      "at_pin": false,
+      "commit": "",
+      "consumer": "aligned_crop",
+      "consumer_cases": 5,
+      "derivable_or_unused": [],
+      "necessary": [],
+      "primitive_cases": 20,
+      "repo": "",
+      "status": "REPRODUCED",
+      "substitutions": [],
+      "untested": [],
+      "verdicts": {
+        "PASS": 5
+      }
+    },
+    {
       "at_pin": true,
       "commit": "c38fef83a35512b2a00c072a95bc0ff56b003f93",
       "consumer": "anystory",
@@ -14,17 +30,12 @@
         {
           "primitive": "subject_mask",
           "serves": false,
-          "swap": "face_bbox_rectangle"
+          "swap": "face_box_mask"
         },
         {
           "primitive": "whole_reference_image",
           "serves": false,
-          "swap": "face_patch"
-        },
-        {
-          "primitive": "whole_reference_image",
-          "serves": false,
-          "swap": "preview_derivative"
+          "swap": "stored_preview"
         }
       ],
       "untested": [
@@ -45,21 +56,64 @@
       "primitive_cases": 0,
       "repo": "https://github.com/huggingface/diffusers.git",
       "status": "REPRODUCED",
-      "substitutions": [
-        {
-          "primitive": "whole_reference_image",
-          "serves": false,
-          "swap": "arcface_footprint_only"
-        },
-        {
-          "primitive": "whole_reference_image",
-          "serves": false,
-          "swap": "generous_patch"
-        }
-      ],
+      "substitutions": [],
       "untested": [
         "whole_reference_image"
       ],
+      "verdicts": {
+        "PASS": 4
+      }
+    },
+    {
+      "at_pin": false,
+      "commit": "",
+      "consumer": "embedding_spaces",
+      "consumer_cases": 4,
+      "derivable_or_unused": [],
+      "necessary": [],
+      "primitive_cases": 12,
+      "repo": "",
+      "status": "REPRODUCED",
+      "substitutions": [],
+      "untested": [],
+      "verdicts": {
+        "PASS": 4
+      }
+    },
+    {
+      "at_pin": false,
+      "commit": "",
+      "consumer": "face_selection",
+      "consumer_cases": 6,
+      "derivable_or_unused": [],
+      "necessary": [],
+      "primitive_cases": 33,
+      "repo": "",
+      "status": "REPRODUCED",
+      "substitutions": [
+        {
+          "primitive": "selection_rule",
+          "serves": false,
+          "swap": "other_selection_rule"
+        }
+      ],
+      "untested": [],
+      "verdicts": {
+        "PASS": 6
+      }
+    },
+    {
+      "at_pin": false,
+      "commit": "",
+      "consumer": "gallery_storage",
+      "consumer_cases": 4,
+      "derivable_or_unused": [],
+      "necessary": [],
+      "primitive_cases": 36,
+      "repo": "",
+      "status": "REPRODUCED",
+      "substitutions": [],
+      "untested": [],
       "verdicts": {
         "PASS": 4
       }
@@ -83,7 +137,7 @@
         {
           "primitive": "audio_waveform",
           "serves": false,
-          "swap": "pcm_16_bit"
+          "swap": "mono_downmix"
         }
       ],
       "untested": [
@@ -106,9 +160,24 @@
       "status": "REPRODUCED",
       "substitutions": [
         {
+          "primitive": "david_normal_mp4",
+          "serves": false,
+          "swap": "video_round_trip"
+        },
+        {
+          "primitive": "depth_mp4",
+          "serves": false,
+          "swap": "video_round_trip"
+        },
+        {
+          "primitive": "orig_pixel_mp4",
+          "serves": false,
+          "swap": "video_round_trip"
+        },
+        {
           "primitive": "source_video_bytes",
           "serves": false,
-          "swap": "face_row"
+          "swap": "source_round_trip"
         }
       ],
       "untested": [
@@ -137,32 +206,27 @@
         {
           "primitive": "embedding_raw",
           "serves": false,
-          "swap": "half_precision"
-        },
-        {
-          "primitive": "embedding_raw",
-          "serves": false,
           "swap": "stored_glintr100"
         },
         {
           "primitive": "frame_dimensions",
           "serves": false,
-          "swap": "preview_dimensions"
+          "swap": "dimensions_swapped"
         },
         {
           "primitive": "kps_source_px",
           "serves": false,
-          "swap": "half_precision"
+          "swap": "kps_rounded_int"
         },
         {
           "primitive": "patch_origin",
           "serves": false,
-          "swap": "origin_at_zero"
+          "swap": "origin_zero"
         },
         {
           "primitive": "source_region_pixels",
           "serves": false,
-          "swap": "webp_encoded"
+          "swap": "half_resolution"
         }
       ],
       "untested": [
@@ -174,6 +238,22 @@
       ],
       "verdicts": {
         "PASS": 18
+      }
+    },
+    {
+      "at_pin": false,
+      "commit": "",
+      "consumer": "insightface_producer",
+      "consumer_cases": 6,
+      "derivable_or_unused": [],
+      "necessary": [],
+      "primitive_cases": 12,
+      "repo": "",
+      "status": "REPRODUCED",
+      "substitutions": [],
+      "untested": [],
+      "verdicts": {
+        "PASS": 6
       }
     },
     {
@@ -190,12 +270,7 @@
         {
           "primitive": "whole_reference_image",
           "serves": false,
-          "swap": "face_patch"
-        },
-        {
-          "primitive": "whole_reference_image",
-          "serves": false,
-          "swap": "preview_derivative"
+          "swap": "stored_preview"
         }
       ],
       "untested": [
@@ -221,22 +296,12 @@
         {
           "primitive": "embedding_raw",
           "serves": false,
-          "swap": "half_precision"
-        },
-        {
-          "primitive": "embedding_raw",
-          "serves": false,
           "swap": "stored_glintr100"
         },
         {
           "primitive": "frame_dimensions",
           "serves": false,
-          "swap": "preview_dimensions"
-        },
-        {
-          "primitive": "kps_source_px",
-          "serves": false,
-          "swap": "half_precision"
+          "swap": "dimensions_swapped"
         }
       ],
       "untested": [
@@ -264,22 +329,12 @@
         {
           "primitive": "embedding_raw",
           "serves": false,
-          "swap": "half_precision"
-        },
-        {
-          "primitive": "embedding_raw",
-          "serves": false,
           "swap": "stored_glintr100"
         },
         {
           "primitive": "frame_dimensions",
           "serves": false,
-          "swap": "preview_dimensions"
-        },
-        {
-          "primitive": "kps_source_px",
-          "serves": false,
-          "swap": "half_precision"
+          "swap": "dimensions_swapped"
         }
       ],
       "untested": [
@@ -302,11 +357,6 @@
       "repo": "https://github.com/cubiq/ComfyUI_IPAdapter_plus.git",
       "status": "REPRODUCED",
       "substitutions": [
-        {
-          "primitive": "embedding_raw",
-          "serves": false,
-          "swap": "half_precision"
-        },
         {
           "primitive": "embedding_raw",
           "serves": false,
@@ -334,27 +384,22 @@
         {
           "primitive": "embedding_raw",
           "serves": false,
-          "swap": "half_precision"
-        },
-        {
-          "primitive": "embedding_raw",
-          "serves": false,
           "swap": "stored_glintr100"
         },
         {
           "primitive": "kps_source_px",
           "serves": false,
-          "swap": "half_precision"
+          "swap": "kps_rounded_int"
         },
         {
           "primitive": "patch_origin",
           "serves": false,
-          "swap": "origin_at_zero"
+          "swap": "origin_zero"
         },
         {
           "primitive": "source_region_pixels",
           "serves": false,
-          "swap": "webp_encoded"
+          "swap": "half_resolution"
         }
       ],
       "untested": [
@@ -378,11 +423,6 @@
       "repo": "https://github.com/tencent-ailab/IP-Adapter.git",
       "status": "REPRODUCED",
       "substitutions": [
-        {
-          "primitive": "embedding_raw",
-          "serves": false,
-          "swap": "half_precision"
-        },
         {
           "primitive": "embedding_raw",
           "serves": false,
@@ -410,12 +450,7 @@
         {
           "primitive": "whole_reference_image",
           "serves": false,
-          "swap": "face_patch"
-        },
-        {
-          "primitive": "whole_reference_image",
-          "serves": false,
-          "swap": "preview_derivative"
+          "swap": "stored_preview"
         }
       ],
       "untested": [
@@ -436,11 +471,6 @@
       "repo": "https://github.com/TencentARC/PhotoMaker.git",
       "status": "REPRODUCED",
       "substitutions": [
-        {
-          "primitive": "embedding_raw",
-          "serves": false,
-          "swap": "half_precision"
-        },
         {
           "primitive": "embedding_raw",
           "serves": false,
@@ -468,11 +498,6 @@
         {
           "primitive": "embedding_raw",
           "serves": false,
-          "swap": "half_precision"
-        },
-        {
-          "primitive": "embedding_raw",
-          "serves": false,
           "swap": "stored_glintr100"
         }
       ],
@@ -494,11 +519,6 @@
       "repo": "https://github.com/ToTheBeginning/PuLID.git",
       "status": "REPRODUCED",
       "substitutions": [
-        {
-          "primitive": "embedding_raw",
-          "serves": false,
-          "swap": "half_precision"
-        },
         {
           "primitive": "embedding_raw",
           "serves": false,
@@ -526,12 +546,7 @@
         {
           "primitive": "whole_reference_image",
           "serves": false,
-          "swap": "face_patch"
-        },
-        {
-          "primitive": "whole_reference_image",
-          "serves": false,
-          "swap": "preview_derivative"
+          "swap": "stored_preview"
         }
       ],
       "untested": [
@@ -545,7 +560,7 @@
       "at_pin": true,
       "commit": "6ad6b35a4df250d14cb2abf0808c9ffedf59f747",
       "consumer": "reactor",
-      "consumer_cases": 8,
+      "consumer_cases": 12,
       "derivable_or_unused": [],
       "necessary": [],
       "primitive_cases": 0,
@@ -555,32 +570,22 @@
         {
           "primitive": "age",
           "serves": false,
-          "swap": "decade_bucket"
-        },
-        {
-          "primitive": "age",
-          "serves": false,
-          "swap": "half_precision"
+          "swap": "age_to_decade"
         },
         {
           "primitive": "bbox",
           "serves": false,
-          "swap": "half_precision"
+          "swap": "through_float16"
         },
         {
           "primitive": "det_score",
           "serves": false,
-          "swap": "half_precision"
+          "swap": "through_float16"
         },
         {
           "primitive": "embedding",
           "serves": false,
-          "swap": "half_precision"
-        },
-        {
-          "primitive": "embedding_raw",
-          "serves": false,
-          "swap": "half_precision"
+          "swap": "through_float16"
         },
         {
           "primitive": "embedding_raw",
@@ -590,27 +595,22 @@
         {
           "primitive": "gender",
           "serves": false,
-          "swap": "half_precision"
-        },
-        {
-          "primitive": "gender",
-          "serves": false,
           "swap": "opposite_label"
         },
         {
           "primitive": "kps",
           "serves": false,
-          "swap": "half_precision"
+          "swap": "through_float16"
         },
         {
           "primitive": "landmark_2d_106",
           "serves": false,
-          "swap": "half_precision"
+          "swap": "through_float16"
         },
         {
           "primitive": "landmark_3d_68",
           "serves": false,
-          "swap": "half_precision"
+          "swap": "through_float16"
         }
       ],
       "untested": [
@@ -625,7 +625,29 @@
         "landmark_3d_68"
       ],
       "verdicts": {
-        "PASS": 8
+        "PASS": 12
+      }
+    },
+    {
+      "at_pin": false,
+      "commit": "",
+      "consumer": "reference_sets",
+      "consumer_cases": 2,
+      "derivable_or_unused": [],
+      "necessary": [],
+      "primitive_cases": 12,
+      "repo": "",
+      "status": "REPRODUCED",
+      "substitutions": [
+        {
+          "primitive": "reference_vectors",
+          "serves": true,
+          "swap": "order_reversed"
+        }
+      ],
+      "untested": [],
+      "verdicts": {
+        "PASS": 2
       }
     },
     {
@@ -642,12 +664,7 @@
         {
           "primitive": "whole_reference_image",
           "serves": false,
-          "swap": "face_patch"
-        },
-        {
-          "primitive": "whole_reference_image",
-          "serves": false,
-          "swap": "preview_derivative"
+          "swap": "stored_preview"
         }
       ],
       "untested": [
@@ -671,17 +688,17 @@
         {
           "primitive": "kps_source_px",
           "serves": false,
-          "swap": "half_precision"
+          "swap": "kps_rounded_int"
         },
         {
           "primitive": "patch_origin",
           "serves": false,
-          "swap": "origin_at_zero"
+          "swap": "origin_zero"
         },
         {
           "primitive": "source_region_pixels",
           "serves": false,
-          "swap": "webp_encoded"
+          "swap": "half_resolution"
         }
       ],
       "untested": [
@@ -707,12 +724,7 @@
         {
           "primitive": "whole_reference_image",
           "serves": false,
-          "swap": "face_patch"
-        },
-        {
-          "primitive": "whole_reference_image",
-          "serves": false,
-          "swap": "preview_derivative"
+          "swap": "stored_preview"
         }
       ],
       "untested": [
@@ -736,12 +748,7 @@
         {
           "primitive": "whole_reference_image",
           "serves": false,
-          "swap": "face_patch"
-        },
-        {
-          "primitive": "whole_reference_image",
-          "serves": false,
-          "swap": "preview_derivative"
+          "swap": "stored_preview"
         }
       ],
       "untested": [
@@ -765,12 +772,7 @@
         {
           "primitive": "whole_reference_image",
           "serves": false,
-          "swap": "face_patch"
-        },
-        {
-          "primitive": "whole_reference_image",
-          "serves": false,
-          "swap": "preview_derivative"
+          "swap": "stored_preview"
         }
       ],
       "untested": [
@@ -782,7 +784,7 @@
     }
   ],
   "generated_from": {
-    "cases": 302,
+    "cases": 333,
     "producer_heads": {
       "detection": "SCRFD",
       "genderage": "Attribute",
@@ -911,7 +913,7 @@
   "primitives": [
     {
       "breaks": 0,
-      "cases": 12,
+      "cases": 8,
       "consumers": [
         "reactor"
       ],
@@ -925,14 +927,14 @@
     },
     {
       "breaks": 0,
-      "cases": 32,
+      "cases": 20,
       "consumers": [
         "embedding_spaces"
       ],
       "inconclusive": 12,
       "primitive": "aligned_crop_112",
-      "substitute_fails": 20,
-      "substitute_fails_measured": 20,
+      "substitute_fails": 8,
+      "substitute_fails_measured": 8,
       "substitute_serves": 0,
       "survives": 0,
       "verdict": "NECESSARY AT THIS WIDTH"
@@ -981,31 +983,31 @@
     },
     {
       "breaks": 0,
-      "cases": 4,
+      "cases": 8,
       "consumers": [
         "id_v2v"
       ],
       "inconclusive": 4,
       "primitive": "david_normal_mp4",
-      "substitute_fails": 0,
-      "substitute_fails_measured": 0,
+      "substitute_fails": 4,
+      "substitute_fails_measured": 4,
       "substitute_serves": 0,
       "survives": 0,
-      "verdict": "UNPROVEN"
+      "verdict": "NECESSARY AT THIS WIDTH"
     },
     {
       "breaks": 0,
-      "cases": 4,
+      "cases": 8,
       "consumers": [
         "id_v2v"
       ],
       "inconclusive": 4,
       "primitive": "depth_mp4",
-      "substitute_fails": 0,
-      "substitute_fails_measured": 0,
+      "substitute_fails": 4,
+      "substitute_fails_measured": 4,
       "substitute_serves": 0,
       "survives": 0,
-      "verdict": "UNPROVEN"
+      "verdict": "NECESSARY AT THIS WIDTH"
     },
     {
       "breaks": 0,
@@ -1038,7 +1040,7 @@
     },
     {
       "breaks": 0,
-      "cases": 168,
+      "cases": 112,
       "consumers": [
         "infiniteyou",
         "instantid",
@@ -1053,8 +1055,8 @@
       ],
       "inconclusive": 56,
       "primitive": "embedding_raw",
-      "substitute_fails": 89,
-      "substitute_fails_measured": 89,
+      "substitute_fails": 33,
+      "substitute_fails_measured": 33,
       "substitute_serves": 0,
       "survives": 0,
       "verdict": "NECESSARY AT THIS WIDTH"
@@ -1083,15 +1085,15 @@
       ],
       "inconclusive": 17,
       "primitive": "frame_dimensions",
-      "substitute_fails": 14,
-      "substitute_fails_measured": 14,
+      "substitute_fails": 13,
+      "substitute_fails_measured": 13,
       "substitute_serves": 0,
       "survives": 0,
       "verdict": "NECESSARY AT THIS WIDTH"
     },
     {
       "breaks": 0,
-      "cases": 12,
+      "cases": 8,
       "consumers": [
         "reactor"
       ],
@@ -1119,7 +1121,7 @@
     },
     {
       "breaks": 0,
-      "cases": 134,
+      "cases": 97,
       "consumers": [
         "aligned_crop",
         "infiniteyou",
@@ -1130,8 +1132,8 @@
       ],
       "inconclusive": 67,
       "primitive": "kps_source_px",
-      "substitute_fails": 63,
-      "substitute_fails_measured": 63,
+      "substitute_fails": 30,
+      "substitute_fails_measured": 30,
       "substitute_serves": 0,
       "survives": 0,
       "verdict": "NECESSARY AT THIS WIDTH"
@@ -1167,21 +1169,21 @@
     },
     {
       "breaks": 0,
-      "cases": 4,
+      "cases": 8,
       "consumers": [
         "id_v2v"
       ],
       "inconclusive": 4,
       "primitive": "orig_pixel_mp4",
-      "substitute_fails": 0,
-      "substitute_fails_measured": 0,
+      "substitute_fails": 4,
+      "substitute_fails_measured": 4,
       "substitute_serves": 0,
       "survives": 0,
-      "verdict": "UNPROVEN"
+      "verdict": "NECESSARY AT THIS WIDTH"
     },
     {
       "breaks": 0,
-      "cases": 100,
+      "cases": 80,
       "consumers": [
         "aligned_crop",
         "infiniteyou",
@@ -1190,8 +1192,8 @@
       ],
       "inconclusive": 50,
       "primitive": "patch_origin",
-      "substitute_fails": 47,
-      "substitute_fails_measured": 47,
+      "substitute_fails": 27,
+      "substitute_fails_measured": 27,
       "substitute_serves": 0,
       "survives": 0,
       "verdict": "NECESSARY AT THIS WIDTH"
@@ -1214,35 +1216,35 @@
     },
     {
       "breaks": 0,
-      "cases": 36,
+      "cases": 26,
       "consumers": [
         "reference_sets"
       ],
       "inconclusive": 12,
       "primitive": "reference_vectors",
-      "substitute_fails": 17,
-      "substitute_fails_measured": 17,
-      "substitute_serves": 3,
+      "substitute_fails": 6,
+      "substitute_fails_measured": 6,
+      "substitute_serves": 4,
       "survives": 0,
       "verdict": "CHEAPER VALUE SERVES SOMETIMES"
     },
     {
       "breaks": 0,
-      "cases": 66,
+      "cases": 72,
       "consumers": [
         "face_selection"
       ],
       "inconclusive": 33,
       "primitive": "selection_rule",
-      "substitute_fails": 33,
-      "substitute_fails_measured": 33,
+      "substitute_fails": 39,
+      "substitute_fails_measured": 39,
       "substitute_serves": 0,
       "survives": 0,
       "verdict": "NECESSARY AT THIS WIDTH"
     },
     {
       "breaks": 0,
-      "cases": 105,
+      "cases": 80,
       "consumers": [
         "aligned_crop",
         "infiniteyou",
@@ -1251,8 +1253,8 @@
       ],
       "inconclusive": 50,
       "primitive": "source_region_pixels",
-      "substitute_fails": 55,
-      "substitute_fails_measured": 55,
+      "substitute_fails": 30,
+      "substitute_fails_measured": 30,
       "substitute_serves": 0,
       "survives": 0,
       "verdict": "NECESSARY AT THIS WIDTH"
@@ -1266,10 +1268,10 @@
       "inconclusive": 4,
       "primitive": "source_video_bytes",
       "substitute_fails": 4,
-      "substitute_fails_measured": 0,
+      "substitute_fails_measured": 4,
       "substitute_serves": 0,
       "survives": 0,
-      "verdict": "UNPROVEN"
+      "verdict": "NECESSARY AT THIS WIDTH"
     },
     {
       "breaks": 0,
@@ -1287,7 +1289,7 @@
     },
     {
       "breaks": 0,
-      "cases": 153,
+      "cases": 102,
       "consumers": [
         "anystory",
         "consisid",
@@ -1301,8 +1303,8 @@
       ],
       "inconclusive": 53,
       "primitive": "whole_reference_image",
-      "substitute_fails": 96,
-      "substitute_fails_measured": 96,
+      "substitute_fails": 49,
+      "substitute_fails_measured": 49,
       "substitute_serves": 0,
       "survives": 0,
       "verdict": "NECESSARY AT THIS WIDTH"
@@ -1413,17 +1415,12 @@
   "totals": {
     "bytes_per_observation": 3804,
     "contradicted": 0,
-    "declared": 22,
+    "declared": 28,
     "diverged": 0,
     "not_exercised": 0,
-    "primitives_unproven": 4,
-    "primitives_unproven_names": [
-      "david_normal_mp4",
-      "depth_mp4",
-      "orig_pixel_mp4",
-      "source_video_bytes"
-    ],
-    "reproduced": 22,
+    "primitives_unproven": 0,
+    "primitives_unproven_names": [],
+    "reproduced": 28,
     "skipped_inputs": 0,
     "unrepresented_failures": 0
   },

@@ -30,9 +30,9 @@
       "expected": "the case that needs it stops reproducing",
       "name": "necessary_removed",
       "notes": [
-        "patch_origin <- origin_at_zero: exact_bytes: 37632 of 37632 elements differ, worst 225.0"
+        "whole_reference_image <- stored_preview: exact_bytes: 741156 of 3784800 elements differ, worst 22.0"
       ],
-      "observed": "0 removal(s) and 520 substitution(s) broke their replay, e.g. aligned_crop_112_1_id_document on patch_origin <- origin_at_zero",
+      "observed": "0 removal(s) and 333 substitution(s) broke their replay, e.g. anystory_masked_subject_multi_1 on whole_reference_image <- stored_preview",
       "targets": "a primitive whose removal or degradation broke the replay"
     },
     {
@@ -48,7 +48,7 @@
       "expected": "a second run serialises to the same bytes as the first",
       "name": "evidence_not_reproducible",
       "notes": [],
-      "observed": "the two runs differ from byte 24,847: '9d2de5ec739dd65cf3a7bd6adeca98acd5b9a10c94336e1457' against '4a39d667391f596ba6d52971b43dff1fdc6bba00655b9d9db8'",
+      "observed": "the two runs differ from byte 90,181: '1k3d68.onnx\",\\n      \"loader\": \"onnxruntime.Inferen' against 'antelopev2\",\\n      \"loader\": \"FaceAnalysis\",\\n     '",
       "targets": "generated/cases.json"
     },
     {
@@ -60,11 +60,11 @@
       "targets": "generated/producer_inventory.json against the live producer"
     },
     {
-      "detected": false,
+      "detected": true,
       "expected": "provenance PASSES and the matrix reports every consumer exercised",
       "name": "positive_control",
       "notes": [],
-      "observed": "provenance PASS; 22/22 reproduced; blocking totals: {'primitives_unproven': 4}",
+      "observed": "provenance PASS; 28/28 reproduced; blocking totals: none",
       "targets": "the real manifest and the real evidence"
     }
   ],

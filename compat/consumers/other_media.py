@@ -98,6 +98,12 @@ class IdLoraAudioRunner:
                         expect_breaks=True,
                         kind="substitution",
                     ),
+                    Ablation(
+                        primitive="audio_waveform",
+                        swap="mono_downmix",
+                        expect_breaks=True,
+                        kind="substitution",
+                    ),
                 ),
                 measurements=("waveform_against_latent_cost",),
                 note="boundary is the resampled waveform, the last deterministic artifact before the audio VAE",
@@ -118,6 +124,9 @@ class IdLoraAudioRunner:
     def ablate(self, case: Case, retained: RetainedState, ablation: Ablation) -> RetainedState:
         if ablation.swap == "vae_rate_assumed":
             return retained.replacing("audio_sample_rate", float(VAE_SAMPLE_RATE))
+        if ablation.swap == "mono_downmix":
+            held = retained.points("audio_waveform")
+            return retained.replacing("audio_waveform", held.mean(axis=0, keepdims=True).astype(held.dtype))
         return retained.without(ablation.primitive)
 
     def measure(self, case: Case, retained: RetainedState, name: str) -> Measurement:

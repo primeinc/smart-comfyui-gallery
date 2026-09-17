@@ -1,25 +1,32 @@
 {
-  "clean": true,
+  "clean": false,
   "declared": {
     "every ablation concluded": "cases.json:ablations",
     "every consumed artifact unchanged": "ledger.json:consumed",
     "every consumer in evidence has a ledger row": "cases.json:results",
     "every declared member accounted for": "ledger.json:rows",
+    "every inconclusive has an allowed cause": "cases.json:ablations",
     "every lane exited 0": "lanes.json:lanes",
     "every ledger cell VERIFIED": "ledger.json:rows",
     "every weight VERIFIED": "provenance.json:weights",
     "evidence from one tree": "generated:identity stamps",
-    "no shard failed": "cases.json:results",
-    "no skipped input": "cases.json:results",
+    "no shard failed": "cases.json:results+shards_failed",
+    "no skipped input": "cases.json:results+skipped",
+    "the ledger controls describe this evidence": "ledger_controls.json:exercised_against_real_evidence",
     "the ledger's totals agree with its rows": "ledger.json:rows"
   },
   "emptied": {
     "cases.json:ablations": [
-      "every ablation concluded"
+      "every ablation concluded",
+      "every inconclusive has an allowed cause"
     ],
     "cases.json:results": [
-      "every consumer in evidence has a ledger row",
-      "no shard failed",
+      "every consumer in evidence has a ledger row"
+    ],
+    "cases.json:results+shards_failed": [
+      "no shard failed"
+    ],
+    "cases.json:results+skipped": [
       "no skipped input"
     ],
     "generated:identity stamps": [
@@ -37,11 +44,58 @@
       "every ledger cell VERIFIED",
       "the ledger's totals agree with its rows"
     ],
+    "ledger_controls.json:exercised_against_real_evidence": [
+      "the ledger controls describe this evidence"
+    ],
     "provenance.json:weights": [
       "every weight VERIFIED"
     ]
   },
-  "findings": [],
+  "findings": [
+    {
+      "condition": "every ablation concluded",
+      "detail": "allowance 497 exceeds the 482 in shipped evidence",
+      "kind": "allowance above what was observed",
+      "population": "cases.json:ablations"
+    }
+  ],
+  "identity": "cfe487c36d68e2017e1ff33188686d2160a536167dbdef5e4980729155fcfcdd",
+  "malformed": {
+    "cases.json:ablations": [
+      "every ablation concluded",
+      "every inconclusive has an allowed cause"
+    ],
+    "cases.json:results": [
+      "every consumer in evidence has a ledger row"
+    ],
+    "cases.json:results+shards_failed": [
+      "no shard failed"
+    ],
+    "cases.json:results+skipped": [
+      "no skipped input"
+    ],
+    "generated:identity stamps": [
+      "evidence from one tree"
+    ],
+    "generated:ledger": [],
+    "lanes.json:lanes": [
+      "every lane exited 0"
+    ],
+    "ledger.json:consumed": [
+      "every consumed artifact unchanged"
+    ],
+    "ledger.json:rows": [
+      "every declared member accounted for",
+      "every ledger cell VERIFIED",
+      "the ledger's totals agree with its rows"
+    ],
+    "ledger_controls.json:exercised_against_real_evidence": [
+      "the ledger controls describe this evidence"
+    ],
+    "provenance.json:weights": [
+      "every weight VERIFIED"
+    ]
+  },
   "sources": {
     "cases.json:ablations": {
       "validator": "run.py:116 compares observed_break against the declared expect_breaks",
@@ -50,6 +104,14 @@
     "cases.json:results": {
       "validator": "assertions/arrays.py:compare() decides each verdict; run.py:run_case records it",
       "writer": "sharded.py:main() for the shipped lane; run.py:main() when run whole"
+    },
+    "cases.json:results+shards_failed": {
+      "validator": "NONE -- a shard that did not finish leaves nothing to re-derive it from",
+      "writer": "sharded.py:main names a shard that did not complete"
+    },
+    "cases.json:results+skipped": {
+      "validator": "NONE re-derives a skip -- which is why every member of it is an offence",
+      "writer": "run.py records a skip through case.note_skip; sharded.py:main collects them"
     },
     "generated:identity stamps": {
       "validator": "identity.py:identity() recomputes the tree digest; closure._one_tree compares every stamp to it",
@@ -70,6 +132,10 @@
     "ledger.json:rows": {
       "validator": "ledger.py:stages_are_covered() + STAGE_EVIDENCE: each cell derives from its own case field",
       "writer": "ledger.py:build() -- one row per manifest consumer"
+    },
+    "ledger_controls.json:exercised_against_real_evidence": {
+      "validator": "closure._controls_describe_this_evidence re-derives it from cases.json and compares",
+      "writer": "ledger_attack.py:main() records ledger.exercised_against_real_evidence(GENERATED)"
     },
     "provenance.json:weights": {
       "validator": "provenance.weight_is_verified() -- the one predicate closure and ledger now share",

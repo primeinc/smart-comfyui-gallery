@@ -152,6 +152,27 @@ class AlignedCropRunner:
     def cases(self) -> tuple[Case, ...]:
         out: list[Case] = []
         for label, geometry in self._geometries.items():
+            # The consumer boundary: our production crop against the vendored
+            # geometry it was written to match, at the arcface contract size.
+            out.append(
+                Case(
+                    name=f"aligned_crop_production_112_{label}",
+                    consumer_id=self.consumer_id,
+                    tier=Tier.CONSUMER,
+                    fixture=geometry.fixture,
+                    boundary=f"production@112|{label}",
+                    exact_bytes=False,
+                    rtol=0.0,
+                    atol=2.0,
+                    retained=("kps_source_px",),
+                    measurements=(),
+                    note=(
+                        "vision.faces._arcface_norm_crop against insightface norm_crop@112; the two "
+                        "implementations round interpolation differently on under 0.1% of pixels, "
+                        "worst 2 of 255, and that envelope is the declared tolerance"
+                    ),
+                )
+            )
             for size in SIZES:
                 ablations = [
                     Ablation(primitive="source_region_pixels", expect_breaks=True),
@@ -180,8 +201,13 @@ class AlignedCropRunner:
         head, _, label = case.boundary.partition("|")
         return int(head.rsplit("@", 1)[1]), self._geometries[label]
 
+    def _production(self, case: Case) -> bool:
+        return case.boundary.startswith("production@")
+
     def retained_for(self, case: Case) -> RetainedState:
         size, geometry = self._parts(case)
+        if self._production(case):
+            return RetainedState(kps_source_px=geometry.kps.copy())
         box = analytic_footprint(geometry.kps, size, geometry.frame_wh)
         return RetainedState(
             source_region_pixels=geometry.frame[box.y0 : box.y1, box.x0 : box.x1].copy(),
@@ -194,7 +220,12 @@ class AlignedCropRunner:
         return _artifact(case.boundary, norm_crop(geometry.frame, geometry.kps, size))
 
     def replay(self, case: Case, retained: RetainedState) -> Artifact:
-        size, _ = self._parts(case)
+        size, geometry = self._parts(case)
+        if self._production(case):
+            from vision.faces import _arcface_norm_crop
+
+            crop = _arcface_norm_crop(geometry.frame, retained.points("kps_source_px"))
+            return _artifact(case.boundary, np.asarray(crop, dtype=np.uint8))
 
         if retained.flag("derive_256_from_336"):
             bigger = self.replay(

@@ -276,20 +276,12 @@ def embedding_ablations(setup: VendorSetup) -> tuple[Ablation, ...]:
     )
 
 
-def crop_ablations() -> tuple[Ablation, ...]:
-    return (
-        Ablation(primitive="source_region_pixels", expect_breaks=True),
-        Ablation(primitive="kps_source_px", expect_breaks=True),
-        Ablation(primitive="patch_origin", expect_breaks=True),
-    )
+def half_resolution(patch: UInt8Array) -> UInt8Array:
+    import cv2
 
-
-def kps_ablations() -> tuple[Ablation, ...]:
-    return (
-        Ablation(primitive="kps_source_px", expect_breaks=True),
-        Ablation(primitive="frame_dimensions", expect_breaks=True),
-        Ablation(primitive="reference_pixels", expect_breaks=False),
-    )
+    height, width = patch.shape[:2]
+    small = cv2.resize(patch, (max(1, width // 2), max(1, height // 2)), interpolation=cv2.INTER_AREA)
+    return np.asarray(cv2.resize(small, (width, height), interpolation=cv2.INTER_LINEAR), dtype=np.uint8)
 
 
 class FaceFamilyRunner:
@@ -317,7 +309,7 @@ class FaceFamilyRunner:
                     label,
                     f"crop@{size}",
                     ("source_region_pixels", "patch_origin", "kps_source_px"),
-                    crop_ablations(),
+                    self._crop_ablations(label, size),
                     measurements=("detection_equivalent_patch",),
                 )
                 for size in self.setup.crop_sizes
@@ -328,7 +320,7 @@ class FaceFamilyRunner:
                         label,
                         "kps_render",
                         ("kps_source_px", "frame_dimensions"),
-                        kps_ablations(),
+                        self._kps_ablations(label),
                         measurements=("reference_pixels_unused",),
                     )
                 )
@@ -357,36 +349,88 @@ class FaceFamilyRunner:
             note=f"vendor setup at {self.setup.commit[:12]}; cited {'; '.join(self.setup.cited)}",
         )
 
-    def _parts(self, case: Case) -> tuple[str, Shot]:
-        kind, _, label = case.boundary.partition("|")
-        return kind, self._shots[label]
-
-    def retained_for(self, case: Case) -> RetainedState:
-        kind, shot = self._parts(case)
+    def _our_best(self, shot: Shot) -> Any:
         best = our_face(shot)
 
         if self.setup.retry_pad_scale:
             recovered = our_recovery_face(shot)
             if recovered is not None:
                 best = recovered
-        kps = np.asarray(best.kps, dtype=np.float32)
+        return best
+
+    def _our_kps(self, shot: Shot) -> Float32Array:
+        return np.asarray(self._our_best(shot).kps, dtype=np.float32)
+
+    def _crop_parts(self, label: str, size: int) -> tuple[Float32Array, UInt8Array, tuple[int, int]]:
+        shot = self._shots[label]
+        kps = self._our_kps(shot)
+        box = analytic_footprint(kps, size, shot.frame_wh)
+        return kps, shot.frame[box.y0 : box.y1, box.x0 : box.x1].copy(), (box.x0, box.y0)
+
+    def _crop_ablations(self, label: str, size: int) -> tuple[Ablation, ...]:
+        #: Substitution expectations are computed, not asserted: each swap is
+        #: replayed through the same warp the case replays, and expect_breaks
+        #: states what that comparison actually showed for this photograph.
+        kps, patch, origin = self._crop_parts(label, size)
+        matrix = estimate_norm(kps, size)
+        base = warp(patch, shifted_to(matrix, origin), size)
+        rounded = np.round(kps).astype(np.float32)
+        differs_rounded = not np.array_equal(warp(patch, shifted_to(estimate_norm(rounded, size), origin), size), base)
+        differs_origin = not np.array_equal(warp(patch, shifted_to(matrix, (0, 0)), size), base)
+        differs_half = not np.array_equal(warp(half_resolution(patch), shifted_to(matrix, origin), size), base)
+        return (
+            Ablation(primitive="source_region_pixels", expect_breaks=True),
+            Ablation(primitive="kps_source_px", expect_breaks=True),
+            Ablation(primitive="patch_origin", expect_breaks=True),
+            Ablation(
+                primitive="source_region_pixels",
+                swap="half_resolution",
+                expect_breaks=differs_half,
+                kind="substitution",
+            ),
+            Ablation(
+                primitive="kps_source_px",
+                swap="kps_rounded_int",
+                expect_breaks=differs_rounded,
+                kind="substitution",
+            ),
+            Ablation(primitive="patch_origin", swap="origin_zero", expect_breaks=differs_origin, kind="substitution"),
+        )
+
+    def _kps_ablations(self, label: str) -> tuple[Ablation, ...]:
+        width, height = self._shots[label].frame_wh
+        return (
+            Ablation(primitive="kps_source_px", expect_breaks=True),
+            Ablation(primitive="frame_dimensions", expect_breaks=True),
+            Ablation(primitive="reference_pixels", expect_breaks=False),
+            Ablation(
+                primitive="frame_dimensions",
+                swap="dimensions_swapped",
+                expect_breaks=width != height,
+                kind="substitution",
+            ),
+        )
+
+    def _parts(self, case: Case) -> tuple[str, Shot]:
+        kind, _, label = case.boundary.partition("|")
+        return kind, self._shots[label]
+
+    def retained_for(self, case: Case) -> RetainedState:
+        kind, shot = self._parts(case)
+        kps = self._our_kps(shot)
 
         if kind == "embedding":
             crop = norm_crop112(shot.frame, kps)
             return RetainedState(
                 embedding_raw=embed_with(self.setup.embedding_model, crop),
-                stored_glintr100=np.asarray(best.embedding, dtype=np.float32).reshape(-1),
+                stored_glintr100=np.asarray(self._our_best(shot).embedding, dtype=np.float32).reshape(-1),
             )
         if kind == "kps_render":
             return RetainedState(kps_source_px=kps.copy(), frame_dimensions=shot.frame_wh)
 
         size = int(kind.rsplit("@", 1)[1])
-        box = analytic_footprint(kps, size, shot.frame_wh)
-        return RetainedState(
-            source_region_pixels=shot.frame[box.y0 : box.y1, box.x0 : box.x1].copy(),
-            patch_origin=(box.x0, box.y0),
-            kps_source_px=kps.copy(),
-        )
+        held, patch, origin = self._crop_parts(case.boundary.partition("|")[2], size)
+        return RetainedState(source_region_pixels=patch, patch_origin=origin, kps_source_px=held.copy())
 
     def baseline(self, case: Case) -> Artifact:
         if case.name not in self._baselines:
@@ -448,6 +492,16 @@ class FaceFamilyRunner:
             return retained
         if ablation.swap == "stored_glintr100":
             return retained.replacing("embedding_raw", retained.points("stored_glintr100"))
+        if ablation.swap == "half_resolution":
+            return retained.replacing("source_region_pixels", half_resolution(retained.pixels("source_region_pixels")))
+        if ablation.swap == "kps_rounded_int":
+            held = retained.points("kps_source_px")
+            return retained.replacing("kps_source_px", np.round(held).astype(held.dtype))
+        if ablation.swap == "origin_zero":
+            return retained.replacing("patch_origin", (0, 0))
+        if ablation.swap == "dimensions_swapped":
+            width, height = retained.pair("frame_dimensions")
+            return retained.replacing("frame_dimensions", (height, width))
         return retained.without(ablation.primitive)
 
     def _stored_vector_agreement(self, case: Case, retained: RetainedState) -> Measurement:

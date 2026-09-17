@@ -19,8 +19,8 @@ COVERED: Final[dict[str, tuple[str, ...]]] = {
     "sources": ("__init__.py", "ty.toml", "pyrefly.toml"),
     "application": ("db/schema.sql",),
     # Named from the FINDING, not from the implementation: lefthook.yml decides
-    # whether the gates run at all, and it plus the next three were missed by the
-    # include list this replaced. The implementation now derives from git.
+    # whether the gates run at all, and each of the rest decides what a gate
+    # enforces. The implementation derives from git; this list is the check on it.
     "gates": (
         "compat.just",
         "justfile",
@@ -34,8 +34,10 @@ COVERED: Final[dict[str, tuple[str, ...]]] = {
     ),
 }
 
-#: A prefix that must appear at least once, so a whole tree cannot silently drop out.
-POPULATED: Final[dict[str, tuple[str, ...]]] = {"gates": ("tests/", "metaparse/")}
+#: A prefix that must appear at least once, so a whole tree cannot silently
+#: drop out. A coverage check that reads only declared files can hold while
+#: a whole tree -- even a gate's own policy -- contributes nothing.
+POPULATED: Final[dict[str, tuple[str, ...]]] = {"application": ("sglint/", "tests/", "metaparse/")}
 
 
 @dataclass
@@ -72,6 +74,35 @@ def _coverage(now: dict[str, Any]) -> list[Control]:
             )
         )
     return out
+
+
+def _every_tracked_tree_is_digested_or_declared(now: dict[str, Any]) -> Control:
+    """No top-level tree leaves the identity without a recorded reason.
+
+    Enumerated from git HERE rather than through identity's own helper, so
+    the two cannot drop the same tree together. DIRS_IGNORED is read as
+    DATA: a tree may leave only by being named there, which is a decision
+    somebody wrote down, never an omission somebody made.
+    """
+    import proc
+    from compat.harness.identity import DIRS_IGNORED, ROOT
+
+    repo = ROOT.parent
+    code, out, err = proc.text(
+        ["git", "-C", str(repo), "-c", "core.quotepath=false", "ls-files"], timeout=proc.LOCAL_SECONDS
+    )
+    if code != 0:
+        raise RuntimeError(f"git ls-files failed ({code}) enumerating the control's tree set: {err.strip()[:200]}")
+    trees = {one.split("/", 1)[0] for one in out.splitlines() if "/" in one}
+    reached = {key.split("/", 1)[0] for key in now["application"] if "/" in key}
+    undeclared = sorted(trees - reached - set(DIRS_IGNORED))
+    return Control(
+        "every tracked tree is digested or declared",
+        not undeclared,
+        f"{len(trees)} tree(s), {len(DIRS_IGNORED)} declared-ignored, none undigested"
+        if not undeclared
+        else f"IN NO PART AND UNDECLARED: {undeclared}",
+    )
 
 
 def _every_tracked_root_file_is_digested(now: dict[str, Any]) -> Control:
@@ -187,6 +218,7 @@ def run_all() -> list[Control]:
     return [
         *_coverage(now),
         _every_just_module_on_disk_is_digested(now),
+        _every_tracked_tree_is_digested_or_declared(now),
         _every_tracked_root_file_is_digested(now),
         _every_computed_part_is_digested(now),
         *_sensitivity(now),

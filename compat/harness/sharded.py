@@ -127,11 +127,14 @@ def merge(partials: list[dict[str, Any]]) -> dict[str, Any]:
                 key=lambda row: tuple(str(value) for _, value in row),
             )
         ],
+        #: Ordered exactly as one process's Recorder.rows() orders them, so a
+        #: byte comparison against an unsharded rerun compares content, not
+        #: which merge produced the file.
         "observed": [
             dict(one)
             for one in sorted(
                 {tuple(sorted(row.items())) for row in observed},
-                key=lambda row: tuple(str(value) for _, value in row),
+                key=lambda row: (dict(row).get("loader", ""), dict(row).get("identity", "")),
             )
         ],
         "duplicated_cases": sorted(set(duplicated)),

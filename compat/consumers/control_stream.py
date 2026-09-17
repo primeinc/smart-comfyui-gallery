@@ -280,7 +280,15 @@ class IdV2VControlStreamRunner:
                     rtol=0.0,
                     atol=0.0,
                     retained=("source_video_bytes",),
-                    ablations=(Ablation(primitive="source_video_bytes", expect_breaks=True),),
+                    ablations=(
+                        Ablation(primitive="source_video_bytes", expect_breaks=True),
+                        Ablation(
+                            primitive="source_video_bytes",
+                            swap="source_round_trip",
+                            expect_breaks=True,
+                            kind="substitution",
+                        ),
+                    ),
                     measurements=("frames_and_bytes",),
                     note=(
                         "the frames every stream producer is handed; proves the media "
@@ -337,6 +345,10 @@ class IdV2VControlStreamRunner:
         del case
         if ablation.swap == "video_round_trip":
             return retained.replacing(ablation.primitive, decode(encode(retained.pixels(ablation.primitive))))
+        if ablation.swap == "source_round_trip":
+            held = retained.pixels("source_video_bytes")
+            reencoded = encode(decode(held.tobytes()))
+            return retained.replacing("source_video_bytes", np.frombuffer(reencoded, dtype=np.uint8))
         return retained.without(ablation.primitive)
 
     def measure(self, case: Case, retained: RetainedState, name: str) -> Measurement:

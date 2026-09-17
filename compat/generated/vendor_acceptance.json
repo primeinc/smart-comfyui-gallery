@@ -1,67 +1,17 @@
 {
   "acceptance": [
     {
-      "boundary": {
-        "align_crop_size": [
-          512,
-          512,
-          3
-        ],
-        "device": "cuda",
-        "dtype": "torch.float16",
-        "face_kps": {
-          "sha256": "a6ffb398e6e5d18e9293b227cbf9560665164f3faa0de1e8154da6843bcc4673",
-          "shape": [
-            5,
-            2
-          ]
-        },
-        "id_cond": {
-          "dtype": "float32",
-          "sha256": "04d3b13c1a89873dd6659f2e3cffa7b5aa310c3ec170d0bb7ad2e8bc21832ba4",
-          "shape": [
-            1,
-            1280
-          ]
-        },
-        "id_vit_hidden": [
-          [
-            1,
-            577,
-            1024
-          ],
-          [
-            1,
-            577,
-            1024
-          ],
-          [
-            1,
-            577,
-            1024
-          ],
-          [
-            1,
-            577,
-            1024
-          ],
-          [
-            1,
-            577,
-            1024
-          ]
-        ]
-      },
+      "boundary": {},
       "commit": "c1bf18c92c6285334adcaac7e75ef8946a227f49",
       "consumer_id": "consisid",
       "entrypoint": "diffusers/pipelines/consisid/consisid_utils.py::process_face_embeddings_infer",
       "fixture_origin": "vendor_commit",
       "fixture_path": "C:\\Users\\will\\dev\\sg-vendor-fixtures\\consisid\\fixtures\\example_1.png",
       "fixture_sha256": "434856739faadf1c89bc38d8b940fcdbe027595de89645f721d8585fc2fe2459",
-      "ran": true,
-      "reason": "",
+      "ran": false,
+      "reason": "RuntimeError: CUDNN_BACKEND_TENSOR_DESCRIPTOR cudnnFinalize failedptrDesc->finalize() cudnn_status: CUDNN_STATUS_SUBLIBRARY_VERSION_MISMATCH",
       "repo": "https://github.com/huggingface/diffusers.git",
-      "seconds": 13.396313000004739,
+      "seconds": 9.933128399978159,
       "weights": [
         {
           "file": "face_encoder/EVA02_CLIP_L_336_psz14_s6B.pt",
@@ -99,7 +49,7 @@
         },
         "id_cond": {
           "dtype": "float32",
-          "sha256": "763587b822b0ec589fe5e504143634f1017f9ed9b7c86e2c6401c43f1c2a5cf5",
+          "sha256": "42a333de1510e87aa75e0592ff0d14254560bcc1fa3daac7edb084b66ecfcc46",
           "shape": [
             2,
             16,
@@ -159,7 +109,7 @@
       "ran": true,
       "reason": "",
       "repo": "https://github.com/instantX-research/InstantID.git",
-      "seconds": 5.134871000016574,
+      "seconds": 4.487097800010815,
       "weights": [
         {
           "file": "ip-adapter.bin",
@@ -188,30 +138,17 @@
       ]
     },
     {
-      "boundary": {
-        "device": "cuda",
-        "dtype": "torch.float32",
-        "id_cond": {
-          "dtype": "float32",
-          "sha256": "492cbbfda573e2f1e24a3c08ac8c0ef09a76cc3c2b7e17e46794d3323adfd158",
-          "shape": [
-            2,
-            10,
-            2048
-          ]
-        },
-        "symbol_sha256": "c11c5ea7c40c16c2ea80b04efbe10730dbcac343e48e4860cbf556e23911951b"
-      },
+      "boundary": {},
       "commit": "1aa2fc7df4bf51080df39f355f9abdc1cbfefbaa",
       "consumer_id": "pulid_upstream",
       "entrypoint": "pulid/pipeline.py::PuLIDPipeline.get_id_embedding",
       "fixture_origin": "vendor_commit",
       "fixture_path": "C:\\Users\\will\\dev\\sg-vendor-fixtures\\pulid\\lecun.jpg",
       "fixture_sha256": "2730103b6b9ebaf47b44ef9a9d7fbb722de7878a101af09f0b85f8dfadb4c8a4",
-      "ran": true,
-      "reason": "",
+      "ran": false,
+      "reason": "RuntimeError: CUDNN_BACKEND_TENSOR_DESCRIPTOR cudnnFinalize failedptrDesc->finalize() cudnn_status: CUDNN_STATUS_SUBLIBRARY_VERSION_MISMATCH",
       "repo": "https://github.com/ToTheBeginning/PuLID.git",
-      "seconds": 12.735807800025214,
+      "seconds": 9.7840682999813,
       "weights": [
         {
           "file": "face_encoder/EVA02_CLIP_L_336_psz14_s6B.pt",
@@ -236,61 +173,17 @@
       ]
     },
     {
-      "boundary": {
-        "device": "cuda",
-        "id_cond": {
-          "dtype": "float32",
-          "sha256": "2ea19e22e204fe62e921c6ba1061719ad6366bbf6280585b58a7617386c50936",
-          "shape": [
-            1,
-            8,
-            4096
-          ]
-        },
-        "observed_pack": {
-          "files": {
-            "detection": {
-              "file": "scrfd_10g_bnkps.onnx",
-              "sha256": "5838f7fe053675b1c7a08b633df49e7af5495cee0493c7dcf6697200b85b5b91"
-            },
-            "genderage": {
-              "file": "genderage.onnx",
-              "sha256": "4fde69b1c810857b88c64a335084f1c3fe8f01246c9a191b48c7bb756d6652fb"
-            },
-            "landmark_2d_106": {
-              "file": "2d106det.onnx",
-              "sha256": "f001b856447c413801ef5c42091ed0cd516fcd21f2d6b79635b1e733a7109dbf"
-            },
-            "landmark_3d_68": {
-              "file": "1k3d68.onnx",
-              "sha256": "df5c06b8a0c12e422b2ed8947b8869faa4105387f199c477af038aa01f9a45cc"
-            },
-            "recognition": {
-              "file": "glintr100.onnx",
-              "sha256": "4ab1d6435d639628a6f3e5008dd4f929edf4c4124b1a7169e1048f9fef534cdf"
-            }
-          },
-          "modules": [
-            "detection",
-            "genderage",
-            "landmark_2d_106",
-            "landmark_3d_68",
-            "recognition"
-          ],
-          "pack": "antelopev2"
-        },
-        "symbol_sha256": "21924d14cdec0db605c94b49b5bf10fd36a1085813021673c7598a3abd2fc8fc"
-      },
+      "boundary": {},
       "commit": "1c979397c5c80f5ac83a2473a2f7d4503104110f",
       "consumer_id": "infiniteyou",
       "entrypoint": "nodes.py::ExtractIDEmbedding.extract_id_embedding",
       "fixture_origin": "vendor_commit",
       "fixture_path": "C:\\Users\\will\\dev\\sg-vendor-fixtures\\infiniteyou\\man.jpg",
       "fixture_sha256": "26d6e503140428fa2aaf7c2287cea3b1b67c0f2f998b8f6d9f9774be854be090",
-      "ran": true,
-      "reason": "",
+      "ran": false,
+      "reason": "RuntimeError: CUDNN_BACKEND_TENSOR_DESCRIPTOR cudnnFinalize failedptrDesc->finalize() cudnn_status: CUDNN_STATUS_SUBLIBRARY_VERSION_MISMATCH",
       "repo": "https://github.com/bytedance/ComfyUI_InfiniteYou.git",
-      "seconds": 4.8246893000323325,
+      "seconds": 3.728396699996665,
       "weights": [
         {
           "file": "image_proj_model.bin",
@@ -369,7 +262,7 @@
           },
           "bbox": {
             "dtype": "float32",
-            "sha256": "2445e97dc140e66328cb5c66347abab7833a2ca8f992d7427168b8ba446bd7d5",
+            "sha256": "513ef1a4706beb6c236f41d7bf3fc72a4744af23fa4a7d40438de14d6e003b1c",
             "shape": [
               4
             ],
@@ -377,13 +270,13 @@
           },
           "det_score": {
             "dtype": "float32",
-            "sha256": "ceb320f067b8458a8bc3496e523dad338c3773148d07585bc99492c7c05c669c",
+            "sha256": "a9024c7b7e66e47d5fcf45582e530b7eef0b6eead7484b62c09073572c8c6f0e",
             "shape": [],
             "survives_round_trip": true
           },
           "embedding": {
             "dtype": "float32",
-            "sha256": "79024d87dcee3fc12526bffdc215763735c45e459f0fff57e19f08760797f43b",
+            "sha256": "6c801c0a7798b9e4f0c8d6706bd2314817a8e51a304780d0f2bd7805a3591031",
             "shape": [
               512
             ],
@@ -397,7 +290,7 @@
           },
           "kps": {
             "dtype": "float32",
-            "sha256": "666f7e42a67aa68230c53aa20f52dc60542dd387309f92fedee7ea3e28a275d6",
+            "sha256": "cef4d0656a092f89066b3cc51201c9b9e5b1f881d1083003d9656840cd078497",
             "shape": [
               5,
               2
@@ -406,7 +299,7 @@
           },
           "landmark_2d_106": {
             "dtype": "float64",
-            "sha256": "38669ba161f72e31f1768dad0c7c80b02df38805f4064a6d296697b64ddb3431",
+            "sha256": "216b43dec3bd37664c93ac0c11d0ed0a0d482bd3ae239caa40642d30551f0280",
             "shape": [
               106,
               2
@@ -415,7 +308,7 @@
           },
           "landmark_3d_68": {
             "dtype": "float64",
-            "sha256": "afbfe07a51b46eed4c28ed25174c3b3b9e969682bb99062ad65b15be20d3bd38",
+            "sha256": "68937c24a0b6a4da3e772f603c7e9cfbe0c9d17478b9b574db6a9493338f2c52",
             "shape": [
               68,
               3
@@ -424,7 +317,7 @@
           },
           "pose": {
             "dtype": "float32",
-            "sha256": "87aa73934455fdd17a4c3ba2aef1e5fcd1325e4e5625a1e8832e6b508ab975e5",
+            "sha256": "0f6f75e6a1beec3796104e3150ba92a3d1be25162fac151be0db0d3ba9321efd",
             "shape": [
               3
             ],
@@ -447,7 +340,7 @@
           },
           "embedding": {
             "identical": false,
-            "max_abs_delta": 0.003020048141479492
+            "max_abs_delta": 0.006392717361450195
           },
           "gender": {
             "identical": true,
@@ -459,15 +352,15 @@
           },
           "landmark_2d_106": {
             "identical": false,
-            "max_abs_delta": 271.5546341732115
+            "max_abs_delta": 271.6039040367323
           },
           "landmark_3d_68": {
             "identical": false,
-            "max_abs_delta": 748.9400536419998
+            "max_abs_delta": 746.9998241478752
           },
           "pose": {
             "identical": false,
-            "max_abs_delta": 6.454024396836758
+            "max_abs_delta": 6.443507917225361
           }
         }
       },
@@ -480,7 +373,7 @@
       "ran": true,
       "reason": "",
       "repo": "https://github.com/Gourieff/ComfyUI-ReActor.git",
-      "seconds": 5.587310500035528,
+      "seconds": 3.6294368999951985,
       "weights": [
         {
           "file": "models/buffalo_l/det_10g.onnx",
@@ -510,7 +403,7 @@
         "dtype": "torch.float16",
         "id_cond": {
           "dtype": "float32",
-          "sha256": "415f2c71430f223806cf0dc667c7c7f9def98fa1e455635ae7edeffcf6d64c5c",
+          "sha256": "c1f3f8a5dc100810d2bb0ae25a10f8c481cf3f8a16bc18ae1c36d2c307b27efc",
           "shape": [
             1,
             4,
@@ -520,7 +413,7 @@
         "observed_embedding": {
           "dims": 512,
           "kind": "normed",
-          "l2_norm": 1.000000065937246
+          "l2_norm": 0.9999999898240162
         },
         "observed_pack": {
           "files": {
@@ -575,7 +468,7 @@
       "ran": true,
       "reason": "",
       "repo": "https://github.com/tencent-ailab/IP-Adapter.git",
-      "seconds": 3.338794899987988,
+      "seconds": 2.2831001000013202,
       "weights": [
         {
           "file": "ip-adapter-faceid_sd15.bin",
@@ -604,80 +497,17 @@
       ]
     },
     {
-      "boundary": {
-        "align_crop_size": 224,
-        "curricular_face_blobs": {
-          "uniportrait/curricular_face/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-          "uniportrait/curricular_face/backbone/__init__.py": "13b780c8a306cf1f6fb3b06e257471850bc8e9b465f1c6c9bfb14f4f9fd03fdb",
-          "uniportrait/curricular_face/backbone/common.py": "9006386a76061203e4b38a090ce046198ef5a6b07cf63a6222a36d1f2e0ee535",
-          "uniportrait/curricular_face/backbone/model_irse.py": "feed0828a6d135de0297bf9dcc45e980d76ac55428bad89c2886ddf06716a7e4"
-        },
-        "device": "cuda",
-        "dtype": "torch.float16",
-        "face_structure_scale": 0.0,
-        "id_cond": {
-          "dtype": "float32",
-          "sha256": "ebf4c902ea2d3d8c26b7792bff06a8aa4159b834889c463356efd80a25a202b6",
-          "shape": [
-            1,
-            16,
-            768
-          ]
-        },
-        "observed_crop_size": 224,
-        "observed_pack": {
-          "files": {
-            "detection": {
-              "file": "det_10g.onnx",
-              "sha256": "5838f7fe053675b1c7a08b633df49e7af5495cee0493c7dcf6697200b85b5b91"
-            },
-            "genderage": {
-              "file": "genderage.onnx",
-              "sha256": "4fde69b1c810857b88c64a335084f1c3fe8f01246c9a191b48c7bb756d6652fb"
-            },
-            "landmark_2d_106": {
-              "file": "2d106det.onnx",
-              "sha256": "f001b856447c413801ef5c42091ed0cd516fcd21f2d6b79635b1e733a7109dbf"
-            },
-            "landmark_3d_68": {
-              "file": "1k3d68.onnx",
-              "sha256": "df5c06b8a0c12e422b2ed8947b8869faa4105387f199c477af038aa01f9a45cc"
-            },
-            "recognition": {
-              "file": "w600k_r50.onnx",
-              "sha256": "4c06341c33c2ca1f86781dab0e829f88ad5b64be9fba56e56bc9ebdefc619e43"
-            }
-          },
-          "modules": [
-            "detection",
-            "genderage",
-            "landmark_2d_106",
-            "landmark_3d_68",
-            "recognition"
-          ],
-          "pack": "buffalo_l"
-        },
-        "selection": "largest_bbox_area",
-        "symbol_sha256": "5f6dda9e7b8da01d409db07368d54e36398aca156ecfb0f4c26c42acb3d28ec4",
-        "uncond": {
-          "sha256": "e8df7ff135b8439527f4949f72752ae61fba35db7de8c2231160611cac94b897",
-          "shape": [
-            1,
-            16,
-            768
-          ]
-        }
-      },
+      "boundary": {},
       "commit": "a4deff2b48e3f67c8466905f27b5a662fc9e912e",
       "consumer_id": "uniportrait",
       "entrypoint": "uniportrait/uniportrait_pipeline.py::UniPortraitPipeline.get_single_faceid_embeds",
       "fixture_origin": "vendor_commit",
       "fixture_path": "C:\\Users\\will\\dev\\sg-vendor-fixtures\\uniportrait\\1-newton.jpg",
       "fixture_sha256": "6b5bed3bc2aa494892d44c014768a4551cc65ce23c7a68348359dfd7770174b9",
-      "ran": true,
-      "reason": "",
+      "ran": false,
+      "reason": "RuntimeError: CUDNN_BACKEND_TENSOR_DESCRIPTOR cudnnFinalize failedptrDesc->finalize() cudnn_status: CUDNN_STATUS_SUBLIBRARY_VERSION_MISMATCH",
       "repo": "https://github.com/junjiehe96/UniPortrait.git",
-      "seconds": 7.272562600031961,
+      "seconds": 5.799940600001719,
       "weights": [
         {
           "file": "glint360k_curricular_face_r101_backbone.bin",
@@ -754,7 +584,7 @@
         "encoder_unsupported": "PhotoMakerIDEncoder_CLIPInsightfaceExtendtoken.forward (model_v2.py:142) requires SDXL prompt_embeds; no SDXL checkpoint on this machine",
         "id_embeds": {
           "dtype": "float32",
-          "sha256": "fc1eaf905cbccb53c7d7596000a80d446d51f2656d366269bc4d812ac031660a",
+          "sha256": "f1bc75ee880c14e058f525046eb5d00ce40d7008e48614e014504fe1e223bec5",
           "shape": [
             4,
             512
@@ -763,7 +593,7 @@
         "observed_embedding": {
           "dims": 512,
           "kind": "raw",
-          "l2_norm": 22.047657390508956,
+          "l2_norm": 22.038641255239668,
           "references": 4
         },
         "observed_pack": {
@@ -797,7 +627,7 @@
       "ran": true,
       "reason": "",
       "repo": "https://github.com/TencentARC/PhotoMaker.git",
-      "seconds": 1.1744558999780566,
+      "seconds": 1.6269882000051439,
       "weights": [
         {
           "file": "models/buffalo_l/det_10g.onnx",
@@ -826,27 +656,6 @@
     {
       "agrees": true,
       "cited": [
-        "src/diffusers/pipelines/consisid/consisid_utils.py:210-212 id_cond = torch.cat([id_ante_embedding, id_cond_vit], dim=-1) -> torch.Size([1, 1280])",
-        "src/diffusers/pipelines/consisid/consisid_utils.py:219 return comment repeats torch.Size([1, 1280])"
-      ],
-      "consumer_id": "consisid",
-      "detail": "id_cond [1, 1280] against upstream's [1, 1280]",
-      "stated": true
-    },
-    {
-      "agrees": true,
-      "cited": [
-        "nodes.py:59 image_proj_num_tokens: ([8, 16], )",
-        "nodes.py:117-126 Resampler(num_queries=image_proj_num_tokens, output_dim=4096)",
-        "resampler.py:97 self.latents = nn.Parameter(torch.randn(1, num_queries, dim))"
-      ],
-      "consumer_id": "infiniteyou",
-      "detail": "id_cond [1, 8, 4096] carries 8 tokens, upstream declares 8",
-      "stated": true
-    },
-    {
-      "agrees": true,
-      "cited": [
         "pipeline_stable_diffusion_xl_instantid.py:158 load_ip_adapter_instantid(..., num_tokens=16)",
         "pipeline_stable_diffusion_xl_instantid.py:162 set_image_proj_model(..., num_tokens=16)",
         "pipeline_stable_diffusion_xl_instantid.py:169-171 Resampler(num_queries=num_tokens, output_dim=cross_attention_dim)"
@@ -872,65 +681,16 @@
       "stated": false
     },
     {
-      "agrees": true,
-      "cited": [
-        "pulid/encoders.py:6 IDEncoder(width=1280, context_dim=2048, num_token=5)",
-        "pulid/encoders.py:54 x.reshape(-1, self.num_token, self.context_dim)",
-        "pulid/encoders.py:62-64 cat(five hidden states, dim=1) then cat([x, hidden_states], dim=1)",
-        "pulid/pipeline.py:214 cat((uncond_id_embedding, id_embedding), dim=0)"
-      ],
-      "consumer_id": "pulid_upstream",
-      "detail": "id_cond [2, 10, 2048] carries 10 tokens, upstream declares 10",
-      "stated": true
-    },
-    {
       "agrees": null,
       "consumer_id": "reactor",
       "detail": "upstream states no expected boundary at the pinned commit",
       "stated": false
-    },
-    {
-      "agrees": true,
-      "cited": [
-        "uniportrait/uniportrait_pipeline.py:82-88 UniPortraitFaceIDResampler(num_tokens=16, output_dim=cross_attention_dim)"
-      ],
-      "consumer_id": "uniportrait",
-      "detail": "id_cond [1, 16, 768] carries 16 tokens, upstream declares 16",
-      "stated": true
     }
   ],
   "declared_against_observed": [
     {
-      "agrees": null,
-      "consumer_id": "consisid",
-      "declared": null,
-      "detail": "the acceptance builds no analyser to observe",
-      "observed": null
-    },
-    {
       "agrees": true,
       "consumer_id": "instantid_upstream",
-      "declared": "antelopev2",
-      "detail": "",
-      "modules": [
-        "detection",
-        "genderage",
-        "landmark_2d_106",
-        "landmark_3d_68",
-        "recognition"
-      ],
-      "observed": "antelopev2"
-    },
-    {
-      "agrees": null,
-      "consumer_id": "pulid_upstream",
-      "declared": "antelopev2",
-      "detail": "the acceptance builds no analyser to observe",
-      "observed": null
-    },
-    {
-      "agrees": true,
-      "consumer_id": "infiniteyou",
       "declared": "antelopev2",
       "detail": "",
       "modules": [
@@ -972,20 +732,6 @@
     },
     {
       "agrees": true,
-      "consumer_id": "uniportrait",
-      "declared": "buffalo_l",
-      "detail": "",
-      "modules": [
-        "detection",
-        "genderage",
-        "landmark_2d_106",
-        "landmark_3d_68",
-        "recognition"
-      ],
-      "observed": "buffalo_l"
-    },
-    {
-      "agrees": true,
       "consumer_id": "photomaker_v2",
       "declared": "buffalo_l",
       "detail": "",
@@ -1005,51 +751,40 @@
     },
     {
       "agrees": true,
-      "consumer_id": "uniportrait",
-      "declared": [
-        224
-      ],
-      "detail": "the crop the vendor's code produced is 224x224",
-      "field": "crop_sizes",
-      "observed": 224
-    },
-    {
-      "agrees": true,
       "consumer_id": "photomaker_v2",
       "declared": "raw",
-      "detail": "L2 norm 22.047657 over 512 dims",
+      "detail": "L2 norm 22.038641 over 512 dims",
       "field": "embedding",
       "observed": "raw"
     }
   ],
   "determinism": {
-    "not_run": [],
+    "not_run": [
+      "consisid",
+      "infiniteyou",
+      "pulid_upstream",
+      "uniportrait"
+    ],
     "runs": 2,
     "stable": true,
     "unstable": [],
     "vendors": {
       "consisid": {
-        "digests": [
-          "f9a41c54e777a3279cd4a7c84bcb85915c14bdb659b51cb1cfbc1c8d45a33d5d",
-          "f9a41c54e777a3279cd4a7c84bcb85915c14bdb659b51cb1cfbc1c8d45a33d5d"
-        ],
-        "not_run": false,
-        "reason": "",
-        "stable": true
+        "digests": [],
+        "not_run": true,
+        "reason": "did not run here; nothing to repeat",
+        "stable": null
       },
       "infiniteyou": {
-        "digests": [
-          "f586345e112e219e15ac04d0952017db89755a462a28b71f12a1cab92802893a",
-          "f586345e112e219e15ac04d0952017db89755a462a28b71f12a1cab92802893a"
-        ],
-        "not_run": false,
-        "reason": "",
-        "stable": true
+        "digests": [],
+        "not_run": true,
+        "reason": "did not run here; nothing to repeat",
+        "stable": null
       },
       "instantid_upstream": {
         "digests": [
-          "1b49b4ec5ffd8725c6830fdcf563f2be8be6b253e933f7ba208316eb425ec0ed",
-          "1b49b4ec5ffd8725c6830fdcf563f2be8be6b253e933f7ba208316eb425ec0ed"
+          "f9eb201875066b31825bc4d3fadaaabe868224205ebab086c1e3843d00a1cf82",
+          "f9eb201875066b31825bc4d3fadaaabe868224205ebab086c1e3843d00a1cf82"
         ],
         "not_run": false,
         "reason": "",
@@ -1057,8 +792,8 @@
       },
       "ipadapter_upstream": {
         "digests": [
-          "8ca2a2f2acfe64b91bb56503116a0f1e625008a1bd32474c54992002d79c156b",
-          "8ca2a2f2acfe64b91bb56503116a0f1e625008a1bd32474c54992002d79c156b"
+          "e3a50358f88f1e03084af19766b51589b9ca8b98f0ad65730cc3efe1f1011236",
+          "e3a50358f88f1e03084af19766b51589b9ca8b98f0ad65730cc3efe1f1011236"
         ],
         "not_run": false,
         "reason": "",
@@ -1066,44 +801,43 @@
       },
       "photomaker_v2": {
         "digests": [
-          "558fb65ab05dc63d5f55dd33c2594a98d5c4bf5159198d95f7a337a3f5da7e44",
-          "558fb65ab05dc63d5f55dd33c2594a98d5c4bf5159198d95f7a337a3f5da7e44"
+          "b3d1a718f437f7cebb7cea4da306214209e7a31f413847ab2c3900e75cb033a8",
+          "b3d1a718f437f7cebb7cea4da306214209e7a31f413847ab2c3900e75cb033a8"
         ],
         "not_run": false,
         "reason": "",
         "stable": true
       },
       "pulid_upstream": {
-        "digests": [
-          "010cc3a80b587c86571d4c59924b0c51bfd3982f014e558dc8dfabc2e2c8589e",
-          "010cc3a80b587c86571d4c59924b0c51bfd3982f014e558dc8dfabc2e2c8589e"
-        ],
-        "not_run": false,
-        "reason": "",
-        "stable": true
+        "digests": [],
+        "not_run": true,
+        "reason": "did not run here; nothing to repeat",
+        "stable": null
       },
       "reactor": {
         "digests": [
-          "ee784ad800bedc80c5007b87a6de932612a5cd85c4452e42b6bae1ec7c3cb3ae",
-          "ee784ad800bedc80c5007b87a6de932612a5cd85c4452e42b6bae1ec7c3cb3ae"
+          "594df53ae482d069ffe78056f3cfbec6bba58506789cfba4cc72a056ce992bb7",
+          "594df53ae482d069ffe78056f3cfbec6bba58506789cfba4cc72a056ce992bb7"
         ],
         "not_run": false,
         "reason": "",
         "stable": true
       },
       "uniportrait": {
-        "digests": [
-          "2a2495d93c1d4d9f8a6ac28d6b8d496d58eeb1d328732d1cf179bba65adc11eb",
-          "2a2495d93c1d4d9f8a6ac28d6b8d496d58eeb1d328732d1cf179bba65adc11eb"
-        ],
-        "not_run": false,
-        "reason": "",
-        "stable": true
+        "digests": [],
+        "not_run": true,
+        "reason": "did not run here; nothing to repeat",
+        "stable": null
       }
     }
   },
   "population": {
-    "attempted_and_failed": [],
+    "attempted_and_failed": [
+      "consisid",
+      "infiniteyou",
+      "pulid_upstream",
+      "uniportrait"
+    ],
     "declared": [
       "anystory",
       "consisid",
@@ -1145,23 +879,15 @@
       "xverse"
     ],
     "ran_without_raising": [
-      "consisid",
-      "infiniteyou",
       "instantid_upstream",
       "ipadapter_upstream",
       "photomaker_v2",
-      "pulid_upstream",
-      "reactor",
-      "uniportrait"
+      "reactor"
     ],
     "reproduced_wrong_boundary": [],
     "vendor_accepted": [
-      "consisid",
-      "infiniteyou",
       "instantid_upstream",
-      "ipadapter_upstream",
-      "pulid_upstream",
-      "uniportrait"
+      "ipadapter_upstream"
     ],
     "vendor_baseline_unavailable": [
       "photomaker_v2",

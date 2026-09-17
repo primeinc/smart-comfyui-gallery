@@ -115,10 +115,42 @@ class ProducerDerivationRunner:
         self._by_label: dict[str, Observation] = {
             one.label: one for one in (found if found is not None else observations())
         }
+        self._stored_pose_differs: dict[str, bool] = {}
+
+    def _pose_differs_through_storage(self, label: str) -> bool:
+        if label not in self._stored_pose_differs:
+            found = self._by_label[label]
+            stored = through_todays_storage(found.landmark_3d_68, found.width, found.height)
+            self._stored_pose_differs[label] = not np.array_equal(pose_from_landmarks(stored), found.pose)
+        return self._stored_pose_differs[label]
+
+    def _normed_differs_through_float16(self, label: str) -> bool:
+        raw = self._by_label[label].embedding
+        through = raw.astype(np.float16).astype(np.float32)
+        mine = (raw / np.linalg.norm(raw)).astype(np.float32)
+        theirs = (through / np.linalg.norm(through)).astype(np.float32)
+        return not np.array_equal(mine, theirs)
 
     def cases(self) -> tuple[Case, ...]:
         out: list[Case] = []
         for label in self._by_label:
+            # The consumer boundary: our derivations reproduce the
+            # producer's own pose and normed embedding from what we store.
+            out.append(
+                Case(
+                    name=f"derive_consumer_pose_{label}",
+                    consumer_id=self.consumer_id,
+                    tier=Tier.CONSUMER,
+                    fixture=self._by_label[label].fixture,
+                    boundary=f"pose|{label}",
+                    exact_bytes=True,
+                    rtol=0.0,
+                    atol=0.0,
+                    retained=("landmark_3d_68",),
+                    measurements=("pose_error_through_todays_storage",),
+                    note="the derivation boundary this consumer exists for, at consumer tier",
+                )
+            )
             out.append(
                 Case(
                     name=f"pose_from_landmark_3d_68_{label}",
@@ -130,7 +162,15 @@ class ProducerDerivationRunner:
                     rtol=0.0,
                     atol=0.0,
                     retained=("landmark_3d_68",),
-                    ablations=(Ablation(primitive="landmark_3d_68", expect_breaks=True),),
+                    ablations=(
+                        Ablation(primitive="landmark_3d_68", expect_breaks=True),
+                        Ablation(
+                            primitive="landmark_3d_68",
+                            swap="through_todays_storage",
+                            expect_breaks=self._pose_differs_through_storage(label),
+                            kind="substitution",
+                        ),
+                    ),
                     measurements=("pose_error_through_todays_storage",),
                     note="upstream's own estimate_affine_matrix_3d23d/P2sRt/matrix2angle, no pixels",
                 )
@@ -146,7 +186,15 @@ class ProducerDerivationRunner:
                     rtol=0.0,
                     atol=0.0,
                     retained=("embedding",),
-                    ablations=(Ablation(primitive="embedding", expect_breaks=True),),
+                    ablations=(
+                        Ablation(primitive="embedding", expect_breaks=True),
+                        Ablation(
+                            primitive="embedding",
+                            swap="through_float16",
+                            expect_breaks=self._normed_differs_through_float16(label),
+                            kind="substitution",
+                        ),
+                    ),
                     measurements=("norm_is_not_recoverable",),
                     note="Face.normed_embedding is a property; the norm it divides away is not in the result",
                 )
@@ -177,6 +225,13 @@ class ProducerDerivationRunner:
         return _artifact(case.boundary, (raw / np.linalg.norm(raw)).astype(np.float32))
 
     def ablate(self, case: Case, retained: RetainedState, ablation: Ablation) -> RetainedState:
+        if ablation.swap == "through_todays_storage":
+            _, found = self._parts(case)
+            held = retained.points("landmark_3d_68")
+            return retained.replacing("landmark_3d_68", through_todays_storage(held, found.width, found.height))
+        if ablation.swap == "through_float16":
+            held = retained.points("embedding")
+            return retained.replacing("embedding", held.astype(np.float16).astype(held.dtype))
         return retained.without(ablation.primitive)
 
     def measure(self, case: Case, retained: RetainedState, name: str) -> Measurement:

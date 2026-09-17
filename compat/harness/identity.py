@@ -10,37 +10,47 @@ from compat.harness import provenance
 ROOT: Final[Path] = Path(__file__).resolve().parent.parent
 
 
-APP_DIRS: Final[tuple[str, ...]] = ("vision", "db")
+#: Top-level directories the identity does NOT cover, each with its reason.
+#: EVERYTHING ELSE git tracks at the top level is covered.
+#:
+#: Exclusion form, never an include list: a remembered list can omit a tree
+#: silently -- even a gate's own policy, while carrying the tests that check
+#: it -- and then editing rules moves nothing while editing tests moves it.
+#:
+#: compat/ is absent because `sources` already carries it, keyed relative to
+#: compat/ rather than to the repo root.
+DIRS_IGNORED: Final[dict[str, str]] = {
+    "compat": "carried by `sources`, keyed relative to compat/ rather than the repo root",
+    "docs": (
+        "prose, and the only tree nothing reads: the vale lane names db, vision, sg_web, metaparse, "
+        "sglint, story_renderers, tests and benchmarks, and not docs. No gate's behaviour and no "
+        "producer's output depends on a word in it, so a ruling recorded here would otherwise stale "
+        "every artifact in the tree."
+    ),
+}
 
 
 ROOT_SOURCES: Final[tuple[str, ...]] = ("proc.py",)
 
-SOURCE_DIRS: Final[tuple[str, ...]] = (
-    "assertions",
-    "consumers",
-    "contracts",
-    "corpus",
-    "harness",
-    "primitives",
-    "producers",
-    "storage",
-    "vendor",
-)
+#: Directories under compat/ the identity does not cover. Exclusion form,
+#: for the same reason as DIRS_IGNORED: a load-bearing decision is stated
+#: here with its reason, never carried silently by an enumeration elsewhere.
+COMPAT_IGNORED: Final[dict[str, str]] = {
+    "generated": (
+        "the evidence itself. Digesting it would make the identity self-referential -- regenerating "
+        "any artifact would change the identity that stamps it, and no run could ever be current."
+    ),
+}
 
 
-#: Root gate/config files are digested BY EXCLUSION -- everything at the repo
-#: root minus this list. The include list it replaced missed lefthook.yml, which
-#: decides whether the gates run at all, plus pytest.ini, .vale.ini and biome.json.
+#: Root gate/config files are digested BY EXCLUSION -- everything at the
+#: repo root minus this list. lefthook.yml decides whether the gates run at
+#: all; pytest.ini, .vale.ini and biome.json decide what they enforce.
 GATE_IGNORED: Final[frozenset[str]] = frozenset(
     {
         "LICENSE",  # legal text; cannot change what any gate does
         "faceefind.png",  # a screenshot asset
     }
-)
-
-GATE_DIRS: Final[tuple[tuple[str, tuple[str, ...]], ...]] = (
-    ("tests", ("*.py", "*.sql")),
-    ("metaparse", ("*.py",)),
 )
 
 
@@ -69,20 +79,22 @@ def digest_of(parts: dict[str, Any]) -> str:
 def source_digests() -> dict[str, str]:
     out: dict[str, str] = {}
 
-    # compat's own root: __init__.py, and the ty/pyrefly configs that decide what
-    # the `check` lane enforces. Only the named subdirectories were walked before.
-    for path in sorted(one for pattern in ("*.py", "*.json", "*.toml") for one in ROOT.glob(pattern)):
-        out[path.relative_to(ROOT).as_posix()] = sha256_of(path.read_bytes())
+    # compat's own root, ON DISK like gate_digests and with no extension
+    # list: an untracked file here still changes what the `check` lane
+    # enforces, and a pattern set silently skips whatever it did not name.
+    for path in sorted(one for one in ROOT.iterdir() if one.is_file()):
+        out[path.name] = sha256_of(path.read_bytes())
 
-    for name in SOURCE_DIRS:
-        folder = ROOT / name
-        if not folder.is_dir():
+    for relative in sorted(_tracked(ROOT.parent)):
+        inside = relative.removeprefix("compat/")
+        if inside == relative or "/" not in inside or inside.split("/", 1)[0] in COMPAT_IGNORED:
             continue
-
-        for path in sorted(one for pattern in ("*.py", "*.json", "*.toml") for one in folder.rglob(pattern)):
-            if "__pycache__" in path.parts:
-                continue
-            out[path.relative_to(ROOT).as_posix()] = sha256_of(path.read_bytes())
+        path = ROOT.parent / relative
+        if not path.is_file():
+            raise RuntimeError(
+                f"git tracks {relative} but it is not a readable file; the identity cannot skip it silently"
+            )
+        out[inside] = sha256_of(path.read_bytes())
     return out
 
 
@@ -98,6 +110,29 @@ def tracked_root_files(repo: Path) -> list[str]:
     return sorted(one for one in out.splitlines() if one and "/" not in one)
 
 
+def _tracked(repo: Path) -> list[str]:
+    import proc
+
+    # core.quotepath=false: a non-ASCII tracked name arrives as literal
+    # UTF-8 rather than a C-quoted string no path on disk resolves to.
+    code, out, err = proc.text(
+        ["git", "-C", str(repo), "-c", "core.quotepath=false", "ls-files"], timeout=proc.LOCAL_SECONDS
+    )
+    if code != 0:
+        raise RuntimeError(f"git ls-files failed ({code}) enumerating the tree: {err.strip()[:200]}")
+    return [one for one in out.splitlines() if one]
+
+
+def tracked_trees(repo: Path) -> list[str]:
+    """Every top-level directory git tracks, minus the declared exclusions.
+
+    The tree is the authority on what exists; a list here is only ever the
+    authority on what somebody remembered -- and a remembered list can
+    forget even a gate's own policy while carrying the tests that check it.
+    """
+    return sorted({one.split("/", 1)[0] for one in _tracked(repo) if "/" in one} - set(DIRS_IGNORED))
+
+
 def gate_digests() -> dict[str, str]:
     repo = ROOT.parent
     out: dict[str, str] = {}
@@ -107,28 +142,28 @@ def gate_digests() -> dict[str, str]:
     for path in sorted(repo.iterdir()):
         if path.is_file() and path.name not in GATE_IGNORED:
             out[path.name] = sha256_of(path.read_bytes())
-    for name, patterns in GATE_DIRS:
-        folder = repo / name
-        if not folder.is_dir():
-            continue
-        for path in sorted(one for pattern in patterns for one in folder.rglob(pattern)):
-            if "__pycache__" in path.parts:
-                continue
-            out[path.relative_to(repo).as_posix()] = sha256_of(path.read_bytes())
     return out
 
 
 def application_digests() -> dict[str, str]:
+    """Every tracked file under every tracked top-level tree, by EXCLUSION.
+
+    Not an extension list either: a pattern set reads as coverage while a
+    shell script, a .ts, or a style rule inside a covered tree changes what
+    the gates do without moving the identity. What git tracks is what ships.
+    """
     repo = ROOT.parent
     out: dict[str, str] = {}
-    for name in APP_DIRS:
-        folder = repo / name
-        if not folder.is_dir():
+    covered = set(tracked_trees(repo))
+    for relative in sorted(_tracked(repo)):
+        if "/" not in relative or relative.split("/", 1)[0] not in covered:
             continue
-        for path in sorted(one for pattern in ("*.py", "*.sql") for one in folder.rglob(pattern)):
-            if "__pycache__" in path.parts:
-                continue
-            out[path.relative_to(repo).as_posix()] = sha256_of(path.read_bytes())
+        path = repo / relative
+        if not path.is_file():
+            raise RuntimeError(
+                f"git tracks {relative} but it is not a readable file; the identity cannot skip it silently"
+            )
+        out[relative] = sha256_of(path.read_bytes())
     for name in ROOT_SOURCES:
         one = repo / name
         if one.is_file():

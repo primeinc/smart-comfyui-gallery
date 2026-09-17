@@ -2,12 +2,12 @@
   "ablation_verdicts": {
     "CONTRADICTED": 0,
     "FAIL": 0,
-    "INCONCLUSIVE": 12,
-    "PASS": 8,
+    "INCONCLUSIVE": 28,
+    "PASS": 28,
     "UNCLASSIFIED": 0,
     "VENDOR_BASELINE_UNAVAILABLE": 0
   },
-  "cases": 56,
+  "cases": 24,
   "considered": [
     {
       "consumer_id": "face_selection",
@@ -854,6 +854,12 @@
       "revision": ""
     },
     {
+      "identity": "C:\\ComfyUI\\output\\.AImodels\\idv2v\\sam3",
+      "loader": "PreTrainedModel.from_pretrained",
+      "path": "",
+      "revision": ""
+    },
+    {
       "identity": "1k3d68.onnx",
       "loader": "onnxruntime.InferenceSession",
       "path": "C:\\ComfyUI\\output\\.AImodels\\insightface\\models\\antelopev2\\1k3d68.onnx",
@@ -878,15 +884,15 @@
       "revision": ""
     },
     {
-      "identity": "scrfd_10g_bnkps.onnx",
+      "identity": "multi-task-model-vitl16_384.onnx",
       "loader": "onnxruntime.InferenceSession",
-      "path": "C:\\ComfyUI\\output\\.AImodels\\insightface\\models\\antelopev2\\scrfd_10g_bnkps.onnx",
+      "path": "C:\\ComfyUI\\output\\.AImodels\\idv2v\\david\\multi-task-model-vitl16_384.onnx",
       "revision": ""
     },
     {
-      "identity": "w600k_r50.onnx",
+      "identity": "scrfd_10g_bnkps.onnx",
       "loader": "onnxruntime.InferenceSession",
-      "path": "C:\\ComfyUI\\output\\.AImodels\\insightface\\models\\buffalo_l\\w600k_r50.onnx",
+      "path": "C:\\ComfyUI\\output\\.AImodels\\insightface\\models\\antelopev2\\scrfd_10g_bnkps.onnx",
       "revision": ""
     },
     {
@@ -952,8 +958,9 @@
   ],
   "population": {
     "consumer_tier_covered": [
-      "embedding_spaces",
-      "gallery_storage"
+      "anystory",
+      "id_lora",
+      "id_v2v"
     ],
     "declared": [
       "aligned_crop",
@@ -988,11 +995,10 @@
     "primitive_tier_only": [],
     "unexercised": [
       "aligned_crop",
-      "anystory",
       "consisid",
+      "embedding_spaces",
       "face_selection",
-      "id_lora",
-      "id_v2v",
+      "gallery_storage",
       "infiniteyou",
       "insightface_producer",
       "instantcharacter",
@@ -1022,628 +1028,83 @@
         {
           "cause": "retained_state_lacks_primitive",
           "compare_method": "",
-          "detail": "INCONCLUSIVE: \"replay needs 'aligned_crop_112', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
+          "detail": "INCONCLUSIVE: \"replay needs 'whole_reference_image', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
           "observed_break": null,
-          "primitive": "aligned_crop_112",
+          "primitive": "whole_reference_image",
+          "swap": "",
+          "verdict": "INCONCLUSIVE"
+        },
+        {
+          "cause": "retained_state_lacks_primitive",
+          "compare_method": "",
+          "detail": "INCONCLUSIVE: \"replay needs 'subject_mask', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": null,
+          "primitive": "subject_mask",
           "swap": "",
           "verdict": "INCONCLUSIVE"
         },
         {
           "cause": "",
           "compare_method": "exact_bytes",
-          "detail": "exact_bytes: 512 of 512 elements differ, worst 3.1959466002881527",
+          "detail": "exact_bytes: 741156 of 3784800 elements differ, worst 22.0",
           "expect_breaks": true,
           "kind": "substitution",
           "observed_break": true,
-          "primitive": "aligned_crop_112",
-          "swap": "stored_glintr100",
+          "primitive": "whole_reference_image",
+          "swap": "stored_preview",
           "verdict": "PASS"
-        }
-      ],
-      "baseline": {
-        "dtype": "float32",
-        "name": "facexlib_arcface|1_id_document",
-        "sha256": "5d4652cbf7eb49955212c50ce486d3b317e7a8fa377e6c245b00066fb9cc941a",
-        "shape": [
-          512
-        ],
-        "values": null
-      },
-      "case": "space_facexlib_arcface_1_id_document",
-      "comparison": "exact_bytes: byte-identical",
-      "consumer_id": "embedding_spaces",
-      "fixture_sha256": "a6a9920ea7917517b1d5c5c306dd824f3ab30e0d50d5e9b04ad26c7077f372cc",
-      "max_abs_diff": 0.0,
-      "measurements": [
-        {
-          "basis": "facexlib_arcface against glintr100 on the same norm_crop@112",
-          "detail": "1_id_document: facexlib_arcface |v|=1.000 against glintr100 |v|=25.082, cosine -0.0169",
-          "name": "agreement_with_stored",
-          "unit": "cosine",
-          "value": -0.01687491560485342
-        }
-      ],
-      "replay": {
-        "dtype": "float32",
-        "name": "facexlib_arcface|1_id_document",
-        "sha256": "5d4652cbf7eb49955212c50ce486d3b317e7a8fa377e6c245b00066fb9cc941a",
-        "shape": [
-          512
-        ],
-        "values": null
-      },
-      "retained_bytes": {
-        "aligned_crop_112": 37632
-      },
-      "tier": "primitive",
-      "verdict": "PASS"
-    },
-    {
-      "__test__": false,
-      "ablations": [
-        {
-          "cause": "retained_state_lacks_primitive",
-          "compare_method": "",
-          "detail": "INCONCLUSIVE: \"replay needs 'aligned_crop_112', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
-          "expect_breaks": true,
-          "kind": "removal",
-          "observed_break": null,
-          "primitive": "aligned_crop_112",
-          "swap": "",
-          "verdict": "INCONCLUSIVE"
         },
         {
           "cause": "",
           "compare_method": "exact_bytes",
-          "detail": "exact_bytes: 512 of 512 elements differ, worst 3.3304576259106398",
+          "detail": "exact_bytes: 599575 of 3784800 elements differ, worst 255.0",
           "expect_breaks": true,
           "kind": "substitution",
           "observed_break": true,
-          "primitive": "aligned_crop_112",
-          "swap": "stored_glintr100",
+          "primitive": "subject_mask",
+          "swap": "face_box_mask",
           "verdict": "PASS"
         }
       ],
       "baseline": {
-        "dtype": "float32",
-        "name": "facexlib_arcface|1_selfie",
-        "sha256": "b49ae59e06e575e6969aecdb609d6119d3e4b5ef616c5d761f3daee01ed7a774",
+        "dtype": "uint8",
+        "name": "masked_subject|multi_1",
+        "sha256": "6d7d64a1c71df17a853fee619cec5193951a1711947149058d29b13b3fc1c699",
         "shape": [
-          512
+          3784800
         ],
         "values": null
       },
-      "case": "space_facexlib_arcface_1_selfie",
+      "case": "anystory_masked_subject_multi_1",
       "comparison": "exact_bytes: byte-identical",
-      "consumer_id": "embedding_spaces",
-      "fixture_sha256": "094b3b6c8c7891c48e6d6c274cd0d2f2a96cc69db9e63f56c821107f7299da87",
+      "consumer_id": "anystory",
+      "fixture_sha256": "54cbdb39f9180d06ce518af0e59f65e7c41f0f0f85029eccb3e7c7be510d2172",
       "max_abs_diff": 0.0,
       "measurements": [
         {
-          "basis": "facexlib_arcface against glintr100 on the same norm_crop@112",
-          "detail": "1_selfie: facexlib_arcface |v|=1.000 against glintr100 |v|=23.230, cosine -0.0232",
-          "name": "agreement_with_stored",
-          "unit": "cosine",
-          "value": -0.02324876716233153
-        }
-      ],
-      "replay": {
-        "dtype": "float32",
-        "name": "facexlib_arcface|1_selfie",
-        "sha256": "b49ae59e06e575e6969aecdb609d6119d3e4b5ef616c5d761f3daee01ed7a774",
-        "shape": [
-          512
-        ],
-        "values": null
-      },
-      "retained_bytes": {
-        "aligned_crop_112": 37632
-      },
-      "tier": "primitive",
-      "verdict": "PASS"
-    },
-    {
-      "__test__": false,
-      "ablations": [
-        {
-          "cause": "retained_state_lacks_primitive",
-          "compare_method": "",
-          "detail": "INCONCLUSIVE: \"replay needs 'aligned_crop_112', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
-          "expect_breaks": true,
-          "kind": "removal",
-          "observed_break": null,
-          "primitive": "aligned_crop_112",
-          "swap": "",
-          "verdict": "INCONCLUSIVE"
-        },
-        {
-          "cause": "",
-          "compare_method": "exact_bytes",
-          "detail": "exact_bytes: 512 of 512 elements differ, worst 3.8659220188856125",
-          "expect_breaks": true,
-          "kind": "substitution",
-          "observed_break": true,
-          "primitive": "aligned_crop_112",
-          "swap": "stored_glintr100",
-          "verdict": "PASS"
-        }
-      ],
-      "baseline": {
-        "dtype": "float32",
-        "name": "facexlib_arcface|2_id_document",
-        "sha256": "f08a77678fb7afe3e81b4fb6d1b26cd380831a7655f5026a5fd9ddf539113677",
-        "shape": [
-          512
-        ],
-        "values": null
-      },
-      "case": "space_facexlib_arcface_2_id_document",
-      "comparison": "exact_bytes: byte-identical",
-      "consumer_id": "embedding_spaces",
-      "fixture_sha256": "b074d6da7157e2703ec53dbf77e0d0fad04cf025a480f851475a693dafd6ded4",
-      "max_abs_diff": 0.0,
-      "measurements": [
-        {
-          "basis": "facexlib_arcface against glintr100 on the same norm_crop@112",
-          "detail": "2_id_document: facexlib_arcface |v|=1.000 against glintr100 |v|=23.555, cosine -0.0565",
-          "name": "agreement_with_stored",
-          "unit": "cosine",
-          "value": -0.056541963423646105
-        }
-      ],
-      "replay": {
-        "dtype": "float32",
-        "name": "facexlib_arcface|2_id_document",
-        "sha256": "f08a77678fb7afe3e81b4fb6d1b26cd380831a7655f5026a5fd9ddf539113677",
-        "shape": [
-          512
-        ],
-        "values": null
-      },
-      "retained_bytes": {
-        "aligned_crop_112": 37632
-      },
-      "tier": "primitive",
-      "verdict": "PASS"
-    },
-    {
-      "__test__": false,
-      "ablations": [
-        {
-          "cause": "retained_state_lacks_primitive",
-          "compare_method": "",
-          "detail": "INCONCLUSIVE: \"replay needs 'aligned_crop_112', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
-          "expect_breaks": true,
-          "kind": "removal",
-          "observed_break": null,
-          "primitive": "aligned_crop_112",
-          "swap": "",
-          "verdict": "INCONCLUSIVE"
-        },
-        {
-          "cause": "",
-          "compare_method": "exact_bytes",
-          "detail": "exact_bytes: 512 of 512 elements differ, worst 3.0679511222988367",
-          "expect_breaks": true,
-          "kind": "substitution",
-          "observed_break": true,
-          "primitive": "aligned_crop_112",
-          "swap": "stored_glintr100",
-          "verdict": "PASS"
-        }
-      ],
-      "baseline": {
-        "dtype": "float32",
-        "name": "facexlib_arcface|2_selfie",
-        "sha256": "a7d4ee9f893196a39a4f87c11eb4177eb89bd3a1d0d85e939c2a9f6076bd7b10",
-        "shape": [
-          512
-        ],
-        "values": null
-      },
-      "case": "space_facexlib_arcface_2_selfie",
-      "comparison": "exact_bytes: byte-identical",
-      "consumer_id": "embedding_spaces",
-      "fixture_sha256": "242d8c6518eab5e8476d73bfe88c12ee093e8763a427df6342bd9c8fde1ad382",
-      "max_abs_diff": 0.0,
-      "measurements": [
-        {
-          "basis": "facexlib_arcface against glintr100 on the same norm_crop@112",
-          "detail": "2_selfie: facexlib_arcface |v|=1.000 against glintr100 |v|=19.902, cosine -0.0538",
-          "name": "agreement_with_stored",
-          "unit": "cosine",
-          "value": -0.05378948410183771
-        }
-      ],
-      "replay": {
-        "dtype": "float32",
-        "name": "facexlib_arcface|2_selfie",
-        "sha256": "a7d4ee9f893196a39a4f87c11eb4177eb89bd3a1d0d85e939c2a9f6076bd7b10",
-        "shape": [
-          512
-        ],
-        "values": null
-      },
-      "retained_bytes": {
-        "aligned_crop_112": 37632
-      },
-      "tier": "primitive",
-      "verdict": "PASS"
-    },
-    {
-      "__test__": false,
-      "ablations": [
-        {
-          "cause": "retained_state_lacks_primitive",
-          "compare_method": "",
-          "detail": "INCONCLUSIVE: \"replay needs 'aligned_crop_112', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
-          "expect_breaks": true,
-          "kind": "removal",
-          "observed_break": null,
-          "primitive": "aligned_crop_112",
-          "swap": "",
-          "verdict": "INCONCLUSIVE"
-        }
-      ],
-      "baseline": {
-        "dtype": "float32",
-        "name": "glintr100|1_id_document",
-        "sha256": "4f566da7f114313c298a7fcb3885ca4fed0ce33b883621308838affcb9396f5e",
-        "shape": [
-          512
-        ],
-        "values": null
-      },
-      "case": "space_glintr100_1_id_document",
-      "comparison": "exact_bytes: byte-identical",
-      "consumer_id": "embedding_spaces",
-      "fixture_sha256": "a6a9920ea7917517b1d5c5c306dd824f3ab30e0d50d5e9b04ad26c7077f372cc",
-      "max_abs_diff": 0.0,
-      "measurements": [
-        {
-          "basis": "glintr100 against glintr100 on the same norm_crop@112",
-          "detail": "1_id_document: glintr100 |v|=25.082 against glintr100 |v|=25.082, cosine +1.0000 -- the same model",
-          "name": "agreement_with_stored",
-          "unit": "cosine",
+          "basis": "the vendor's subject mask against the best a face row could offer",
+          "detail": "multi_1: subject mask covers 354,343 px of 946,200; NO FACE DETECTED, so the full frame covers 946,200 and accounts for 100.0% of it",
+          "name": "mask_coverage",
+          "unit": "fraction",
           "value": 1.0
         }
       ],
       "replay": {
-        "dtype": "float32",
-        "name": "glintr100|1_id_document",
-        "sha256": "4f566da7f114313c298a7fcb3885ca4fed0ce33b883621308838affcb9396f5e",
+        "dtype": "uint8",
+        "name": "masked_subject|multi_1",
+        "sha256": "6d7d64a1c71df17a853fee619cec5193951a1711947149058d29b13b3fc1c699",
         "shape": [
-          512
+          3784800
         ],
         "values": null
       },
       "retained_bytes": {
-        "aligned_crop_112": 37632
-      },
-      "tier": "primitive",
-      "verdict": "PASS"
-    },
-    {
-      "__test__": false,
-      "ablations": [
-        {
-          "cause": "retained_state_lacks_primitive",
-          "compare_method": "",
-          "detail": "INCONCLUSIVE: \"replay needs 'aligned_crop_112', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
-          "expect_breaks": true,
-          "kind": "removal",
-          "observed_break": null,
-          "primitive": "aligned_crop_112",
-          "swap": "",
-          "verdict": "INCONCLUSIVE"
-        }
-      ],
-      "baseline": {
-        "dtype": "float32",
-        "name": "glintr100|1_selfie",
-        "sha256": "ee6b8510a907a1e355f6c13cbbfd172ddbe14babac2e5784947b851b2fc03581",
-        "shape": [
-          512
-        ],
-        "values": null
-      },
-      "case": "space_glintr100_1_selfie",
-      "comparison": "exact_bytes: byte-identical",
-      "consumer_id": "embedding_spaces",
-      "fixture_sha256": "094b3b6c8c7891c48e6d6c274cd0d2f2a96cc69db9e63f56c821107f7299da87",
-      "max_abs_diff": 0.0,
-      "measurements": [
-        {
-          "basis": "glintr100 against glintr100 on the same norm_crop@112",
-          "detail": "1_selfie: glintr100 |v|=23.230 against glintr100 |v|=23.230, cosine +1.0000 -- the same model",
-          "name": "agreement_with_stored",
-          "unit": "cosine",
-          "value": 1.0000000000000002
-        }
-      ],
-      "replay": {
-        "dtype": "float32",
-        "name": "glintr100|1_selfie",
-        "sha256": "ee6b8510a907a1e355f6c13cbbfd172ddbe14babac2e5784947b851b2fc03581",
-        "shape": [
-          512
-        ],
-        "values": null
-      },
-      "retained_bytes": {
-        "aligned_crop_112": 37632
-      },
-      "tier": "primitive",
-      "verdict": "PASS"
-    },
-    {
-      "__test__": false,
-      "ablations": [
-        {
-          "cause": "retained_state_lacks_primitive",
-          "compare_method": "",
-          "detail": "INCONCLUSIVE: \"replay needs 'aligned_crop_112', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
-          "expect_breaks": true,
-          "kind": "removal",
-          "observed_break": null,
-          "primitive": "aligned_crop_112",
-          "swap": "",
-          "verdict": "INCONCLUSIVE"
-        }
-      ],
-      "baseline": {
-        "dtype": "float32",
-        "name": "glintr100|2_id_document",
-        "sha256": "7cbe22c901eae1efbb56c1c30abcc573aa4f8b129e815ebf0d9de205a2391070",
-        "shape": [
-          512
-        ],
-        "values": null
-      },
-      "case": "space_glintr100_2_id_document",
-      "comparison": "exact_bytes: byte-identical",
-      "consumer_id": "embedding_spaces",
-      "fixture_sha256": "b074d6da7157e2703ec53dbf77e0d0fad04cf025a480f851475a693dafd6ded4",
-      "max_abs_diff": 0.0,
-      "measurements": [
-        {
-          "basis": "glintr100 against glintr100 on the same norm_crop@112",
-          "detail": "2_id_document: glintr100 |v|=23.555 against glintr100 |v|=23.555, cosine +1.0000 -- the same model",
-          "name": "agreement_with_stored",
-          "unit": "cosine",
-          "value": 1.0
-        }
-      ],
-      "replay": {
-        "dtype": "float32",
-        "name": "glintr100|2_id_document",
-        "sha256": "7cbe22c901eae1efbb56c1c30abcc573aa4f8b129e815ebf0d9de205a2391070",
-        "shape": [
-          512
-        ],
-        "values": null
-      },
-      "retained_bytes": {
-        "aligned_crop_112": 37632
-      },
-      "tier": "primitive",
-      "verdict": "PASS"
-    },
-    {
-      "__test__": false,
-      "ablations": [
-        {
-          "cause": "retained_state_lacks_primitive",
-          "compare_method": "",
-          "detail": "INCONCLUSIVE: \"replay needs 'aligned_crop_112', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
-          "expect_breaks": true,
-          "kind": "removal",
-          "observed_break": null,
-          "primitive": "aligned_crop_112",
-          "swap": "",
-          "verdict": "INCONCLUSIVE"
-        }
-      ],
-      "baseline": {
-        "dtype": "float32",
-        "name": "glintr100|2_selfie",
-        "sha256": "71a82428afd53cc76543919b362da21685ff44c6eeb70532d7b1d9b9227ace3f",
-        "shape": [
-          512
-        ],
-        "values": null
-      },
-      "case": "space_glintr100_2_selfie",
-      "comparison": "exact_bytes: byte-identical",
-      "consumer_id": "embedding_spaces",
-      "fixture_sha256": "242d8c6518eab5e8476d73bfe88c12ee093e8763a427df6342bd9c8fde1ad382",
-      "max_abs_diff": 0.0,
-      "measurements": [
-        {
-          "basis": "glintr100 against glintr100 on the same norm_crop@112",
-          "detail": "2_selfie: glintr100 |v|=19.902 against glintr100 |v|=19.902, cosine +1.0000 -- the same model",
-          "name": "agreement_with_stored",
-          "unit": "cosine",
-          "value": 1.0
-        }
-      ],
-      "replay": {
-        "dtype": "float32",
-        "name": "glintr100|2_selfie",
-        "sha256": "71a82428afd53cc76543919b362da21685ff44c6eeb70532d7b1d9b9227ace3f",
-        "shape": [
-          512
-        ],
-        "values": null
-      },
-      "retained_bytes": {
-        "aligned_crop_112": 37632
-      },
-      "tier": "primitive",
-      "verdict": "PASS"
-    },
-    {
-      "__test__": false,
-      "ablations": [],
-      "baseline": {
-        "dtype": "float32",
-        "name": "production_glintr100|1_id_document",
-        "sha256": "4f566da7f114313c298a7fcb3885ca4fed0ce33b883621308838affcb9396f5e",
-        "shape": [
-          512
-        ],
-        "values": null
-      },
-      "case": "space_production_glintr100_1_id_document",
-      "comparison": "allclose rtol=0.0 atol=0.001: within tolerance",
-      "consumer_id": "embedding_spaces",
-      "fixture_sha256": "a6a9920ea7917517b1d5c5c306dd824f3ab30e0d50d5e9b04ad26c7077f372cc",
-      "max_abs_diff": 1.2263655662536621e-05,
-      "measurements": [
-        {
-          "basis": "production_glintr100 against glintr100 on the same norm_crop@112",
-          "detail": "1_id_document: production_glintr100 |v|=25.082 against glintr100 |v|=25.082, cosine +1.0000",
-          "name": "agreement_with_stored",
-          "unit": "cosine",
-          "value": 0.9999999999951006
-        }
-      ],
-      "replay": {
-        "dtype": "float32",
-        "name": "production_glintr100|1_id_document",
-        "sha256": "52960584e73322193043da2fb28229cb90fd9a45420512d76d049592c756f0bf",
-        "shape": [
-          512
-        ],
-        "values": null
-      },
-      "retained_bytes": {
-        "aligned_crop_112": 37632
-      },
-      "tier": "consumer",
-      "verdict": "PASS"
-    },
-    {
-      "__test__": false,
-      "ablations": [],
-      "baseline": {
-        "dtype": "float32",
-        "name": "production_glintr100|1_selfie",
-        "sha256": "ee6b8510a907a1e355f6c13cbbfd172ddbe14babac2e5784947b851b2fc03581",
-        "shape": [
-          512
-        ],
-        "values": null
-      },
-      "case": "space_production_glintr100_1_selfie",
-      "comparison": "allclose rtol=0.0 atol=0.001: within tolerance",
-      "consumer_id": "embedding_spaces",
-      "fixture_sha256": "094b3b6c8c7891c48e6d6c274cd0d2f2a96cc69db9e63f56c821107f7299da87",
-      "max_abs_diff": 9.298324584960938e-06,
-      "measurements": [
-        {
-          "basis": "production_glintr100 against glintr100 on the same norm_crop@112",
-          "detail": "1_selfie: production_glintr100 |v|=23.230 against glintr100 |v|=23.230, cosine +1.0000",
-          "name": "agreement_with_stored",
-          "unit": "cosine",
-          "value": 0.9999999999963356
-        }
-      ],
-      "replay": {
-        "dtype": "float32",
-        "name": "production_glintr100|1_selfie",
-        "sha256": "5f82f615fd1365d0493fd088db768776526455c100343fdf61cade584770cc15",
-        "shape": [
-          512
-        ],
-        "values": null
-      },
-      "retained_bytes": {
-        "aligned_crop_112": 37632
-      },
-      "tier": "consumer",
-      "verdict": "PASS"
-    },
-    {
-      "__test__": false,
-      "ablations": [],
-      "baseline": {
-        "dtype": "float32",
-        "name": "production_glintr100|2_id_document",
-        "sha256": "7cbe22c901eae1efbb56c1c30abcc573aa4f8b129e815ebf0d9de205a2391070",
-        "shape": [
-          512
-        ],
-        "values": null
-      },
-      "case": "space_production_glintr100_2_id_document",
-      "comparison": "allclose rtol=0.0 atol=0.001: within tolerance",
-      "consumer_id": "embedding_spaces",
-      "fixture_sha256": "b074d6da7157e2703ec53dbf77e0d0fad04cf025a480f851475a693dafd6ded4",
-      "max_abs_diff": 1.043081283569336e-05,
-      "measurements": [
-        {
-          "basis": "production_glintr100 against glintr100 on the same norm_crop@112",
-          "detail": "2_id_document: production_glintr100 |v|=23.555 against glintr100 |v|=23.555, cosine +1.0000",
-          "name": "agreement_with_stored",
-          "unit": "cosine",
-          "value": 0.9999999999947472
-        }
-      ],
-      "replay": {
-        "dtype": "float32",
-        "name": "production_glintr100|2_id_document",
-        "sha256": "234a83a8dadb5f19673d3399f8c62f9f02f1140943ccce83affe66a6f8d12663",
-        "shape": [
-          512
-        ],
-        "values": null
-      },
-      "retained_bytes": {
-        "aligned_crop_112": 37632
-      },
-      "tier": "consumer",
-      "verdict": "PASS"
-    },
-    {
-      "__test__": false,
-      "ablations": [],
-      "baseline": {
-        "dtype": "float32",
-        "name": "production_glintr100|2_selfie",
-        "sha256": "71a82428afd53cc76543919b362da21685ff44c6eeb70532d7b1d9b9227ace3f",
-        "shape": [
-          512
-        ],
-        "values": null
-      },
-      "case": "space_production_glintr100_2_selfie",
-      "comparison": "allclose rtol=0.0 atol=0.001: within tolerance",
-      "consumer_id": "embedding_spaces",
-      "fixture_sha256": "242d8c6518eab5e8476d73bfe88c12ee093e8763a427df6342bd9c8fde1ad382",
-      "max_abs_diff": 8.031725883483887e-06,
-      "measurements": [
-        {
-          "basis": "production_glintr100 against glintr100 on the same norm_crop@112",
-          "detail": "2_selfie: production_glintr100 |v|=19.902 against glintr100 |v|=19.902, cosine +1.0000",
-          "name": "agreement_with_stored",
-          "unit": "cosine",
-          "value": 0.9999999999942307
-        }
-      ],
-      "replay": {
-        "dtype": "float32",
-        "name": "production_glintr100|2_selfie",
-        "sha256": "c9930c41ab47a8ef6fcb0f13eee78665e2b0e05979e9d77170140d51156ce24f",
-        "shape": [
-          512
-        ],
-        "values": null
-      },
-      "retained_bytes": {
-        "aligned_crop_112": 37632
+        "subject_mask": 24708,
+        "whole_reference_image": 399745
       },
       "tier": "consumer",
       "verdict": "PASS"
@@ -1654,62 +1115,85 @@
         {
           "cause": "retained_state_lacks_primitive",
           "compare_method": "",
-          "detail": "INCONCLUSIVE: \"replay needs 'aligned_crop_112', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
+          "detail": "INCONCLUSIVE: \"replay needs 'whole_reference_image', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
           "observed_break": null,
-          "primitive": "aligned_crop_112",
+          "primitive": "whole_reference_image",
+          "swap": "",
+          "verdict": "INCONCLUSIVE"
+        },
+        {
+          "cause": "retained_state_lacks_primitive",
+          "compare_method": "",
+          "detail": "INCONCLUSIVE: \"replay needs 'subject_mask', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": null,
+          "primitive": "subject_mask",
           "swap": "",
           "verdict": "INCONCLUSIVE"
         },
         {
           "cause": "",
           "compare_method": "exact_bytes",
-          "detail": "exact_bytes: 512 of 512 elements differ, worst 4.798434495925903",
+          "detail": "exact_bytes: 117735 of 883600 elements differ, worst 40.0",
           "expect_breaks": true,
           "kind": "substitution",
           "observed_break": true,
-          "primitive": "aligned_crop_112",
-          "swap": "stored_glintr100",
+          "primitive": "whole_reference_image",
+          "swap": "stored_preview",
+          "verdict": "PASS"
+        },
+        {
+          "cause": "",
+          "compare_method": "exact_bytes",
+          "detail": "exact_bytes: 42721 of 883600 elements differ, worst 255.0",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "subject_mask",
+          "swap": "face_box_mask",
           "verdict": "PASS"
         }
       ],
       "baseline": {
-        "dtype": "float32",
-        "name": "w600k_r50|1_id_document",
-        "sha256": "f5dc064e2ebc1bd41f1d837940ce4b63eb8b103365bb09ff10244b8295a1f188",
+        "dtype": "uint8",
+        "name": "masked_subject|multi_2",
+        "sha256": "d0e12eec732ddc267fadb6036b18f9e9e9e48f99c5b9c4dc2465243d6be2e501",
         "shape": [
-          512
+          883600
         ],
         "values": null
       },
-      "case": "space_w600k_r50_1_id_document",
+      "case": "anystory_masked_subject_multi_2",
       "comparison": "exact_bytes: byte-identical",
-      "consumer_id": "embedding_spaces",
-      "fixture_sha256": "a6a9920ea7917517b1d5c5c306dd824f3ab30e0d50d5e9b04ad26c7077f372cc",
+      "consumer_id": "anystory",
+      "fixture_sha256": "4c32442eb07dfc39ac1cb6809b20eec773c33ed2d514b8922e02d210b13c4484",
       "max_abs_diff": 0.0,
       "measurements": [
         {
-          "basis": "w600k_r50 against glintr100 on the same norm_crop@112",
-          "detail": "1_id_document: w600k_r50 |v|=23.080 against glintr100 |v|=25.082, cosine +0.0306",
-          "name": "agreement_with_stored",
-          "unit": "cosine",
-          "value": 0.0305950003294706
+          "basis": "the vendor's subject mask against the best a face row could offer",
+          "detail": "multi_2: subject mask covers 39,351 px of 220,900; a face rectangle covers 2,254 and accounts for 5.3% of it",
+          "name": "mask_coverage",
+          "unit": "fraction",
+          "value": 0.052908439429747656
         }
       ],
       "replay": {
-        "dtype": "float32",
-        "name": "w600k_r50|1_id_document",
-        "sha256": "f5dc064e2ebc1bd41f1d837940ce4b63eb8b103365bb09ff10244b8295a1f188",
+        "dtype": "uint8",
+        "name": "masked_subject|multi_2",
+        "sha256": "d0e12eec732ddc267fadb6036b18f9e9e9e48f99c5b9c4dc2465243d6be2e501",
         "shape": [
-          512
+          883600
         ],
         "values": null
       },
       "retained_bytes": {
-        "aligned_crop_112": 37632
+        "subject_mask": 7625,
+        "whole_reference_image": 74544
       },
-      "tier": "primitive",
+      "tier": "consumer",
       "verdict": "PASS"
     },
     {
@@ -1718,62 +1202,85 @@
         {
           "cause": "retained_state_lacks_primitive",
           "compare_method": "",
-          "detail": "INCONCLUSIVE: \"replay needs 'aligned_crop_112', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
+          "detail": "INCONCLUSIVE: \"replay needs 'whole_reference_image', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
           "observed_break": null,
-          "primitive": "aligned_crop_112",
+          "primitive": "whole_reference_image",
+          "swap": "",
+          "verdict": "INCONCLUSIVE"
+        },
+        {
+          "cause": "retained_state_lacks_primitive",
+          "compare_method": "",
+          "detail": "INCONCLUSIVE: \"replay needs 'subject_mask', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": null,
+          "primitive": "subject_mask",
           "swap": "",
           "verdict": "INCONCLUSIVE"
         },
         {
           "cause": "",
           "compare_method": "exact_bytes",
-          "detail": "exact_bytes: 512 of 512 elements differ, worst 4.948025703430176",
+          "detail": "exact_bytes: 197127 of 645072 elements differ, worst 28.0",
           "expect_breaks": true,
           "kind": "substitution",
           "observed_break": true,
-          "primitive": "aligned_crop_112",
-          "swap": "stored_glintr100",
+          "primitive": "whole_reference_image",
+          "swap": "stored_preview",
+          "verdict": "PASS"
+        },
+        {
+          "cause": "",
+          "compare_method": "exact_bytes",
+          "detail": "exact_bytes: 63695 of 645072 elements differ, worst 255.0",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "subject_mask",
+          "swap": "face_box_mask",
           "verdict": "PASS"
         }
       ],
       "baseline": {
-        "dtype": "float32",
-        "name": "w600k_r50|1_selfie",
-        "sha256": "c84f8121a27832318348af711280ae72eab9d802ac77f86d44fa607afa97239a",
+        "dtype": "uint8",
+        "name": "masked_subject|single",
+        "sha256": "7e675e326d3c609a7514f3031f2705aa78b93777db84598cb55296b923fdb746",
         "shape": [
-          512
+          645072
         ],
         "values": null
       },
-      "case": "space_w600k_r50_1_selfie",
+      "case": "anystory_masked_subject_single",
       "comparison": "exact_bytes: byte-identical",
-      "consumer_id": "embedding_spaces",
-      "fixture_sha256": "094b3b6c8c7891c48e6d6c274cd0d2f2a96cc69db9e63f56c821107f7299da87",
+      "consumer_id": "anystory",
+      "fixture_sha256": "9910ff590a88764965f8768ae6a20926d2e782749a4dcd4544d2f5d91ec6e705",
       "max_abs_diff": 0.0,
       "measurements": [
         {
-          "basis": "w600k_r50 against glintr100 on the same norm_crop@112",
-          "detail": "1_selfie: w600k_r50 |v|=24.115 against glintr100 |v|=23.230, cosine +0.0218",
-          "name": "agreement_with_stored",
-          "unit": "cosine",
-          "value": 0.021803663501000204
+          "basis": "the vendor's subject mask against the best a face row could offer",
+          "detail": "single: subject mask covers 100,340 px of 161,268; NO FACE DETECTED, so the full frame covers 161,268 and accounts for 100.0% of it",
+          "name": "mask_coverage",
+          "unit": "fraction",
+          "value": 1.0
         }
       ],
       "replay": {
-        "dtype": "float32",
-        "name": "w600k_r50|1_selfie",
-        "sha256": "c84f8121a27832318348af711280ae72eab9d802ac77f86d44fa607afa97239a",
+        "dtype": "uint8",
+        "name": "masked_subject|single",
+        "sha256": "7e675e326d3c609a7514f3031f2705aa78b93777db84598cb55296b923fdb746",
         "shape": [
-          512
+          645072
         ],
         "values": null
       },
       "retained_bytes": {
-        "aligned_crop_112": 37632
+        "subject_mask": 7518,
+        "whole_reference_image": 95265
       },
-      "tier": "primitive",
+      "tier": "consumer",
       "verdict": "PASS"
     },
     {
@@ -1782,62 +1289,73 @@
         {
           "cause": "retained_state_lacks_primitive",
           "compare_method": "",
-          "detail": "INCONCLUSIVE: \"replay needs 'aligned_crop_112', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
+          "detail": "INCONCLUSIVE: \"replay needs 'whole_reference_image', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
           "observed_break": null,
-          "primitive": "aligned_crop_112",
+          "primitive": "whole_reference_image",
           "swap": "",
           "verdict": "INCONCLUSIVE"
         },
         {
           "cause": "",
-          "compare_method": "exact_bytes",
-          "detail": "exact_bytes: 512 of 512 elements differ, worst 4.2315757274627686",
+          "compare_method": "shape",
+          "detail": "shape: baseline (4032, 3024, 3) against replay (1440, 1080, 3)",
           "expect_breaks": true,
           "kind": "substitution",
           "observed_break": true,
-          "primitive": "aligned_crop_112",
-          "swap": "stored_glintr100",
+          "primitive": "whole_reference_image",
+          "swap": "stored_preview",
           "verdict": "PASS"
         }
       ],
       "baseline": {
-        "dtype": "float32",
-        "name": "w600k_r50|2_id_document",
-        "sha256": "38a47c0dfa7cd386717fe212860c6715a232a2745518cbad078840461ce1c083",
+        "dtype": "uint8",
+        "name": "reference_image|1_id_document",
+        "sha256": "ac6e4880bcdc105280992f35826d9cfd8cd0debb9a284fd3d40cc8f63af3099f",
         "shape": [
-          512
+          4032,
+          3024,
+          3
         ],
         "values": null
       },
-      "case": "space_w600k_r50_2_id_document",
+      "case": "anystory_reference_1_id_document",
       "comparison": "exact_bytes: byte-identical",
-      "consumer_id": "embedding_spaces",
-      "fixture_sha256": "b074d6da7157e2703ec53dbf77e0d0fad04cf025a480f851475a693dafd6ded4",
+      "consumer_id": "anystory",
+      "fixture_sha256": "a6a9920ea7917517b1d5c5c306dd824f3ab30e0d50d5e9b04ad26c7077f372cc",
       "max_abs_diff": 0.0,
       "measurements": [
         {
-          "basis": "w600k_r50 against glintr100 on the same norm_crop@112",
-          "detail": "2_id_document: w600k_r50 |v|=21.825 against glintr100 |v|=23.555, cosine +0.0302",
-          "name": "agreement_with_stored",
-          "unit": "cosine",
-          "value": 0.030166459204413066
+          "basis": "raw uint8 extent of the whole picture against the norm_crop@336 footprint",
+          "detail": "whole (4032, 3024, 3) 36,578,304 B against face patch (948, 948, 3) 2,696,112 B -- 13.6x more to retain the picture",
+          "name": "bytes_whole_against_face_patch",
+          "unit": "bytes_ratio",
+          "value": 13.567056561448485
+        },
+        {
+          "basis": "PNG at full resolution against the vision/thumbs preview this application already keeps",
+          "detail": "13,367,709 B lossless at 3024x4032 against 117,010 B for the existing preview -- 114x, and the preview does not reproduce",
+          "name": "bytes_to_retain_the_picture",
+          "unit": "bytes",
+          "value": 13367709.0
         }
       ],
       "replay": {
-        "dtype": "float32",
-        "name": "w600k_r50|2_id_document",
-        "sha256": "38a47c0dfa7cd386717fe212860c6715a232a2745518cbad078840461ce1c083",
+        "dtype": "uint8",
+        "name": "reference_image|1_id_document",
+        "sha256": "ac6e4880bcdc105280992f35826d9cfd8cd0debb9a284fd3d40cc8f63af3099f",
         "shape": [
-          512
+          4032,
+          3024,
+          3
         ],
         "values": null
       },
       "retained_bytes": {
-        "aligned_crop_112": 37632
+        "whole_reference_image": 13367709
       },
-      "tier": "primitive",
+      "tier": "consumer",
       "verdict": "PASS"
     },
     {
@@ -1846,1678 +1364,1432 @@
         {
           "cause": "retained_state_lacks_primitive",
           "compare_method": "",
-          "detail": "INCONCLUSIVE: \"replay needs 'aligned_crop_112', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
+          "detail": "INCONCLUSIVE: \"replay needs 'whole_reference_image', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
           "expect_breaks": true,
           "kind": "removal",
           "observed_break": null,
-          "primitive": "aligned_crop_112",
+          "primitive": "whole_reference_image",
+          "swap": "",
+          "verdict": "INCONCLUSIVE"
+        },
+        {
+          "cause": "",
+          "compare_method": "shape",
+          "detail": "shape: baseline (3088, 2316, 3) against replay (1440, 1080, 3)",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "whole_reference_image",
+          "swap": "stored_preview",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "uint8",
+        "name": "reference_image|1_selfie",
+        "sha256": "a26254d4567b70e429b821095a580e81c021b1200bf2c62978551730a21882f6",
+        "shape": [
+          3088,
+          2316,
+          3
+        ],
+        "values": null
+      },
+      "case": "anystory_reference_1_selfie",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "anystory",
+      "fixture_sha256": "094b3b6c8c7891c48e6d6c274cd0d2f2a96cc69db9e63f56c821107f7299da87",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "raw uint8 extent of the whole picture against the norm_crop@336 footprint",
+          "detail": "whole (3088, 2316, 3) 21,455,424 B against face patch (1426, 1426, 3) 6,100,428 B -- 3.5x more to retain the picture",
+          "name": "bytes_whole_against_face_patch",
+          "unit": "bytes_ratio",
+          "value": 3.5170358538777933
+        },
+        {
+          "basis": "PNG at full resolution against the vision/thumbs preview this application already keeps",
+          "detail": "6,549,646 B lossless at 2316x3088 against 157,188 B for the existing preview -- 42x, and the preview does not reproduce",
+          "name": "bytes_to_retain_the_picture",
+          "unit": "bytes",
+          "value": 6549646.0
+        }
+      ],
+      "replay": {
+        "dtype": "uint8",
+        "name": "reference_image|1_selfie",
+        "sha256": "a26254d4567b70e429b821095a580e81c021b1200bf2c62978551730a21882f6",
+        "shape": [
+          3088,
+          2316,
+          3
+        ],
+        "values": null
+      },
+      "retained_bytes": {
+        "whole_reference_image": 6549646
+      },
+      "tier": "consumer",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "cause": "retained_state_lacks_primitive",
+          "compare_method": "",
+          "detail": "INCONCLUSIVE: \"replay needs 'whole_reference_image', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": null,
+          "primitive": "whole_reference_image",
+          "swap": "",
+          "verdict": "INCONCLUSIVE"
+        },
+        {
+          "cause": "",
+          "compare_method": "shape",
+          "detail": "shape: baseline (4000, 3000, 3) against replay (1440, 1080, 3)",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "whole_reference_image",
+          "swap": "stored_preview",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "uint8",
+        "name": "reference_image|2_id_document",
+        "sha256": "7a2f8585144ea176f032d1cb21c6edae1b96e1bca21bcacbb8eb3e64f1152dbe",
+        "shape": [
+          4000,
+          3000,
+          3
+        ],
+        "values": null
+      },
+      "case": "anystory_reference_2_id_document",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "anystory",
+      "fixture_sha256": "b074d6da7157e2703ec53dbf77e0d0fad04cf025a480f851475a693dafd6ded4",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "raw uint8 extent of the whole picture against the norm_crop@336 footprint",
+          "detail": "whole (4000, 3000, 3) 36,000,000 B against face patch (763, 763, 3) 1,746,507 B -- 20.6x more to retain the picture",
+          "name": "bytes_whole_against_face_patch",
+          "unit": "bytes_ratio",
+          "value": 20.61257126367086
+        },
+        {
+          "basis": "PNG at full resolution against the vision/thumbs preview this application already keeps",
+          "detail": "9,343,513 B lossless at 3000x4000 against 66,326 B for the existing preview -- 141x, and the preview does not reproduce",
+          "name": "bytes_to_retain_the_picture",
+          "unit": "bytes",
+          "value": 9343513.0
+        }
+      ],
+      "replay": {
+        "dtype": "uint8",
+        "name": "reference_image|2_id_document",
+        "sha256": "7a2f8585144ea176f032d1cb21c6edae1b96e1bca21bcacbb8eb3e64f1152dbe",
+        "shape": [
+          4000,
+          3000,
+          3
+        ],
+        "values": null
+      },
+      "retained_bytes": {
+        "whole_reference_image": 9343513
+      },
+      "tier": "consumer",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "cause": "retained_state_lacks_primitive",
+          "compare_method": "",
+          "detail": "INCONCLUSIVE: \"replay needs 'whole_reference_image', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": null,
+          "primitive": "whole_reference_image",
+          "swap": "",
+          "verdict": "INCONCLUSIVE"
+        },
+        {
+          "cause": "",
+          "compare_method": "shape",
+          "detail": "shape: baseline (6528, 4896, 3) against replay (1440, 1080, 3)",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "whole_reference_image",
+          "swap": "stored_preview",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "uint8",
+        "name": "reference_image|2_selfie",
+        "sha256": "8286da0f5a97a3ce231efdfa399e99afb77a63214b84e0cb8917cddeac248682",
+        "shape": [
+          6528,
+          4896,
+          3
+        ],
+        "values": null
+      },
+      "case": "anystory_reference_2_selfie",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "anystory",
+      "fixture_sha256": "242d8c6518eab5e8476d73bfe88c12ee093e8763a427df6342bd9c8fde1ad382",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "raw uint8 extent of the whole picture against the norm_crop@336 footprint",
+          "detail": "whole (6528, 4896, 3) 95,883,264 B against face patch (3335, 3335, 3) 33,366,675 B -- 2.9x more to retain the picture",
+          "name": "bytes_whole_against_face_patch",
+          "unit": "bytes_ratio",
+          "value": 2.8736235780160895
+        },
+        {
+          "basis": "PNG at full resolution against the vision/thumbs preview this application already keeps",
+          "detail": "21,466,629 B lossless at 4896x6528 against 158,074 B for the existing preview -- 136x, and the preview does not reproduce",
+          "name": "bytes_to_retain_the_picture",
+          "unit": "bytes",
+          "value": 21466629.0
+        }
+      ],
+      "replay": {
+        "dtype": "uint8",
+        "name": "reference_image|2_selfie",
+        "sha256": "8286da0f5a97a3ce231efdfa399e99afb77a63214b84e0cb8917cddeac248682",
+        "shape": [
+          6528,
+          4896,
+          3
+        ],
+        "values": null
+      },
+      "retained_bytes": {
+        "whole_reference_image": 21466629
+      },
+      "tier": "consumer",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "cause": "retained_state_lacks_primitive",
+          "compare_method": "",
+          "detail": "INCONCLUSIVE: \"replay needs 'audio_waveform', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": null,
+          "primitive": "audio_waveform",
+          "swap": "",
+          "verdict": "INCONCLUSIVE"
+        },
+        {
+          "cause": "retained_state_lacks_primitive",
+          "compare_method": "",
+          "detail": "INCONCLUSIVE: \"replay needs 'audio_sample_rate', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": null,
+          "primitive": "audio_sample_rate",
+          "swap": "",
+          "verdict": "INCONCLUSIVE"
+        },
+        {
+          "cause": "",
+          "compare_method": "shape",
+          "detail": "shape: baseline (2, 220500) against replay (2, 80000)",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "audio_sample_rate",
+          "swap": "vae_rate_assumed",
+          "verdict": "PASS"
+        },
+        {
+          "cause": "",
+          "compare_method": "shape",
+          "detail": "shape: baseline (2, 220500) against replay (1, 220500)",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "audio_waveform",
+          "swap": "mono_downmix",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "float32",
+        "name": "resampled_waveform@44100",
+        "sha256": "f5d9cecaacf99fdbfa83be84b59f1489f12034e46f9f938a3c209d382e7da41a",
+        "shape": [
+          2,
+          220500
+        ],
+        "values": null
+      },
+      "case": "id_lora_reference_waveform",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "id_lora",
+      "fixture_sha256": "d8d47d293e4565b9510006ee204ba7c269cf958f208b28811038928b13ea5bee",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "float32 waveform at capture rate, against the same clip resampled to the VAE's rate",
+          "detail": "stored (2, 80000) at 16000 Hz = 640,000 B; resampled to 44100 Hz it becomes (2, 220500) = 1,764,000 B (2.76x). Storing the VAE's tokens instead would freeze one model's rate and one model's encoder, and could not be resampled back",
+          "name": "waveform_against_latent_cost",
+          "unit": "bytes",
+          "value": 640000.0
+        }
+      ],
+      "replay": {
+        "dtype": "float32",
+        "name": "resampled_waveform@44100",
+        "sha256": "f5d9cecaacf99fdbfa83be84b59f1489f12034e46f9f938a3c209d382e7da41a",
+        "shape": [
+          2,
+          220500
+        ],
+        "values": null
+      },
+      "retained_bytes": {
+        "audio_sample_rate": 8,
+        "audio_waveform": 640000
+      },
+      "tier": "consumer",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "cause": "retained_state_lacks_primitive",
+          "compare_method": "",
+          "detail": "INCONCLUSIVE: \"replay needs 'david_normal_mp4', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": null,
+          "primitive": "david_normal_mp4",
           "swap": "",
           "verdict": "INCONCLUSIVE"
         },
         {
           "cause": "",
           "compare_method": "exact_bytes",
-          "detail": "exact_bytes: 512 of 512 elements differ, worst 3.551276206970215",
+          "detail": "exact_bytes: 43759657 of 49766400 elements differ, worst 88.0",
           "expect_breaks": true,
           "kind": "substitution",
           "observed_break": true,
-          "primitive": "aligned_crop_112",
-          "swap": "stored_glintr100",
+          "primitive": "david_normal_mp4",
+          "swap": "video_round_trip",
           "verdict": "PASS"
         }
       ],
       "baseline": {
-        "dtype": "float32",
-        "name": "w600k_r50|2_selfie",
-        "sha256": "314f35e1c5d89ccae09770477d954687c709c2d1c712fb6375327ca23877a953",
+        "dtype": "uint8",
+        "name": "david_normal_mp4|longer_video_woman_dancing",
+        "sha256": "09ba4ec0c387dbb864c310951387b416693d3bcd28e8c8beb3033d792aa5239f",
         "shape": [
-          512
+          8,
+          1080,
+          1920,
+          3
         ],
         "values": null
       },
-      "case": "space_w600k_r50_2_selfie",
+      "case": "id_v2v_david_normal_mp4_longer_video_woman_dancing",
       "comparison": "exact_bytes: byte-identical",
-      "consumer_id": "embedding_spaces",
-      "fixture_sha256": "242d8c6518eab5e8476d73bfe88c12ee093e8763a427df6342bd9c8fde1ad382",
+      "consumer_id": "id_v2v",
+      "fixture_sha256": "554f3bfe08989ff090cc56da10c5b545280d520230cbf1f3d8331b9bd1e44950",
       "max_abs_diff": 0.0,
       "measurements": [
         {
-          "basis": "w600k_r50 against glintr100 on the same norm_crop@112",
-          "detail": "2_selfie: w600k_r50 |v|=20.075 against glintr100 |v|=19.902, cosine +0.0538",
-          "name": "agreement_with_stored",
-          "unit": "cosine",
-          "value": 0.053755380102048014
+          "basis": "whether david can run here at all",
+          "detail": "david_normal_mp4 for longer_video_woman_dancing: david weight at C:\\ComfyUI\\output\\.AImodels\\idv2v\\david\\multi-task-model-vitl16_384.onnx; consumed by idv2v_with_normal_depth",
+          "name": "rederivation_cost",
+          "unit": "frames",
+          "value": null
         }
       ],
       "replay": {
-        "dtype": "float32",
-        "name": "w600k_r50|2_selfie",
-        "sha256": "314f35e1c5d89ccae09770477d954687c709c2d1c712fb6375327ca23877a953",
+        "dtype": "uint8",
+        "name": "david_normal_mp4|longer_video_woman_dancing",
+        "sha256": "09ba4ec0c387dbb864c310951387b416693d3bcd28e8c8beb3033d792aa5239f",
         "shape": [
-          512
+          8,
+          1080,
+          1920,
+          3
         ],
         "values": null
       },
       "retained_bytes": {
-        "aligned_crop_112": 37632
-      },
-      "tier": "primitive",
-      "verdict": "PASS"
-    },
-    {
-      "__test__": false,
-      "ablations": [],
-      "baseline": {
-        "dtype": "float64",
-        "name": "gallery_native|__all__|1_id_document",
-        "sha256": "c0d85deb96fc881be6af47b6236ee1434c4f406311f564291e3baf4be75d2fef",
-        "shape": [
-          948
-        ],
-        "values": null
-      },
-      "case": "store_consumer_gallery_native_1_id_document",
-      "comparison": "allclose rtol=0.0 atol=0.0: within tolerance",
-      "consumer_id": "gallery_storage",
-      "fixture_sha256": "a6a9920ea7917517b1d5c5c306dd824f3ab30e0d50d5e9b04ad26c7077f372cc",
-      "max_abs_diff": 0.0,
-      "measurements": [],
-      "replay": {
-        "dtype": "float64",
-        "name": "gallery_native|__all__|1_id_document",
-        "sha256": "c0d85deb96fc881be6af47b6236ee1434c4f406311f564291e3baf4be75d2fef",
-        "shape": [
-          948
-        ],
-        "values": null
-      },
-      "retained_bytes": {
-        "age": 8,
-        "bbox": 16,
-        "det_score": 4,
-        "embedding": 2048,
-        "gender": 8,
-        "kps": 40,
-        "landmark_2d_106": 848,
-        "landmark_3d_68": 816,
-        "pose": 12
+        "david_normal_mp4": 49766400
       },
       "tier": "consumer",
       "verdict": "PASS"
     },
     {
       "__test__": false,
-      "ablations": [],
+      "ablations": [
+        {
+          "cause": "retained_state_lacks_primitive",
+          "compare_method": "",
+          "detail": "INCONCLUSIVE: \"replay needs 'david_normal_mp4', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": null,
+          "primitive": "david_normal_mp4",
+          "swap": "",
+          "verdict": "INCONCLUSIVE"
+        },
+        {
+          "cause": "",
+          "compare_method": "exact_bytes",
+          "detail": "exact_bytes: 42646972 of 49766400 elements differ, worst 79.0",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "david_normal_mp4",
+          "swap": "video_round_trip",
+          "verdict": "PASS"
+        }
+      ],
       "baseline": {
-        "dtype": "float64",
-        "name": "gallery_native|__all__|1_selfie",
-        "sha256": "110ad115913490f5c609cc13dc1f502650b55a4c962599976894189ddb5adb67",
+        "dtype": "uint8",
+        "name": "david_normal_mp4|non_aligned_keyframe_woman_phone",
+        "sha256": "1a1a1b2c6e94e7662a2730c5e9d4e024af267b3253697116d13facb439ff6ea6",
         "shape": [
-          948
+          8,
+          1080,
+          1920,
+          3
         ],
         "values": null
       },
-      "case": "store_consumer_gallery_native_1_selfie",
-      "comparison": "allclose rtol=0.0 atol=0.0: within tolerance",
-      "consumer_id": "gallery_storage",
-      "fixture_sha256": "094b3b6c8c7891c48e6d6c274cd0d2f2a96cc69db9e63f56c821107f7299da87",
+      "case": "id_v2v_david_normal_mp4_non_aligned_keyframe_woman_phone",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "id_v2v",
+      "fixture_sha256": "56a27460d3b37acacdef5598ed4c7a48392a22af679d07d1c55059dd93dc6ac1",
       "max_abs_diff": 0.0,
-      "measurements": [],
+      "measurements": [
+        {
+          "basis": "whether david can run here at all",
+          "detail": "david_normal_mp4 for non_aligned_keyframe_woman_phone: david weight at C:\\ComfyUI\\output\\.AImodels\\idv2v\\david\\multi-task-model-vitl16_384.onnx; consumed by idv2v_with_normal_depth",
+          "name": "rederivation_cost",
+          "unit": "frames",
+          "value": null
+        }
+      ],
       "replay": {
-        "dtype": "float64",
-        "name": "gallery_native|__all__|1_selfie",
-        "sha256": "110ad115913490f5c609cc13dc1f502650b55a4c962599976894189ddb5adb67",
+        "dtype": "uint8",
+        "name": "david_normal_mp4|non_aligned_keyframe_woman_phone",
+        "sha256": "1a1a1b2c6e94e7662a2730c5e9d4e024af267b3253697116d13facb439ff6ea6",
         "shape": [
-          948
+          8,
+          1080,
+          1920,
+          3
         ],
         "values": null
       },
       "retained_bytes": {
-        "age": 8,
-        "bbox": 16,
-        "det_score": 4,
-        "embedding": 2048,
-        "gender": 8,
-        "kps": 40,
-        "landmark_2d_106": 848,
-        "landmark_3d_68": 816,
-        "pose": 12
+        "david_normal_mp4": 49766400
       },
       "tier": "consumer",
       "verdict": "PASS"
     },
     {
       "__test__": false,
-      "ablations": [],
+      "ablations": [
+        {
+          "cause": "retained_state_lacks_primitive",
+          "compare_method": "",
+          "detail": "INCONCLUSIVE: \"replay needs 'david_normal_mp4', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": null,
+          "primitive": "david_normal_mp4",
+          "swap": "",
+          "verdict": "INCONCLUSIVE"
+        },
+        {
+          "cause": "",
+          "compare_method": "exact_bytes",
+          "detail": "exact_bytes: 41802420 of 49766400 elements differ, worst 84.0",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "david_normal_mp4",
+          "swap": "video_round_trip",
+          "verdict": "PASS"
+        }
+      ],
       "baseline": {
-        "dtype": "float64",
-        "name": "gallery_native|__all__|2_id_document",
-        "sha256": "baf4146f8b692caeb6c96f82c9ac37fb22882aeb37874d22f3f1b9f13e460d94",
+        "dtype": "uint8",
+        "name": "david_normal_mp4|relighting_cover_eyes",
+        "sha256": "a6d4745149c46f43afd1228df51014694f2409cf711871b43222b36951f93f73",
         "shape": [
-          948
+          8,
+          1080,
+          1920,
+          3
         ],
         "values": null
       },
-      "case": "store_consumer_gallery_native_2_id_document",
-      "comparison": "allclose rtol=0.0 atol=0.0: within tolerance",
-      "consumer_id": "gallery_storage",
-      "fixture_sha256": "b074d6da7157e2703ec53dbf77e0d0fad04cf025a480f851475a693dafd6ded4",
+      "case": "id_v2v_david_normal_mp4_relighting_cover_eyes",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "id_v2v",
+      "fixture_sha256": "27d9a5c589117938c4b3b891ac0bd21ad94d93e00da941de5647f65e083ac125",
       "max_abs_diff": 0.0,
-      "measurements": [],
+      "measurements": [
+        {
+          "basis": "whether david can run here at all",
+          "detail": "david_normal_mp4 for relighting_cover_eyes: david weight at C:\\ComfyUI\\output\\.AImodels\\idv2v\\david\\multi-task-model-vitl16_384.onnx; consumed by idv2v_with_normal_depth",
+          "name": "rederivation_cost",
+          "unit": "frames",
+          "value": null
+        }
+      ],
       "replay": {
-        "dtype": "float64",
-        "name": "gallery_native|__all__|2_id_document",
-        "sha256": "baf4146f8b692caeb6c96f82c9ac37fb22882aeb37874d22f3f1b9f13e460d94",
+        "dtype": "uint8",
+        "name": "david_normal_mp4|relighting_cover_eyes",
+        "sha256": "a6d4745149c46f43afd1228df51014694f2409cf711871b43222b36951f93f73",
         "shape": [
-          948
+          8,
+          1080,
+          1920,
+          3
         ],
         "values": null
       },
       "retained_bytes": {
-        "age": 8,
-        "bbox": 16,
-        "det_score": 4,
-        "embedding": 2048,
-        "gender": 8,
-        "kps": 40,
-        "landmark_2d_106": 848,
-        "landmark_3d_68": 816,
-        "pose": 12
+        "david_normal_mp4": 49766400
       },
       "tier": "consumer",
       "verdict": "PASS"
     },
     {
       "__test__": false,
-      "ablations": [],
+      "ablations": [
+        {
+          "cause": "retained_state_lacks_primitive",
+          "compare_method": "",
+          "detail": "INCONCLUSIVE: \"replay needs 'david_normal_mp4', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": null,
+          "primitive": "david_normal_mp4",
+          "swap": "",
+          "verdict": "INCONCLUSIVE"
+        },
+        {
+          "cause": "",
+          "compare_method": "exact_bytes",
+          "detail": "exact_bytes: 41802420 of 49766400 elements differ, worst 84.0",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "david_normal_mp4",
+          "swap": "video_round_trip",
+          "verdict": "PASS"
+        }
+      ],
       "baseline": {
-        "dtype": "float64",
-        "name": "gallery_native|__all__|2_selfie",
-        "sha256": "498986c8cbfebcbefb82fc601980b81ae773ccd9ff2cbd0d805cbe15107a8751",
+        "dtype": "uint8",
+        "name": "david_normal_mp4|restylization_cover_eyes",
+        "sha256": "a6d4745149c46f43afd1228df51014694f2409cf711871b43222b36951f93f73",
         "shape": [
-          948
+          8,
+          1080,
+          1920,
+          3
         ],
         "values": null
       },
-      "case": "store_consumer_gallery_native_2_selfie",
-      "comparison": "allclose rtol=0.0 atol=0.0: within tolerance",
-      "consumer_id": "gallery_storage",
-      "fixture_sha256": "242d8c6518eab5e8476d73bfe88c12ee093e8763a427df6342bd9c8fde1ad382",
+      "case": "id_v2v_david_normal_mp4_restylization_cover_eyes",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "id_v2v",
+      "fixture_sha256": "27d9a5c589117938c4b3b891ac0bd21ad94d93e00da941de5647f65e083ac125",
       "max_abs_diff": 0.0,
-      "measurements": [],
+      "measurements": [
+        {
+          "basis": "whether david can run here at all",
+          "detail": "david_normal_mp4 for restylization_cover_eyes: david weight at C:\\ComfyUI\\output\\.AImodels\\idv2v\\david\\multi-task-model-vitl16_384.onnx; consumed by idv2v_with_normal_depth",
+          "name": "rederivation_cost",
+          "unit": "frames",
+          "value": null
+        }
+      ],
       "replay": {
-        "dtype": "float64",
-        "name": "gallery_native|__all__|2_selfie",
-        "sha256": "498986c8cbfebcbefb82fc601980b81ae773ccd9ff2cbd0d805cbe15107a8751",
+        "dtype": "uint8",
+        "name": "david_normal_mp4|restylization_cover_eyes",
+        "sha256": "a6d4745149c46f43afd1228df51014694f2409cf711871b43222b36951f93f73",
         "shape": [
-          948
+          8,
+          1080,
+          1920,
+          3
         ],
         "values": null
       },
       "retained_bytes": {
-        "age": 8,
-        "bbox": 16,
-        "det_score": 4,
-        "embedding": 2048,
-        "gender": 8,
-        "kps": 40,
-        "landmark_2d_106": 848,
-        "landmark_3d_68": 816,
-        "pose": 12
+        "david_normal_mp4": 49766400
       },
       "tier": "consumer",
       "verdict": "PASS"
     },
     {
       "__test__": false,
-      "ablations": [],
-      "baseline": {
-        "dtype": "int64",
-        "name": "gallery_native|age|1_id_document",
-        "sha256": "230ec863e18d6e3e86d06fb25e4e78c810af7d7ce505d8d0802305aea64b4fb0",
-        "shape": [],
-        "values": null
-      },
-      "case": "store_gallery_native_age_1_id_document",
-      "comparison": "allclose rtol=0.0 atol=0.0: within tolerance",
-      "consumer_id": "gallery_storage",
-      "fixture_sha256": "a6a9920ea7917517b1d5c5c306dd824f3ab30e0d50d5e9b04ad26c7077f372cc",
-      "max_abs_diff": 0.0,
-      "measurements": [
+      "ablations": [
         {
-          "basis": "dtype and shape returned by the candidate's read path",
-          "detail": "age: producer int64() -> stored int64()",
-          "name": "stored_form",
-          "unit": "dtype/shape",
-          "value": 1.0
+          "cause": "retained_state_lacks_primitive",
+          "compare_method": "",
+          "detail": "INCONCLUSIVE: \"replay needs 'depth_mp4', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": null,
+          "primitive": "depth_mp4",
+          "swap": "",
+          "verdict": "INCONCLUSIVE"
+        },
+        {
+          "cause": "",
+          "compare_method": "exact_bytes",
+          "detail": "exact_bytes: 30758676 of 49766400 elements differ, worst 80.0",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "depth_mp4",
+          "swap": "video_round_trip",
+          "verdict": "PASS"
         }
       ],
-      "replay": {
-        "dtype": "int64",
-        "name": "gallery_native|age|1_id_document",
-        "sha256": "230ec863e18d6e3e86d06fb25e4e78c810af7d7ce505d8d0802305aea64b4fb0",
-        "shape": [],
-        "values": null
-      },
-      "retained_bytes": {
-        "age": 8
-      },
-      "tier": "primitive",
-      "verdict": "PASS"
-    },
-    {
-      "__test__": false,
-      "ablations": [],
       "baseline": {
-        "dtype": "int64",
-        "name": "gallery_native|age|1_selfie",
-        "sha256": "cdf3c496c923be3475aa8681db8f55214b5a88454f51b90d0971931cd7c499e4",
-        "shape": [],
-        "values": null
-      },
-      "case": "store_gallery_native_age_1_selfie",
-      "comparison": "allclose rtol=0.0 atol=0.0: within tolerance",
-      "consumer_id": "gallery_storage",
-      "fixture_sha256": "094b3b6c8c7891c48e6d6c274cd0d2f2a96cc69db9e63f56c821107f7299da87",
-      "max_abs_diff": 0.0,
-      "measurements": [
-        {
-          "basis": "dtype and shape returned by the candidate's read path",
-          "detail": "age: producer int64() -> stored int64()",
-          "name": "stored_form",
-          "unit": "dtype/shape",
-          "value": 1.0
-        }
-      ],
-      "replay": {
-        "dtype": "int64",
-        "name": "gallery_native|age|1_selfie",
-        "sha256": "cdf3c496c923be3475aa8681db8f55214b5a88454f51b90d0971931cd7c499e4",
-        "shape": [],
-        "values": null
-      },
-      "retained_bytes": {
-        "age": 8
-      },
-      "tier": "primitive",
-      "verdict": "PASS"
-    },
-    {
-      "__test__": false,
-      "ablations": [],
-      "baseline": {
-        "dtype": "int64",
-        "name": "gallery_native|age|2_id_document",
-        "sha256": "779f279bb43b90d658b524739ac78e9cd2be48dea0b43c8fbe3cfebdf04f7ded",
-        "shape": [],
-        "values": null
-      },
-      "case": "store_gallery_native_age_2_id_document",
-      "comparison": "allclose rtol=0.0 atol=0.0: within tolerance",
-      "consumer_id": "gallery_storage",
-      "fixture_sha256": "b074d6da7157e2703ec53dbf77e0d0fad04cf025a480f851475a693dafd6ded4",
-      "max_abs_diff": 0.0,
-      "measurements": [
-        {
-          "basis": "dtype and shape returned by the candidate's read path",
-          "detail": "age: producer int64() -> stored int64()",
-          "name": "stored_form",
-          "unit": "dtype/shape",
-          "value": 1.0
-        }
-      ],
-      "replay": {
-        "dtype": "int64",
-        "name": "gallery_native|age|2_id_document",
-        "sha256": "779f279bb43b90d658b524739ac78e9cd2be48dea0b43c8fbe3cfebdf04f7ded",
-        "shape": [],
-        "values": null
-      },
-      "retained_bytes": {
-        "age": 8
-      },
-      "tier": "primitive",
-      "verdict": "PASS"
-    },
-    {
-      "__test__": false,
-      "ablations": [],
-      "baseline": {
-        "dtype": "int64",
-        "name": "gallery_native|age|2_selfie",
-        "sha256": "71a5c86fb79d28ed3f01c8b356bd6bd86011a4c4c8fd603a4c09d00cf7591cc5",
-        "shape": [],
-        "values": null
-      },
-      "case": "store_gallery_native_age_2_selfie",
-      "comparison": "allclose rtol=0.0 atol=0.0: within tolerance",
-      "consumer_id": "gallery_storage",
-      "fixture_sha256": "242d8c6518eab5e8476d73bfe88c12ee093e8763a427df6342bd9c8fde1ad382",
-      "max_abs_diff": 0.0,
-      "measurements": [
-        {
-          "basis": "dtype and shape returned by the candidate's read path",
-          "detail": "age: producer int64() -> stored int64()",
-          "name": "stored_form",
-          "unit": "dtype/shape",
-          "value": 1.0
-        }
-      ],
-      "replay": {
-        "dtype": "int64",
-        "name": "gallery_native|age|2_selfie",
-        "sha256": "71a5c86fb79d28ed3f01c8b356bd6bd86011a4c4c8fd603a4c09d00cf7591cc5",
-        "shape": [],
-        "values": null
-      },
-      "retained_bytes": {
-        "age": 8
-      },
-      "tier": "primitive",
-      "verdict": "PASS"
-    },
-    {
-      "__test__": false,
-      "ablations": [],
-      "baseline": {
-        "dtype": "float32",
-        "name": "gallery_native|bbox|1_id_document",
-        "sha256": "77cecdc87ace1cdd0a987f7e61a55e8f2479d65d0aec099241a82eaa145e6fd4",
+        "dtype": "uint8",
+        "name": "depth_mp4|longer_video_woman_dancing",
+        "sha256": "41a730f74501e29d6f885e646b33ef598b7e2f8f31cab66bd7e8d2d471620095",
         "shape": [
-          4
-        ],
-        "values": null
-      },
-      "case": "store_gallery_native_bbox_1_id_document",
-      "comparison": "allclose rtol=0.0 atol=0.0: within tolerance",
-      "consumer_id": "gallery_storage",
-      "fixture_sha256": "a6a9920ea7917517b1d5c5c306dd824f3ab30e0d50d5e9b04ad26c7077f372cc",
-      "max_abs_diff": 0.0,
-      "measurements": [
-        {
-          "basis": "dtype and shape returned by the candidate's read path",
-          "detail": "bbox: producer float32(4,) -> stored float32(4,)",
-          "name": "stored_form",
-          "unit": "dtype/shape",
-          "value": 4.0
-        }
-      ],
-      "replay": {
-        "dtype": "float32",
-        "name": "gallery_native|bbox|1_id_document",
-        "sha256": "77cecdc87ace1cdd0a987f7e61a55e8f2479d65d0aec099241a82eaa145e6fd4",
-        "shape": [
-          4
-        ],
-        "values": null
-      },
-      "retained_bytes": {
-        "bbox": 16
-      },
-      "tier": "primitive",
-      "verdict": "PASS"
-    },
-    {
-      "__test__": false,
-      "ablations": [],
-      "baseline": {
-        "dtype": "float32",
-        "name": "gallery_native|bbox|1_selfie",
-        "sha256": "edb2131103d7800f39132f79148b812cf5da1a3de24fdf47250a1a1b0cf7d75a",
-        "shape": [
-          4
-        ],
-        "values": null
-      },
-      "case": "store_gallery_native_bbox_1_selfie",
-      "comparison": "allclose rtol=0.0 atol=0.0: within tolerance",
-      "consumer_id": "gallery_storage",
-      "fixture_sha256": "094b3b6c8c7891c48e6d6c274cd0d2f2a96cc69db9e63f56c821107f7299da87",
-      "max_abs_diff": 0.0,
-      "measurements": [
-        {
-          "basis": "dtype and shape returned by the candidate's read path",
-          "detail": "bbox: producer float32(4,) -> stored float32(4,)",
-          "name": "stored_form",
-          "unit": "dtype/shape",
-          "value": 4.0
-        }
-      ],
-      "replay": {
-        "dtype": "float32",
-        "name": "gallery_native|bbox|1_selfie",
-        "sha256": "edb2131103d7800f39132f79148b812cf5da1a3de24fdf47250a1a1b0cf7d75a",
-        "shape": [
-          4
-        ],
-        "values": null
-      },
-      "retained_bytes": {
-        "bbox": 16
-      },
-      "tier": "primitive",
-      "verdict": "PASS"
-    },
-    {
-      "__test__": false,
-      "ablations": [],
-      "baseline": {
-        "dtype": "float32",
-        "name": "gallery_native|bbox|2_id_document",
-        "sha256": "74faa92a64888fe434fb30230f9229eee7f7417c57f45a607cc42bfbc9222a49",
-        "shape": [
-          4
-        ],
-        "values": null
-      },
-      "case": "store_gallery_native_bbox_2_id_document",
-      "comparison": "allclose rtol=0.0 atol=0.0: within tolerance",
-      "consumer_id": "gallery_storage",
-      "fixture_sha256": "b074d6da7157e2703ec53dbf77e0d0fad04cf025a480f851475a693dafd6ded4",
-      "max_abs_diff": 0.0,
-      "measurements": [
-        {
-          "basis": "dtype and shape returned by the candidate's read path",
-          "detail": "bbox: producer float32(4,) -> stored float32(4,)",
-          "name": "stored_form",
-          "unit": "dtype/shape",
-          "value": 4.0
-        }
-      ],
-      "replay": {
-        "dtype": "float32",
-        "name": "gallery_native|bbox|2_id_document",
-        "sha256": "74faa92a64888fe434fb30230f9229eee7f7417c57f45a607cc42bfbc9222a49",
-        "shape": [
-          4
-        ],
-        "values": null
-      },
-      "retained_bytes": {
-        "bbox": 16
-      },
-      "tier": "primitive",
-      "verdict": "PASS"
-    },
-    {
-      "__test__": false,
-      "ablations": [],
-      "baseline": {
-        "dtype": "float32",
-        "name": "gallery_native|bbox|2_selfie",
-        "sha256": "fe6fee9d801eb9b4415c238ea25eec137e385da1e2b147cdd523acd11b1b3619",
-        "shape": [
-          4
-        ],
-        "values": null
-      },
-      "case": "store_gallery_native_bbox_2_selfie",
-      "comparison": "allclose rtol=0.0 atol=0.0: within tolerance",
-      "consumer_id": "gallery_storage",
-      "fixture_sha256": "242d8c6518eab5e8476d73bfe88c12ee093e8763a427df6342bd9c8fde1ad382",
-      "max_abs_diff": 0.0,
-      "measurements": [
-        {
-          "basis": "dtype and shape returned by the candidate's read path",
-          "detail": "bbox: producer float32(4,) -> stored float32(4,)",
-          "name": "stored_form",
-          "unit": "dtype/shape",
-          "value": 4.0
-        }
-      ],
-      "replay": {
-        "dtype": "float32",
-        "name": "gallery_native|bbox|2_selfie",
-        "sha256": "fe6fee9d801eb9b4415c238ea25eec137e385da1e2b147cdd523acd11b1b3619",
-        "shape": [
-          4
-        ],
-        "values": null
-      },
-      "retained_bytes": {
-        "bbox": 16
-      },
-      "tier": "primitive",
-      "verdict": "PASS"
-    },
-    {
-      "__test__": false,
-      "ablations": [],
-      "baseline": {
-        "dtype": "float32",
-        "name": "gallery_native|det_score|1_id_document",
-        "sha256": "0bf15d9d05904e439d8b5084f3f58d2800077374c8a779d29ae095d11b30df2d",
-        "shape": [],
-        "values": null
-      },
-      "case": "store_gallery_native_det_score_1_id_document",
-      "comparison": "allclose rtol=0.0 atol=0.0: within tolerance",
-      "consumer_id": "gallery_storage",
-      "fixture_sha256": "a6a9920ea7917517b1d5c5c306dd824f3ab30e0d50d5e9b04ad26c7077f372cc",
-      "max_abs_diff": 0.0,
-      "measurements": [
-        {
-          "basis": "dtype and shape returned by the candidate's read path",
-          "detail": "det_score: producer float32() -> stored float32()",
-          "name": "stored_form",
-          "unit": "dtype/shape",
-          "value": 1.0
-        }
-      ],
-      "replay": {
-        "dtype": "float32",
-        "name": "gallery_native|det_score|1_id_document",
-        "sha256": "0bf15d9d05904e439d8b5084f3f58d2800077374c8a779d29ae095d11b30df2d",
-        "shape": [],
-        "values": null
-      },
-      "retained_bytes": {
-        "det_score": 4
-      },
-      "tier": "primitive",
-      "verdict": "PASS"
-    },
-    {
-      "__test__": false,
-      "ablations": [],
-      "baseline": {
-        "dtype": "float32",
-        "name": "gallery_native|det_score|1_selfie",
-        "sha256": "bca8758bd0036741538e85d98ee6e682f87a1a78abb37c9b38c74f25361b4dd2",
-        "shape": [],
-        "values": null
-      },
-      "case": "store_gallery_native_det_score_1_selfie",
-      "comparison": "allclose rtol=0.0 atol=0.0: within tolerance",
-      "consumer_id": "gallery_storage",
-      "fixture_sha256": "094b3b6c8c7891c48e6d6c274cd0d2f2a96cc69db9e63f56c821107f7299da87",
-      "max_abs_diff": 0.0,
-      "measurements": [
-        {
-          "basis": "dtype and shape returned by the candidate's read path",
-          "detail": "det_score: producer float32() -> stored float32()",
-          "name": "stored_form",
-          "unit": "dtype/shape",
-          "value": 1.0
-        }
-      ],
-      "replay": {
-        "dtype": "float32",
-        "name": "gallery_native|det_score|1_selfie",
-        "sha256": "bca8758bd0036741538e85d98ee6e682f87a1a78abb37c9b38c74f25361b4dd2",
-        "shape": [],
-        "values": null
-      },
-      "retained_bytes": {
-        "det_score": 4
-      },
-      "tier": "primitive",
-      "verdict": "PASS"
-    },
-    {
-      "__test__": false,
-      "ablations": [],
-      "baseline": {
-        "dtype": "float32",
-        "name": "gallery_native|det_score|2_id_document",
-        "sha256": "fdaa27ea7138bdc715f9a22ed5729225eebab5b5d82d3205b0acb3ccaf572d02",
-        "shape": [],
-        "values": null
-      },
-      "case": "store_gallery_native_det_score_2_id_document",
-      "comparison": "allclose rtol=0.0 atol=0.0: within tolerance",
-      "consumer_id": "gallery_storage",
-      "fixture_sha256": "b074d6da7157e2703ec53dbf77e0d0fad04cf025a480f851475a693dafd6ded4",
-      "max_abs_diff": 0.0,
-      "measurements": [
-        {
-          "basis": "dtype and shape returned by the candidate's read path",
-          "detail": "det_score: producer float32() -> stored float32()",
-          "name": "stored_form",
-          "unit": "dtype/shape",
-          "value": 1.0
-        }
-      ],
-      "replay": {
-        "dtype": "float32",
-        "name": "gallery_native|det_score|2_id_document",
-        "sha256": "fdaa27ea7138bdc715f9a22ed5729225eebab5b5d82d3205b0acb3ccaf572d02",
-        "shape": [],
-        "values": null
-      },
-      "retained_bytes": {
-        "det_score": 4
-      },
-      "tier": "primitive",
-      "verdict": "PASS"
-    },
-    {
-      "__test__": false,
-      "ablations": [],
-      "baseline": {
-        "dtype": "float32",
-        "name": "gallery_native|det_score|2_selfie",
-        "sha256": "5955f11b80103ac23b3fb70386261278de356be780a52c68d89ad98068bc0c6a",
-        "shape": [],
-        "values": null
-      },
-      "case": "store_gallery_native_det_score_2_selfie",
-      "comparison": "allclose rtol=0.0 atol=0.0: within tolerance",
-      "consumer_id": "gallery_storage",
-      "fixture_sha256": "242d8c6518eab5e8476d73bfe88c12ee093e8763a427df6342bd9c8fde1ad382",
-      "max_abs_diff": 0.0,
-      "measurements": [
-        {
-          "basis": "dtype and shape returned by the candidate's read path",
-          "detail": "det_score: producer float32() -> stored float32()",
-          "name": "stored_form",
-          "unit": "dtype/shape",
-          "value": 1.0
-        }
-      ],
-      "replay": {
-        "dtype": "float32",
-        "name": "gallery_native|det_score|2_selfie",
-        "sha256": "5955f11b80103ac23b3fb70386261278de356be780a52c68d89ad98068bc0c6a",
-        "shape": [],
-        "values": null
-      },
-      "retained_bytes": {
-        "det_score": 4
-      },
-      "tier": "primitive",
-      "verdict": "PASS"
-    },
-    {
-      "__test__": false,
-      "ablations": [],
-      "baseline": {
-        "dtype": "float32",
-        "name": "gallery_native|embedding|1_id_document",
-        "sha256": "4f566da7f114313c298a7fcb3885ca4fed0ce33b883621308838affcb9396f5e",
-        "shape": [
-          512
-        ],
-        "values": null
-      },
-      "case": "store_gallery_native_embedding_1_id_document",
-      "comparison": "allclose rtol=0.0 atol=0.0: within tolerance",
-      "consumer_id": "gallery_storage",
-      "fixture_sha256": "a6a9920ea7917517b1d5c5c306dd824f3ab30e0d50d5e9b04ad26c7077f372cc",
-      "max_abs_diff": 0.0,
-      "measurements": [
-        {
-          "basis": "dtype and shape returned by the candidate's read path",
-          "detail": "embedding: producer float32(512,) -> stored float32(512,)",
-          "name": "stored_form",
-          "unit": "dtype/shape",
-          "value": 512.0
-        }
-      ],
-      "replay": {
-        "dtype": "float32",
-        "name": "gallery_native|embedding|1_id_document",
-        "sha256": "4f566da7f114313c298a7fcb3885ca4fed0ce33b883621308838affcb9396f5e",
-        "shape": [
-          512
-        ],
-        "values": null
-      },
-      "retained_bytes": {
-        "embedding": 2048
-      },
-      "tier": "primitive",
-      "verdict": "PASS"
-    },
-    {
-      "__test__": false,
-      "ablations": [],
-      "baseline": {
-        "dtype": "float32",
-        "name": "gallery_native|embedding|1_selfie",
-        "sha256": "ee6b8510a907a1e355f6c13cbbfd172ddbe14babac2e5784947b851b2fc03581",
-        "shape": [
-          512
-        ],
-        "values": null
-      },
-      "case": "store_gallery_native_embedding_1_selfie",
-      "comparison": "allclose rtol=0.0 atol=0.0: within tolerance",
-      "consumer_id": "gallery_storage",
-      "fixture_sha256": "094b3b6c8c7891c48e6d6c274cd0d2f2a96cc69db9e63f56c821107f7299da87",
-      "max_abs_diff": 0.0,
-      "measurements": [
-        {
-          "basis": "dtype and shape returned by the candidate's read path",
-          "detail": "embedding: producer float32(512,) -> stored float32(512,)",
-          "name": "stored_form",
-          "unit": "dtype/shape",
-          "value": 512.0
-        }
-      ],
-      "replay": {
-        "dtype": "float32",
-        "name": "gallery_native|embedding|1_selfie",
-        "sha256": "ee6b8510a907a1e355f6c13cbbfd172ddbe14babac2e5784947b851b2fc03581",
-        "shape": [
-          512
-        ],
-        "values": null
-      },
-      "retained_bytes": {
-        "embedding": 2048
-      },
-      "tier": "primitive",
-      "verdict": "PASS"
-    },
-    {
-      "__test__": false,
-      "ablations": [],
-      "baseline": {
-        "dtype": "float32",
-        "name": "gallery_native|embedding|2_id_document",
-        "sha256": "7cbe22c901eae1efbb56c1c30abcc573aa4f8b129e815ebf0d9de205a2391070",
-        "shape": [
-          512
-        ],
-        "values": null
-      },
-      "case": "store_gallery_native_embedding_2_id_document",
-      "comparison": "allclose rtol=0.0 atol=0.0: within tolerance",
-      "consumer_id": "gallery_storage",
-      "fixture_sha256": "b074d6da7157e2703ec53dbf77e0d0fad04cf025a480f851475a693dafd6ded4",
-      "max_abs_diff": 0.0,
-      "measurements": [
-        {
-          "basis": "dtype and shape returned by the candidate's read path",
-          "detail": "embedding: producer float32(512,) -> stored float32(512,)",
-          "name": "stored_form",
-          "unit": "dtype/shape",
-          "value": 512.0
-        }
-      ],
-      "replay": {
-        "dtype": "float32",
-        "name": "gallery_native|embedding|2_id_document",
-        "sha256": "7cbe22c901eae1efbb56c1c30abcc573aa4f8b129e815ebf0d9de205a2391070",
-        "shape": [
-          512
-        ],
-        "values": null
-      },
-      "retained_bytes": {
-        "embedding": 2048
-      },
-      "tier": "primitive",
-      "verdict": "PASS"
-    },
-    {
-      "__test__": false,
-      "ablations": [],
-      "baseline": {
-        "dtype": "float32",
-        "name": "gallery_native|embedding|2_selfie",
-        "sha256": "71a82428afd53cc76543919b362da21685ff44c6eeb70532d7b1d9b9227ace3f",
-        "shape": [
-          512
-        ],
-        "values": null
-      },
-      "case": "store_gallery_native_embedding_2_selfie",
-      "comparison": "allclose rtol=0.0 atol=0.0: within tolerance",
-      "consumer_id": "gallery_storage",
-      "fixture_sha256": "242d8c6518eab5e8476d73bfe88c12ee093e8763a427df6342bd9c8fde1ad382",
-      "max_abs_diff": 0.0,
-      "measurements": [
-        {
-          "basis": "dtype and shape returned by the candidate's read path",
-          "detail": "embedding: producer float32(512,) -> stored float32(512,)",
-          "name": "stored_form",
-          "unit": "dtype/shape",
-          "value": 512.0
-        }
-      ],
-      "replay": {
-        "dtype": "float32",
-        "name": "gallery_native|embedding|2_selfie",
-        "sha256": "71a82428afd53cc76543919b362da21685ff44c6eeb70532d7b1d9b9227ace3f",
-        "shape": [
-          512
-        ],
-        "values": null
-      },
-      "retained_bytes": {
-        "embedding": 2048
-      },
-      "tier": "primitive",
-      "verdict": "PASS"
-    },
-    {
-      "__test__": false,
-      "ablations": [],
-      "baseline": {
-        "dtype": "int64",
-        "name": "gallery_native|gender|1_id_document",
-        "sha256": "3e2a673ae9594b60e56b7004349ef5706cb53e6686a2b494e5accfce12f684e6",
-        "shape": [],
-        "values": null
-      },
-      "case": "store_gallery_native_gender_1_id_document",
-      "comparison": "allclose rtol=0.0 atol=0.0: within tolerance",
-      "consumer_id": "gallery_storage",
-      "fixture_sha256": "a6a9920ea7917517b1d5c5c306dd824f3ab30e0d50d5e9b04ad26c7077f372cc",
-      "max_abs_diff": 0.0,
-      "measurements": [
-        {
-          "basis": "dtype and shape returned by the candidate's read path",
-          "detail": "gender: producer int64() -> stored int64()",
-          "name": "stored_form",
-          "unit": "dtype/shape",
-          "value": 1.0
-        }
-      ],
-      "replay": {
-        "dtype": "int64",
-        "name": "gallery_native|gender|1_id_document",
-        "sha256": "3e2a673ae9594b60e56b7004349ef5706cb53e6686a2b494e5accfce12f684e6",
-        "shape": [],
-        "values": null
-      },
-      "retained_bytes": {
-        "gender": 8
-      },
-      "tier": "primitive",
-      "verdict": "PASS"
-    },
-    {
-      "__test__": false,
-      "ablations": [],
-      "baseline": {
-        "dtype": "int64",
-        "name": "gallery_native|gender|1_selfie",
-        "sha256": "3e2a673ae9594b60e56b7004349ef5706cb53e6686a2b494e5accfce12f684e6",
-        "shape": [],
-        "values": null
-      },
-      "case": "store_gallery_native_gender_1_selfie",
-      "comparison": "allclose rtol=0.0 atol=0.0: within tolerance",
-      "consumer_id": "gallery_storage",
-      "fixture_sha256": "094b3b6c8c7891c48e6d6c274cd0d2f2a96cc69db9e63f56c821107f7299da87",
-      "max_abs_diff": 0.0,
-      "measurements": [
-        {
-          "basis": "dtype and shape returned by the candidate's read path",
-          "detail": "gender: producer int64() -> stored int64()",
-          "name": "stored_form",
-          "unit": "dtype/shape",
-          "value": 1.0
-        }
-      ],
-      "replay": {
-        "dtype": "int64",
-        "name": "gallery_native|gender|1_selfie",
-        "sha256": "3e2a673ae9594b60e56b7004349ef5706cb53e6686a2b494e5accfce12f684e6",
-        "shape": [],
-        "values": null
-      },
-      "retained_bytes": {
-        "gender": 8
-      },
-      "tier": "primitive",
-      "verdict": "PASS"
-    },
-    {
-      "__test__": false,
-      "ablations": [],
-      "baseline": {
-        "dtype": "int64",
-        "name": "gallery_native|gender|2_id_document",
-        "sha256": "3e2a673ae9594b60e56b7004349ef5706cb53e6686a2b494e5accfce12f684e6",
-        "shape": [],
-        "values": null
-      },
-      "case": "store_gallery_native_gender_2_id_document",
-      "comparison": "allclose rtol=0.0 atol=0.0: within tolerance",
-      "consumer_id": "gallery_storage",
-      "fixture_sha256": "b074d6da7157e2703ec53dbf77e0d0fad04cf025a480f851475a693dafd6ded4",
-      "max_abs_diff": 0.0,
-      "measurements": [
-        {
-          "basis": "dtype and shape returned by the candidate's read path",
-          "detail": "gender: producer int64() -> stored int64()",
-          "name": "stored_form",
-          "unit": "dtype/shape",
-          "value": 1.0
-        }
-      ],
-      "replay": {
-        "dtype": "int64",
-        "name": "gallery_native|gender|2_id_document",
-        "sha256": "3e2a673ae9594b60e56b7004349ef5706cb53e6686a2b494e5accfce12f684e6",
-        "shape": [],
-        "values": null
-      },
-      "retained_bytes": {
-        "gender": 8
-      },
-      "tier": "primitive",
-      "verdict": "PASS"
-    },
-    {
-      "__test__": false,
-      "ablations": [],
-      "baseline": {
-        "dtype": "int64",
-        "name": "gallery_native|gender|2_selfie",
-        "sha256": "3e2a673ae9594b60e56b7004349ef5706cb53e6686a2b494e5accfce12f684e6",
-        "shape": [],
-        "values": null
-      },
-      "case": "store_gallery_native_gender_2_selfie",
-      "comparison": "allclose rtol=0.0 atol=0.0: within tolerance",
-      "consumer_id": "gallery_storage",
-      "fixture_sha256": "242d8c6518eab5e8476d73bfe88c12ee093e8763a427df6342bd9c8fde1ad382",
-      "max_abs_diff": 0.0,
-      "measurements": [
-        {
-          "basis": "dtype and shape returned by the candidate's read path",
-          "detail": "gender: producer int64() -> stored int64()",
-          "name": "stored_form",
-          "unit": "dtype/shape",
-          "value": 1.0
-        }
-      ],
-      "replay": {
-        "dtype": "int64",
-        "name": "gallery_native|gender|2_selfie",
-        "sha256": "3e2a673ae9594b60e56b7004349ef5706cb53e6686a2b494e5accfce12f684e6",
-        "shape": [],
-        "values": null
-      },
-      "retained_bytes": {
-        "gender": 8
-      },
-      "tier": "primitive",
-      "verdict": "PASS"
-    },
-    {
-      "__test__": false,
-      "ablations": [],
-      "baseline": {
-        "dtype": "float32",
-        "name": "gallery_native|kps|1_id_document",
-        "sha256": "0cf646ccea11b6d2fc8b9d4a3059f7ba9d6e731042a666b6d87c6758d415a4a6",
-        "shape": [
-          5,
-          2
-        ],
-        "values": null
-      },
-      "case": "store_gallery_native_kps_1_id_document",
-      "comparison": "allclose rtol=0.0 atol=0.0: within tolerance",
-      "consumer_id": "gallery_storage",
-      "fixture_sha256": "a6a9920ea7917517b1d5c5c306dd824f3ab30e0d50d5e9b04ad26c7077f372cc",
-      "max_abs_diff": 0.0,
-      "measurements": [
-        {
-          "basis": "dtype and shape returned by the candidate's read path",
-          "detail": "kps: producer float32(5, 2) -> stored float32(5, 2)",
-          "name": "stored_form",
-          "unit": "dtype/shape",
-          "value": 10.0
-        }
-      ],
-      "replay": {
-        "dtype": "float32",
-        "name": "gallery_native|kps|1_id_document",
-        "sha256": "0cf646ccea11b6d2fc8b9d4a3059f7ba9d6e731042a666b6d87c6758d415a4a6",
-        "shape": [
-          5,
-          2
-        ],
-        "values": null
-      },
-      "retained_bytes": {
-        "kps": 40
-      },
-      "tier": "primitive",
-      "verdict": "PASS"
-    },
-    {
-      "__test__": false,
-      "ablations": [],
-      "baseline": {
-        "dtype": "float32",
-        "name": "gallery_native|kps|1_selfie",
-        "sha256": "ee68bddb33638177cb818129a576a17d1029d5204ca53cd0eb7720477f1cb212",
-        "shape": [
-          5,
-          2
-        ],
-        "values": null
-      },
-      "case": "store_gallery_native_kps_1_selfie",
-      "comparison": "allclose rtol=0.0 atol=0.0: within tolerance",
-      "consumer_id": "gallery_storage",
-      "fixture_sha256": "094b3b6c8c7891c48e6d6c274cd0d2f2a96cc69db9e63f56c821107f7299da87",
-      "max_abs_diff": 0.0,
-      "measurements": [
-        {
-          "basis": "dtype and shape returned by the candidate's read path",
-          "detail": "kps: producer float32(5, 2) -> stored float32(5, 2)",
-          "name": "stored_form",
-          "unit": "dtype/shape",
-          "value": 10.0
-        }
-      ],
-      "replay": {
-        "dtype": "float32",
-        "name": "gallery_native|kps|1_selfie",
-        "sha256": "ee68bddb33638177cb818129a576a17d1029d5204ca53cd0eb7720477f1cb212",
-        "shape": [
-          5,
-          2
-        ],
-        "values": null
-      },
-      "retained_bytes": {
-        "kps": 40
-      },
-      "tier": "primitive",
-      "verdict": "PASS"
-    },
-    {
-      "__test__": false,
-      "ablations": [],
-      "baseline": {
-        "dtype": "float32",
-        "name": "gallery_native|kps|2_id_document",
-        "sha256": "e98707a93bb70a8d27da6c19982f345ea981d971cf9a0301b1bdb0d1d3e4414e",
-        "shape": [
-          5,
-          2
-        ],
-        "values": null
-      },
-      "case": "store_gallery_native_kps_2_id_document",
-      "comparison": "allclose rtol=0.0 atol=0.0: within tolerance",
-      "consumer_id": "gallery_storage",
-      "fixture_sha256": "b074d6da7157e2703ec53dbf77e0d0fad04cf025a480f851475a693dafd6ded4",
-      "max_abs_diff": 0.0,
-      "measurements": [
-        {
-          "basis": "dtype and shape returned by the candidate's read path",
-          "detail": "kps: producer float32(5, 2) -> stored float32(5, 2)",
-          "name": "stored_form",
-          "unit": "dtype/shape",
-          "value": 10.0
-        }
-      ],
-      "replay": {
-        "dtype": "float32",
-        "name": "gallery_native|kps|2_id_document",
-        "sha256": "e98707a93bb70a8d27da6c19982f345ea981d971cf9a0301b1bdb0d1d3e4414e",
-        "shape": [
-          5,
-          2
-        ],
-        "values": null
-      },
-      "retained_bytes": {
-        "kps": 40
-      },
-      "tier": "primitive",
-      "verdict": "PASS"
-    },
-    {
-      "__test__": false,
-      "ablations": [],
-      "baseline": {
-        "dtype": "float32",
-        "name": "gallery_native|kps|2_selfie",
-        "sha256": "1ea402747a0400679716c50e7b8db654aeff07751d47610b0917887c08322933",
-        "shape": [
-          5,
-          2
-        ],
-        "values": null
-      },
-      "case": "store_gallery_native_kps_2_selfie",
-      "comparison": "allclose rtol=0.0 atol=0.0: within tolerance",
-      "consumer_id": "gallery_storage",
-      "fixture_sha256": "242d8c6518eab5e8476d73bfe88c12ee093e8763a427df6342bd9c8fde1ad382",
-      "max_abs_diff": 0.0,
-      "measurements": [
-        {
-          "basis": "dtype and shape returned by the candidate's read path",
-          "detail": "kps: producer float32(5, 2) -> stored float32(5, 2)",
-          "name": "stored_form",
-          "unit": "dtype/shape",
-          "value": 10.0
-        }
-      ],
-      "replay": {
-        "dtype": "float32",
-        "name": "gallery_native|kps|2_selfie",
-        "sha256": "1ea402747a0400679716c50e7b8db654aeff07751d47610b0917887c08322933",
-        "shape": [
-          5,
-          2
-        ],
-        "values": null
-      },
-      "retained_bytes": {
-        "kps": 40
-      },
-      "tier": "primitive",
-      "verdict": "PASS"
-    },
-    {
-      "__test__": false,
-      "ablations": [],
-      "baseline": {
-        "dtype": "float32",
-        "name": "gallery_native|landmark_2d_106|1_id_document",
-        "sha256": "8debb683cd56aa8d90e7444273ab280ceface39a7789409aa54b1677761b54e4",
-        "shape": [
-          106,
-          2
-        ],
-        "values": null
-      },
-      "case": "store_gallery_native_landmark_2d_106_1_id_document",
-      "comparison": "allclose rtol=0.0 atol=0.0: within tolerance",
-      "consumer_id": "gallery_storage",
-      "fixture_sha256": "a6a9920ea7917517b1d5c5c306dd824f3ab30e0d50d5e9b04ad26c7077f372cc",
-      "max_abs_diff": 0.0,
-      "measurements": [
-        {
-          "basis": "dtype and shape returned by the candidate's read path",
-          "detail": "landmark_2d_106: producer float32(106, 2) -> stored float32(106, 2)",
-          "name": "stored_form",
-          "unit": "dtype/shape",
-          "value": 212.0
-        }
-      ],
-      "replay": {
-        "dtype": "float32",
-        "name": "gallery_native|landmark_2d_106|1_id_document",
-        "sha256": "8debb683cd56aa8d90e7444273ab280ceface39a7789409aa54b1677761b54e4",
-        "shape": [
-          106,
-          2
-        ],
-        "values": null
-      },
-      "retained_bytes": {
-        "landmark_2d_106": 848
-      },
-      "tier": "primitive",
-      "verdict": "PASS"
-    },
-    {
-      "__test__": false,
-      "ablations": [],
-      "baseline": {
-        "dtype": "float32",
-        "name": "gallery_native|landmark_2d_106|1_selfie",
-        "sha256": "4f36e26ac1897a9a5b3907216ec528e85223c193baa33843e0e10c539b7ebddc",
-        "shape": [
-          106,
-          2
-        ],
-        "values": null
-      },
-      "case": "store_gallery_native_landmark_2d_106_1_selfie",
-      "comparison": "allclose rtol=0.0 atol=0.0: within tolerance",
-      "consumer_id": "gallery_storage",
-      "fixture_sha256": "094b3b6c8c7891c48e6d6c274cd0d2f2a96cc69db9e63f56c821107f7299da87",
-      "max_abs_diff": 0.0,
-      "measurements": [
-        {
-          "basis": "dtype and shape returned by the candidate's read path",
-          "detail": "landmark_2d_106: producer float32(106, 2) -> stored float32(106, 2)",
-          "name": "stored_form",
-          "unit": "dtype/shape",
-          "value": 212.0
-        }
-      ],
-      "replay": {
-        "dtype": "float32",
-        "name": "gallery_native|landmark_2d_106|1_selfie",
-        "sha256": "4f36e26ac1897a9a5b3907216ec528e85223c193baa33843e0e10c539b7ebddc",
-        "shape": [
-          106,
-          2
-        ],
-        "values": null
-      },
-      "retained_bytes": {
-        "landmark_2d_106": 848
-      },
-      "tier": "primitive",
-      "verdict": "PASS"
-    },
-    {
-      "__test__": false,
-      "ablations": [],
-      "baseline": {
-        "dtype": "float32",
-        "name": "gallery_native|landmark_2d_106|2_id_document",
-        "sha256": "64e707192b5260382bd32a00977f4bf2f4b2757f2c92e9d7056428751273072f",
-        "shape": [
-          106,
-          2
-        ],
-        "values": null
-      },
-      "case": "store_gallery_native_landmark_2d_106_2_id_document",
-      "comparison": "allclose rtol=0.0 atol=0.0: within tolerance",
-      "consumer_id": "gallery_storage",
-      "fixture_sha256": "b074d6da7157e2703ec53dbf77e0d0fad04cf025a480f851475a693dafd6ded4",
-      "max_abs_diff": 0.0,
-      "measurements": [
-        {
-          "basis": "dtype and shape returned by the candidate's read path",
-          "detail": "landmark_2d_106: producer float32(106, 2) -> stored float32(106, 2)",
-          "name": "stored_form",
-          "unit": "dtype/shape",
-          "value": 212.0
-        }
-      ],
-      "replay": {
-        "dtype": "float32",
-        "name": "gallery_native|landmark_2d_106|2_id_document",
-        "sha256": "64e707192b5260382bd32a00977f4bf2f4b2757f2c92e9d7056428751273072f",
-        "shape": [
-          106,
-          2
-        ],
-        "values": null
-      },
-      "retained_bytes": {
-        "landmark_2d_106": 848
-      },
-      "tier": "primitive",
-      "verdict": "PASS"
-    },
-    {
-      "__test__": false,
-      "ablations": [],
-      "baseline": {
-        "dtype": "float32",
-        "name": "gallery_native|landmark_2d_106|2_selfie",
-        "sha256": "95a9f6746f9d222d3d7d93886540bc8b832a675d44236b332eeb0252c851397d",
-        "shape": [
-          106,
-          2
-        ],
-        "values": null
-      },
-      "case": "store_gallery_native_landmark_2d_106_2_selfie",
-      "comparison": "allclose rtol=0.0 atol=0.0: within tolerance",
-      "consumer_id": "gallery_storage",
-      "fixture_sha256": "242d8c6518eab5e8476d73bfe88c12ee093e8763a427df6342bd9c8fde1ad382",
-      "max_abs_diff": 0.0,
-      "measurements": [
-        {
-          "basis": "dtype and shape returned by the candidate's read path",
-          "detail": "landmark_2d_106: producer float32(106, 2) -> stored float32(106, 2)",
-          "name": "stored_form",
-          "unit": "dtype/shape",
-          "value": 212.0
-        }
-      ],
-      "replay": {
-        "dtype": "float32",
-        "name": "gallery_native|landmark_2d_106|2_selfie",
-        "sha256": "95a9f6746f9d222d3d7d93886540bc8b832a675d44236b332eeb0252c851397d",
-        "shape": [
-          106,
-          2
-        ],
-        "values": null
-      },
-      "retained_bytes": {
-        "landmark_2d_106": 848
-      },
-      "tier": "primitive",
-      "verdict": "PASS"
-    },
-    {
-      "__test__": false,
-      "ablations": [],
-      "baseline": {
-        "dtype": "float32",
-        "name": "gallery_native|landmark_3d_68|1_id_document",
-        "sha256": "9089a9e4a5f414a6372282b907fe84de4955ac1ed7dcbfadd68978e9b0114b1a",
-        "shape": [
-          68,
+          8,
+          1080,
+          1920,
           3
         ],
         "values": null
       },
-      "case": "store_gallery_native_landmark_3d_68_1_id_document",
-      "comparison": "allclose rtol=0.0 atol=0.0: within tolerance",
-      "consumer_id": "gallery_storage",
-      "fixture_sha256": "a6a9920ea7917517b1d5c5c306dd824f3ab30e0d50d5e9b04ad26c7077f372cc",
+      "case": "id_v2v_depth_mp4_longer_video_woman_dancing",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "id_v2v",
+      "fixture_sha256": "554f3bfe08989ff090cc56da10c5b545280d520230cbf1f3d8331b9bd1e44950",
       "max_abs_diff": 0.0,
       "measurements": [
         {
-          "basis": "dtype and shape returned by the candidate's read path",
-          "detail": "landmark_3d_68: producer float32(68, 3) -> stored float32(68, 3)",
-          "name": "stored_form",
-          "unit": "dtype/shape",
-          "value": 204.0
+          "basis": "whether depth_anything_v2 can run here at all",
+          "detail": "depth_mp4 for longer_video_woman_dancing: depth_anything_v2 weight at C:\\ComfyUI\\output\\.AImodels\\idv2v\\depthv2\\depth_anything_v2_vitl.pth; consumed by idv2v_with_normal_depth",
+          "name": "rederivation_cost",
+          "unit": "frames",
+          "value": null
         }
       ],
       "replay": {
-        "dtype": "float32",
-        "name": "gallery_native|landmark_3d_68|1_id_document",
-        "sha256": "9089a9e4a5f414a6372282b907fe84de4955ac1ed7dcbfadd68978e9b0114b1a",
+        "dtype": "uint8",
+        "name": "depth_mp4|longer_video_woman_dancing",
+        "sha256": "41a730f74501e29d6f885e646b33ef598b7e2f8f31cab66bd7e8d2d471620095",
         "shape": [
-          68,
+          8,
+          1080,
+          1920,
           3
         ],
         "values": null
       },
       "retained_bytes": {
-        "landmark_3d_68": 816
+        "depth_mp4": 49766400
       },
-      "tier": "primitive",
+      "tier": "consumer",
       "verdict": "PASS"
     },
     {
       "__test__": false,
-      "ablations": [],
+      "ablations": [
+        {
+          "cause": "retained_state_lacks_primitive",
+          "compare_method": "",
+          "detail": "INCONCLUSIVE: \"replay needs 'depth_mp4', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": null,
+          "primitive": "depth_mp4",
+          "swap": "",
+          "verdict": "INCONCLUSIVE"
+        },
+        {
+          "cause": "",
+          "compare_method": "exact_bytes",
+          "detail": "exact_bytes: 28297638 of 49766400 elements differ, worst 70.0",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "depth_mp4",
+          "swap": "video_round_trip",
+          "verdict": "PASS"
+        }
+      ],
       "baseline": {
-        "dtype": "float32",
-        "name": "gallery_native|landmark_3d_68|1_selfie",
-        "sha256": "a1d3273145be0ea2f9ce07886fe44fca57dac42f264cc2c3c742ea591eefc186",
+        "dtype": "uint8",
+        "name": "depth_mp4|non_aligned_keyframe_woman_phone",
+        "sha256": "da3d70ccbc3e4ea0d06cafb9716325ae72cdd95b2cf82e697ec697f3bcc588b8",
         "shape": [
-          68,
+          8,
+          1080,
+          1920,
           3
         ],
         "values": null
       },
-      "case": "store_gallery_native_landmark_3d_68_1_selfie",
-      "comparison": "allclose rtol=0.0 atol=0.0: within tolerance",
-      "consumer_id": "gallery_storage",
-      "fixture_sha256": "094b3b6c8c7891c48e6d6c274cd0d2f2a96cc69db9e63f56c821107f7299da87",
+      "case": "id_v2v_depth_mp4_non_aligned_keyframe_woman_phone",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "id_v2v",
+      "fixture_sha256": "56a27460d3b37acacdef5598ed4c7a48392a22af679d07d1c55059dd93dc6ac1",
       "max_abs_diff": 0.0,
       "measurements": [
         {
-          "basis": "dtype and shape returned by the candidate's read path",
-          "detail": "landmark_3d_68: producer float32(68, 3) -> stored float32(68, 3)",
-          "name": "stored_form",
-          "unit": "dtype/shape",
-          "value": 204.0
+          "basis": "whether depth_anything_v2 can run here at all",
+          "detail": "depth_mp4 for non_aligned_keyframe_woman_phone: depth_anything_v2 weight at C:\\ComfyUI\\output\\.AImodels\\idv2v\\depthv2\\depth_anything_v2_vitl.pth; consumed by idv2v_with_normal_depth",
+          "name": "rederivation_cost",
+          "unit": "frames",
+          "value": null
         }
       ],
       "replay": {
-        "dtype": "float32",
-        "name": "gallery_native|landmark_3d_68|1_selfie",
-        "sha256": "a1d3273145be0ea2f9ce07886fe44fca57dac42f264cc2c3c742ea591eefc186",
+        "dtype": "uint8",
+        "name": "depth_mp4|non_aligned_keyframe_woman_phone",
+        "sha256": "da3d70ccbc3e4ea0d06cafb9716325ae72cdd95b2cf82e697ec697f3bcc588b8",
         "shape": [
-          68,
+          8,
+          1080,
+          1920,
           3
         ],
         "values": null
       },
       "retained_bytes": {
-        "landmark_3d_68": 816
+        "depth_mp4": 49766400
       },
-      "tier": "primitive",
+      "tier": "consumer",
       "verdict": "PASS"
     },
     {
       "__test__": false,
-      "ablations": [],
+      "ablations": [
+        {
+          "cause": "retained_state_lacks_primitive",
+          "compare_method": "",
+          "detail": "INCONCLUSIVE: \"replay needs 'depth_mp4', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": null,
+          "primitive": "depth_mp4",
+          "swap": "",
+          "verdict": "INCONCLUSIVE"
+        },
+        {
+          "cause": "",
+          "compare_method": "exact_bytes",
+          "detail": "exact_bytes: 28919259 of 49766400 elements differ, worst 58.0",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "depth_mp4",
+          "swap": "video_round_trip",
+          "verdict": "PASS"
+        }
+      ],
       "baseline": {
-        "dtype": "float32",
-        "name": "gallery_native|landmark_3d_68|2_id_document",
-        "sha256": "85dbe8a367809601d0fe8b561ace545325ce1600826a22905171e1c20bd58904",
+        "dtype": "uint8",
+        "name": "depth_mp4|relighting_cover_eyes",
+        "sha256": "79cf2493e87faa78fcedce1eaa15461e0ba0a1bb4e4941d4d13d59352df4dcb9",
         "shape": [
-          68,
+          8,
+          1080,
+          1920,
           3
         ],
         "values": null
       },
-      "case": "store_gallery_native_landmark_3d_68_2_id_document",
-      "comparison": "allclose rtol=0.0 atol=0.0: within tolerance",
-      "consumer_id": "gallery_storage",
-      "fixture_sha256": "b074d6da7157e2703ec53dbf77e0d0fad04cf025a480f851475a693dafd6ded4",
+      "case": "id_v2v_depth_mp4_relighting_cover_eyes",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "id_v2v",
+      "fixture_sha256": "27d9a5c589117938c4b3b891ac0bd21ad94d93e00da941de5647f65e083ac125",
       "max_abs_diff": 0.0,
       "measurements": [
         {
-          "basis": "dtype and shape returned by the candidate's read path",
-          "detail": "landmark_3d_68: producer float32(68, 3) -> stored float32(68, 3)",
-          "name": "stored_form",
-          "unit": "dtype/shape",
-          "value": 204.0
+          "basis": "whether depth_anything_v2 can run here at all",
+          "detail": "depth_mp4 for relighting_cover_eyes: depth_anything_v2 weight at C:\\ComfyUI\\output\\.AImodels\\idv2v\\depthv2\\depth_anything_v2_vitl.pth; consumed by idv2v_with_normal_depth",
+          "name": "rederivation_cost",
+          "unit": "frames",
+          "value": null
         }
       ],
       "replay": {
-        "dtype": "float32",
-        "name": "gallery_native|landmark_3d_68|2_id_document",
-        "sha256": "85dbe8a367809601d0fe8b561ace545325ce1600826a22905171e1c20bd58904",
+        "dtype": "uint8",
+        "name": "depth_mp4|relighting_cover_eyes",
+        "sha256": "79cf2493e87faa78fcedce1eaa15461e0ba0a1bb4e4941d4d13d59352df4dcb9",
         "shape": [
-          68,
+          8,
+          1080,
+          1920,
           3
         ],
         "values": null
       },
       "retained_bytes": {
-        "landmark_3d_68": 816
+        "depth_mp4": 49766400
       },
-      "tier": "primitive",
+      "tier": "consumer",
       "verdict": "PASS"
     },
     {
       "__test__": false,
-      "ablations": [],
+      "ablations": [
+        {
+          "cause": "retained_state_lacks_primitive",
+          "compare_method": "",
+          "detail": "INCONCLUSIVE: \"replay needs 'depth_mp4', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": null,
+          "primitive": "depth_mp4",
+          "swap": "",
+          "verdict": "INCONCLUSIVE"
+        },
+        {
+          "cause": "",
+          "compare_method": "exact_bytes",
+          "detail": "exact_bytes: 28919259 of 49766400 elements differ, worst 58.0",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "depth_mp4",
+          "swap": "video_round_trip",
+          "verdict": "PASS"
+        }
+      ],
       "baseline": {
-        "dtype": "float32",
-        "name": "gallery_native|landmark_3d_68|2_selfie",
-        "sha256": "d493516d0aa47dea2127760ecb410baf4edde2e65e4c53ce6e3eb6ea00c81677",
+        "dtype": "uint8",
+        "name": "depth_mp4|restylization_cover_eyes",
+        "sha256": "79cf2493e87faa78fcedce1eaa15461e0ba0a1bb4e4941d4d13d59352df4dcb9",
         "shape": [
-          68,
+          8,
+          1080,
+          1920,
           3
         ],
         "values": null
       },
-      "case": "store_gallery_native_landmark_3d_68_2_selfie",
-      "comparison": "allclose rtol=0.0 atol=0.0: within tolerance",
-      "consumer_id": "gallery_storage",
-      "fixture_sha256": "242d8c6518eab5e8476d73bfe88c12ee093e8763a427df6342bd9c8fde1ad382",
+      "case": "id_v2v_depth_mp4_restylization_cover_eyes",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "id_v2v",
+      "fixture_sha256": "27d9a5c589117938c4b3b891ac0bd21ad94d93e00da941de5647f65e083ac125",
       "max_abs_diff": 0.0,
       "measurements": [
         {
-          "basis": "dtype and shape returned by the candidate's read path",
-          "detail": "landmark_3d_68: producer float32(68, 3) -> stored float32(68, 3)",
-          "name": "stored_form",
-          "unit": "dtype/shape",
-          "value": 204.0
+          "basis": "whether depth_anything_v2 can run here at all",
+          "detail": "depth_mp4 for restylization_cover_eyes: depth_anything_v2 weight at C:\\ComfyUI\\output\\.AImodels\\idv2v\\depthv2\\depth_anything_v2_vitl.pth; consumed by idv2v_with_normal_depth",
+          "name": "rederivation_cost",
+          "unit": "frames",
+          "value": null
         }
       ],
       "replay": {
-        "dtype": "float32",
-        "name": "gallery_native|landmark_3d_68|2_selfie",
-        "sha256": "d493516d0aa47dea2127760ecb410baf4edde2e65e4c53ce6e3eb6ea00c81677",
+        "dtype": "uint8",
+        "name": "depth_mp4|restylization_cover_eyes",
+        "sha256": "79cf2493e87faa78fcedce1eaa15461e0ba0a1bb4e4941d4d13d59352df4dcb9",
         "shape": [
-          68,
+          8,
+          1080,
+          1920,
           3
         ],
         "values": null
       },
       "retained_bytes": {
-        "landmark_3d_68": 816
+        "depth_mp4": 49766400
       },
-      "tier": "primitive",
+      "tier": "consumer",
       "verdict": "PASS"
     },
     {
       "__test__": false,
-      "ablations": [],
+      "ablations": [
+        {
+          "cause": "retained_state_lacks_primitive",
+          "compare_method": "",
+          "detail": "INCONCLUSIVE: \"replay needs 'orig_pixel_mp4', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": null,
+          "primitive": "orig_pixel_mp4",
+          "swap": "",
+          "verdict": "INCONCLUSIVE"
+        },
+        {
+          "cause": "",
+          "compare_method": "exact_bytes",
+          "detail": "exact_bytes: 46508028 of 49766400 elements differ, worst 128.0",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "orig_pixel_mp4",
+          "swap": "video_round_trip",
+          "verdict": "PASS"
+        }
+      ],
       "baseline": {
-        "dtype": "float32",
-        "name": "gallery_native|pose|1_id_document",
-        "sha256": "f697aced13a0e1e63dca24c6a8850350dded2d903fadd9842a9a3d0c90e7c1ef",
+        "dtype": "uint8",
+        "name": "orig_pixel_mp4|longer_video_woman_dancing",
+        "sha256": "0cd40e21f5111b526fd41887760a8c44789415c5686e052b8298823f829732e6",
         "shape": [
+          8,
+          1080,
+          1920,
           3
         ],
         "values": null
       },
-      "case": "store_gallery_native_pose_1_id_document",
-      "comparison": "allclose rtol=0.0 atol=0.0: within tolerance",
-      "consumer_id": "gallery_storage",
-      "fixture_sha256": "a6a9920ea7917517b1d5c5c306dd824f3ab30e0d50d5e9b04ad26c7077f372cc",
+      "case": "id_v2v_orig_pixel_mp4_longer_video_woman_dancing",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "id_v2v",
+      "fixture_sha256": "554f3bfe08989ff090cc56da10c5b545280d520230cbf1f3d8331b9bd1e44950",
       "max_abs_diff": 0.0,
       "measurements": [
         {
-          "basis": "dtype and shape returned by the candidate's read path",
-          "detail": "pose: producer float32(3,) -> stored float32(3,)",
-          "name": "stored_form",
-          "unit": "dtype/shape",
-          "value": 3.0
+          "basis": "whether sam3 can run here at all",
+          "detail": "orig_pixel_mp4 for longer_video_woman_dancing: sam3 weight at C:\\ComfyUI\\output\\.AImodels\\idv2v\\sam3; consumed by idv2v, idv2v_with_normal_depth",
+          "name": "rederivation_cost",
+          "unit": "frames",
+          "value": null
         }
       ],
       "replay": {
-        "dtype": "float32",
-        "name": "gallery_native|pose|1_id_document",
-        "sha256": "f697aced13a0e1e63dca24c6a8850350dded2d903fadd9842a9a3d0c90e7c1ef",
+        "dtype": "uint8",
+        "name": "orig_pixel_mp4|longer_video_woman_dancing",
+        "sha256": "0cd40e21f5111b526fd41887760a8c44789415c5686e052b8298823f829732e6",
         "shape": [
+          8,
+          1080,
+          1920,
           3
         ],
         "values": null
       },
       "retained_bytes": {
-        "pose": 12
+        "orig_pixel_mp4": 49766400
       },
-      "tier": "primitive",
+      "tier": "consumer",
       "verdict": "PASS"
     },
     {
       "__test__": false,
-      "ablations": [],
+      "ablations": [
+        {
+          "cause": "retained_state_lacks_primitive",
+          "compare_method": "",
+          "detail": "INCONCLUSIVE: \"replay needs 'orig_pixel_mp4', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": null,
+          "primitive": "orig_pixel_mp4",
+          "swap": "",
+          "verdict": "INCONCLUSIVE"
+        },
+        {
+          "cause": "",
+          "compare_method": "exact_bytes",
+          "detail": "exact_bytes: 47355866 of 49766400 elements differ, worst 136.0",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "orig_pixel_mp4",
+          "swap": "video_round_trip",
+          "verdict": "PASS"
+        }
+      ],
       "baseline": {
-        "dtype": "float32",
-        "name": "gallery_native|pose|1_selfie",
-        "sha256": "7ca346a7798720f19b4cb9e25a382f4cfbcf646f310e2525ea2b7808ea58ca41",
+        "dtype": "uint8",
+        "name": "orig_pixel_mp4|non_aligned_keyframe_woman_phone",
+        "sha256": "ff439f8f65cdd5582cca15255705ad76a900a8ab9d0aefdabe24e0fb2a00cb6d",
         "shape": [
+          8,
+          1080,
+          1920,
           3
         ],
         "values": null
       },
-      "case": "store_gallery_native_pose_1_selfie",
-      "comparison": "allclose rtol=0.0 atol=0.0: within tolerance",
-      "consumer_id": "gallery_storage",
-      "fixture_sha256": "094b3b6c8c7891c48e6d6c274cd0d2f2a96cc69db9e63f56c821107f7299da87",
+      "case": "id_v2v_orig_pixel_mp4_non_aligned_keyframe_woman_phone",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "id_v2v",
+      "fixture_sha256": "56a27460d3b37acacdef5598ed4c7a48392a22af679d07d1c55059dd93dc6ac1",
       "max_abs_diff": 0.0,
       "measurements": [
         {
-          "basis": "dtype and shape returned by the candidate's read path",
-          "detail": "pose: producer float32(3,) -> stored float32(3,)",
-          "name": "stored_form",
-          "unit": "dtype/shape",
-          "value": 3.0
+          "basis": "whether sam3 can run here at all",
+          "detail": "orig_pixel_mp4 for non_aligned_keyframe_woman_phone: sam3 weight at C:\\ComfyUI\\output\\.AImodels\\idv2v\\sam3; consumed by idv2v, idv2v_with_normal_depth",
+          "name": "rederivation_cost",
+          "unit": "frames",
+          "value": null
         }
       ],
       "replay": {
-        "dtype": "float32",
-        "name": "gallery_native|pose|1_selfie",
-        "sha256": "7ca346a7798720f19b4cb9e25a382f4cfbcf646f310e2525ea2b7808ea58ca41",
+        "dtype": "uint8",
+        "name": "orig_pixel_mp4|non_aligned_keyframe_woman_phone",
+        "sha256": "ff439f8f65cdd5582cca15255705ad76a900a8ab9d0aefdabe24e0fb2a00cb6d",
         "shape": [
+          8,
+          1080,
+          1920,
           3
         ],
         "values": null
       },
       "retained_bytes": {
-        "pose": 12
+        "orig_pixel_mp4": 49766400
       },
-      "tier": "primitive",
+      "tier": "consumer",
       "verdict": "PASS"
     },
     {
       "__test__": false,
-      "ablations": [],
+      "ablations": [
+        {
+          "cause": "retained_state_lacks_primitive",
+          "compare_method": "",
+          "detail": "INCONCLUSIVE: \"replay needs 'orig_pixel_mp4', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": null,
+          "primitive": "orig_pixel_mp4",
+          "swap": "",
+          "verdict": "INCONCLUSIVE"
+        },
+        {
+          "cause": "",
+          "compare_method": "exact_bytes",
+          "detail": "exact_bytes: 48711290 of 49766400 elements differ, worst 110.0",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "orig_pixel_mp4",
+          "swap": "video_round_trip",
+          "verdict": "PASS"
+        }
+      ],
       "baseline": {
-        "dtype": "float32",
-        "name": "gallery_native|pose|2_id_document",
-        "sha256": "38c9199b70b5b65f3a7ac0d84a0576193ba43ba3bdbe42c19e8fcafd6901fead",
+        "dtype": "uint8",
+        "name": "orig_pixel_mp4|relighting_cover_eyes",
+        "sha256": "231b26584a528bef42b4c449e9b55bcbed6911b6cd4c822d86155a826101369c",
         "shape": [
+          8,
+          1080,
+          1920,
           3
         ],
         "values": null
       },
-      "case": "store_gallery_native_pose_2_id_document",
-      "comparison": "allclose rtol=0.0 atol=0.0: within tolerance",
-      "consumer_id": "gallery_storage",
-      "fixture_sha256": "b074d6da7157e2703ec53dbf77e0d0fad04cf025a480f851475a693dafd6ded4",
+      "case": "id_v2v_orig_pixel_mp4_relighting_cover_eyes",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "id_v2v",
+      "fixture_sha256": "27d9a5c589117938c4b3b891ac0bd21ad94d93e00da941de5647f65e083ac125",
       "max_abs_diff": 0.0,
       "measurements": [
         {
-          "basis": "dtype and shape returned by the candidate's read path",
-          "detail": "pose: producer float32(3,) -> stored float32(3,)",
-          "name": "stored_form",
-          "unit": "dtype/shape",
-          "value": 3.0
+          "basis": "whether sam3 can run here at all",
+          "detail": "orig_pixel_mp4 for relighting_cover_eyes: sam3 weight at C:\\ComfyUI\\output\\.AImodels\\idv2v\\sam3; consumed by idv2v, idv2v_with_normal_depth",
+          "name": "rederivation_cost",
+          "unit": "frames",
+          "value": null
         }
       ],
       "replay": {
-        "dtype": "float32",
-        "name": "gallery_native|pose|2_id_document",
-        "sha256": "38c9199b70b5b65f3a7ac0d84a0576193ba43ba3bdbe42c19e8fcafd6901fead",
+        "dtype": "uint8",
+        "name": "orig_pixel_mp4|relighting_cover_eyes",
+        "sha256": "231b26584a528bef42b4c449e9b55bcbed6911b6cd4c822d86155a826101369c",
         "shape": [
+          8,
+          1080,
+          1920,
           3
         ],
         "values": null
       },
       "retained_bytes": {
-        "pose": 12
+        "orig_pixel_mp4": 49766400
       },
-      "tier": "primitive",
+      "tier": "consumer",
       "verdict": "PASS"
     },
     {
       "__test__": false,
-      "ablations": [],
+      "ablations": [
+        {
+          "cause": "retained_state_lacks_primitive",
+          "compare_method": "",
+          "detail": "INCONCLUSIVE: \"replay needs 'orig_pixel_mp4', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": null,
+          "primitive": "orig_pixel_mp4",
+          "swap": "",
+          "verdict": "INCONCLUSIVE"
+        },
+        {
+          "cause": "",
+          "compare_method": "exact_bytes",
+          "detail": "exact_bytes: 48711290 of 49766400 elements differ, worst 110.0",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "orig_pixel_mp4",
+          "swap": "video_round_trip",
+          "verdict": "PASS"
+        }
+      ],
       "baseline": {
-        "dtype": "float32",
-        "name": "gallery_native|pose|2_selfie",
-        "sha256": "33ff56374857f9e6ae3e0889a2021693e0518c87bc0fc184213f537ee4af5d52",
+        "dtype": "uint8",
+        "name": "orig_pixel_mp4|restylization_cover_eyes",
+        "sha256": "231b26584a528bef42b4c449e9b55bcbed6911b6cd4c822d86155a826101369c",
         "shape": [
+          8,
+          1080,
+          1920,
           3
         ],
         "values": null
       },
-      "case": "store_gallery_native_pose_2_selfie",
-      "comparison": "allclose rtol=0.0 atol=0.0: within tolerance",
-      "consumer_id": "gallery_storage",
-      "fixture_sha256": "242d8c6518eab5e8476d73bfe88c12ee093e8763a427df6342bd9c8fde1ad382",
+      "case": "id_v2v_orig_pixel_mp4_restylization_cover_eyes",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "id_v2v",
+      "fixture_sha256": "27d9a5c589117938c4b3b891ac0bd21ad94d93e00da941de5647f65e083ac125",
       "max_abs_diff": 0.0,
       "measurements": [
         {
-          "basis": "dtype and shape returned by the candidate's read path",
-          "detail": "pose: producer float32(3,) -> stored float32(3,)",
-          "name": "stored_form",
-          "unit": "dtype/shape",
-          "value": 3.0
+          "basis": "whether sam3 can run here at all",
+          "detail": "orig_pixel_mp4 for restylization_cover_eyes: sam3 weight at C:\\ComfyUI\\output\\.AImodels\\idv2v\\sam3; consumed by idv2v, idv2v_with_normal_depth",
+          "name": "rederivation_cost",
+          "unit": "frames",
+          "value": null
         }
       ],
       "replay": {
-        "dtype": "float32",
-        "name": "gallery_native|pose|2_selfie",
-        "sha256": "33ff56374857f9e6ae3e0889a2021693e0518c87bc0fc184213f537ee4af5d52",
+        "dtype": "uint8",
+        "name": "orig_pixel_mp4|restylization_cover_eyes",
+        "sha256": "231b26584a528bef42b4c449e9b55bcbed6911b6cd4c822d86155a826101369c",
         "shape": [
+          8,
+          1080,
+          1920,
           3
         ],
         "values": null
       },
       "retained_bytes": {
-        "pose": 12
+        "orig_pixel_mp4": 49766400
       },
-      "tier": "primitive",
+      "tier": "consumer",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "cause": "retained_state_lacks_primitive",
+          "compare_method": "",
+          "detail": "INCONCLUSIVE: \"replay needs 'source_video_bytes', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": null,
+          "primitive": "source_video_bytes",
+          "swap": "",
+          "verdict": "INCONCLUSIVE"
+        },
+        {
+          "cause": "",
+          "compare_method": "exact_bytes",
+          "detail": "exact_bytes: 1279914859 of 1492992000 elements differ, worst 92.0",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "source_video_bytes",
+          "swap": "source_round_trip",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "uint8",
+        "name": "decoded_source_frames|longer_video_woman_dancing",
+        "sha256": "041e242841a9139f5a3af7a8e3ab03c9344453f4eccb11d2592c35afa9b1566c",
+        "shape": [
+          240,
+          1080,
+          1920,
+          3
+        ],
+        "values": null
+      },
+      "case": "id_v2v_source_frames_longer_video_woman_dancing",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "id_v2v",
+      "fixture_sha256": "554f3bfe08989ff090cc56da10c5b545280d520230cbf1f3d8331b9bd1e44950",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "the encoded source against the frame stack every stream producer is handed",
+          "detail": "longer_video_woman_dancing: source 10,395,202 B decodes to (240, 1080, 1920, 3) = 1,492,992,000 B (143.6x)",
+          "name": "frames_and_bytes",
+          "unit": "bytes",
+          "value": 10395202.0
+        }
+      ],
+      "replay": {
+        "dtype": "uint8",
+        "name": "decoded_source_frames|longer_video_woman_dancing",
+        "sha256": "041e242841a9139f5a3af7a8e3ab03c9344453f4eccb11d2592c35afa9b1566c",
+        "shape": [
+          240,
+          1080,
+          1920,
+          3
+        ],
+        "values": null
+      },
+      "retained_bytes": {
+        "source_video_bytes": 10395202
+      },
+      "tier": "consumer",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "cause": "retained_state_lacks_primitive",
+          "compare_method": "",
+          "detail": "INCONCLUSIVE: \"replay needs 'source_video_bytes', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": null,
+          "primitive": "source_video_bytes",
+          "swap": "",
+          "verdict": "INCONCLUSIVE"
+        },
+        {
+          "cause": "",
+          "compare_method": "exact_bytes",
+          "detail": "exact_bytes: 399684132 of 503884800 elements differ, worst 69.0",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "source_video_bytes",
+          "swap": "source_round_trip",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "uint8",
+        "name": "decoded_source_frames|non_aligned_keyframe_woman_phone",
+        "sha256": "552f87660dae6f3b88152fc5d1e5bb84a80c860c7701b75e3ef1db80e59a6a92",
+        "shape": [
+          81,
+          1080,
+          1920,
+          3
+        ],
+        "values": null
+      },
+      "case": "id_v2v_source_frames_non_aligned_keyframe_woman_phone",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "id_v2v",
+      "fixture_sha256": "56a27460d3b37acacdef5598ed4c7a48392a22af679d07d1c55059dd93dc6ac1",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "the encoded source against the frame stack every stream producer is handed",
+          "detail": "non_aligned_keyframe_woman_phone: source 1,580,908 B decodes to (81, 1080, 1920, 3) = 503,884,800 B (318.7x)",
+          "name": "frames_and_bytes",
+          "unit": "bytes",
+          "value": 1580908.0
+        }
+      ],
+      "replay": {
+        "dtype": "uint8",
+        "name": "decoded_source_frames|non_aligned_keyframe_woman_phone",
+        "sha256": "552f87660dae6f3b88152fc5d1e5bb84a80c860c7701b75e3ef1db80e59a6a92",
+        "shape": [
+          81,
+          1080,
+          1920,
+          3
+        ],
+        "values": null
+      },
+      "retained_bytes": {
+        "source_video_bytes": 1580908
+      },
+      "tier": "consumer",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "cause": "retained_state_lacks_primitive",
+          "compare_method": "",
+          "detail": "INCONCLUSIVE: \"replay needs 'source_video_bytes', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": null,
+          "primitive": "source_video_bytes",
+          "swap": "",
+          "verdict": "INCONCLUSIVE"
+        },
+        {
+          "cause": "",
+          "compare_method": "exact_bytes",
+          "detail": "exact_bytes: 460007844 of 503884800 elements differ, worst 91.0",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "source_video_bytes",
+          "swap": "source_round_trip",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "uint8",
+        "name": "decoded_source_frames|relighting_cover_eyes",
+        "sha256": "9651808d69b3fd5893622b11d16456a2aff7148a25c413ae52e50f39da8da829",
+        "shape": [
+          81,
+          1080,
+          1920,
+          3
+        ],
+        "values": null
+      },
+      "case": "id_v2v_source_frames_relighting_cover_eyes",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "id_v2v",
+      "fixture_sha256": "27d9a5c589117938c4b3b891ac0bd21ad94d93e00da941de5647f65e083ac125",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "the encoded source against the frame stack every stream producer is handed",
+          "detail": "relighting_cover_eyes: source 2,704,234 B decodes to (81, 1080, 1920, 3) = 503,884,800 B (186.3x)",
+          "name": "frames_and_bytes",
+          "unit": "bytes",
+          "value": 2704234.0
+        }
+      ],
+      "replay": {
+        "dtype": "uint8",
+        "name": "decoded_source_frames|relighting_cover_eyes",
+        "sha256": "9651808d69b3fd5893622b11d16456a2aff7148a25c413ae52e50f39da8da829",
+        "shape": [
+          81,
+          1080,
+          1920,
+          3
+        ],
+        "values": null
+      },
+      "retained_bytes": {
+        "source_video_bytes": 2704234
+      },
+      "tier": "consumer",
+      "verdict": "PASS"
+    },
+    {
+      "__test__": false,
+      "ablations": [
+        {
+          "cause": "retained_state_lacks_primitive",
+          "compare_method": "",
+          "detail": "INCONCLUSIVE: \"replay needs 'source_video_bytes', which the retained state does not carry\". The replay indexes this key; it was not shown to need the value.",
+          "expect_breaks": true,
+          "kind": "removal",
+          "observed_break": null,
+          "primitive": "source_video_bytes",
+          "swap": "",
+          "verdict": "INCONCLUSIVE"
+        },
+        {
+          "cause": "",
+          "compare_method": "exact_bytes",
+          "detail": "exact_bytes: 460007844 of 503884800 elements differ, worst 91.0",
+          "expect_breaks": true,
+          "kind": "substitution",
+          "observed_break": true,
+          "primitive": "source_video_bytes",
+          "swap": "source_round_trip",
+          "verdict": "PASS"
+        }
+      ],
+      "baseline": {
+        "dtype": "uint8",
+        "name": "decoded_source_frames|restylization_cover_eyes",
+        "sha256": "9651808d69b3fd5893622b11d16456a2aff7148a25c413ae52e50f39da8da829",
+        "shape": [
+          81,
+          1080,
+          1920,
+          3
+        ],
+        "values": null
+      },
+      "case": "id_v2v_source_frames_restylization_cover_eyes",
+      "comparison": "exact_bytes: byte-identical",
+      "consumer_id": "id_v2v",
+      "fixture_sha256": "27d9a5c589117938c4b3b891ac0bd21ad94d93e00da941de5647f65e083ac125",
+      "max_abs_diff": 0.0,
+      "measurements": [
+        {
+          "basis": "the encoded source against the frame stack every stream producer is handed",
+          "detail": "restylization_cover_eyes: source 2,704,234 B decodes to (81, 1080, 1920, 3) = 503,884,800 B (186.3x)",
+          "name": "frames_and_bytes",
+          "unit": "bytes",
+          "value": 2704234.0
+        }
+      ],
+      "replay": {
+        "dtype": "uint8",
+        "name": "decoded_source_frames|restylization_cover_eyes",
+        "sha256": "9651808d69b3fd5893622b11d16456a2aff7148a25c413ae52e50f39da8da829",
+        "shape": [
+          81,
+          1080,
+          1920,
+          3
+        ],
+        "values": null
+      },
+      "retained_bytes": {
+        "source_video_bytes": 2704234
+      },
+      "tier": "consumer",
       "verdict": "PASS"
     }
   ],
@@ -3575,6 +2847,6 @@
   "skipped": [],
   "verdicts": {
     "FAIL": 0,
-    "PASS": 56
+    "PASS": 24
   }
 }

@@ -2,28 +2,28 @@
   "cells_distinct": true,
   "exercised_against_real_evidence": {
     "consumer_replay": {
-      "carrying": 302,
-      "of": 302
+      "carrying": 333,
+      "of": 333
     },
     "durable_read_back": {
       "carrying": 0,
-      "of": 302
+      "of": 333
     },
     "durable_write": {
       "carrying": 0,
-      "of": 302
+      "of": 333
     },
     "emitted_observation": {
-      "carrying": 302,
-      "of": 302
+      "carrying": 333,
+      "of": 333
     },
     "native_reconstruction": {
       "carrying": 0,
-      "of": 302
+      "of": 333
     },
     "producer_execution": {
-      "carrying": 302,
-      "of": 302
+      "carrying": 333,
+      "of": 333
     }
   },
   "failing": [],
@@ -32,7 +32,7 @@
     "durable_write",
     "native_reconstruction"
   ],
-  "identity": "f37d0f99dde88f685563107a6abd24b40c372aa3bb2a72bb3cf1b929be126042",
+  "identity": "cfe487c36d68e2017e1ff33188686d2160a536167dbdef5e4980729155fcfcdd",
   "results": [
     {
       "detail": "-> producer_execution BLOCKED",
@@ -65,6 +65,38 @@
       "only_its_own_stage_red": true
     }
   ],
+  "source_states": [
+    {
+      "as_expected": true,
+      "consumer": "aligned_crop",
+      "name": "declared first-party, unpinned",
+      "reason": "declared first-party: carried by this tree's evidence identity, no upstream to pin",
+      "state": "VERIFIED"
+    },
+    {
+      "as_expected": true,
+      "consumer": "anystory",
+      "name": "pinned, not declared first-party",
+      "reason": "1 path(s) resolved at the pin",
+      "state": "VERIFIED"
+    },
+    {
+      "as_expected": true,
+      "consumer": "aligned_crop",
+      "name": "declared first-party AND pinned",
+      "reason": "declared first-party AND pinned: one of the two records is wrong about its source",
+      "state": "FAILED"
+    },
+    {
+      "as_expected": true,
+      "consumer": "anystory",
+      "name": "neither declared nor pinned",
+      "reason": "neither declared first-party nor pinned: nothing records where its source comes from",
+      "state": "FAILED"
+    }
+  ],
+  "source_states_distinct": true,
+  "source_states_misgraded": [],
   "stages": [
     "consumer_replay",
     "durable_read_back",

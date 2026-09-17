@@ -6,10 +6,10 @@
     "242d8c6518eab5e8476d73bfe88c12ee093e8763a427df6342bd9c8fde1ad382"
   ],
   "population": {
-    "bytes_per_face_union": 10352,
-    "distinct_keys": 13,
-    "producers": 4,
-    "ran": 4,
+    "bytes_per_face_union": 12460,
+    "distinct_keys": 15,
+    "producers": 5,
+    "ran": 5,
     "unavailable": []
   },
   "producers": [
@@ -158,6 +158,32 @@
       "reason": ""
     },
     {
+      "faces": 4,
+      "identity": {
+        "cv2": "4.14.0"
+      },
+      "keys": {
+        "feature": {
+          "bytes": 2048,
+          "dtype": "float32",
+          "shape": [
+            1,
+            512
+          ]
+        },
+        "row": {
+          "bytes": 60,
+          "dtype": "float32",
+          "shape": [
+            15
+          ]
+        }
+      },
+      "producer": "opencv/yunet+arcface",
+      "ready": true,
+      "reason": ""
+    },
+    {
       "faces": 38,
       "identity": {
         "face_alignment": "1.5.0",
@@ -283,6 +309,17 @@
         4
       ]
     },
+    "feature": {
+      "bytes": 2048,
+      "dtype": "float32",
+      "emitted_by": [
+        "opencv/yunet+arcface"
+      ],
+      "shape": [
+        1,
+        512
+      ]
+    },
     "gender": {
       "bytes": 8,
       "dtype": "int64",
@@ -360,6 +397,16 @@
       ],
       "shape": [
         3
+      ]
+    },
+    "row": {
+      "bytes": 60,
+      "dtype": "float32",
+      "emitted_by": [
+        "opencv/yunet+arcface"
+      ],
+      "shape": [
+        15
       ]
     }
   }

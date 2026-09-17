@@ -90,6 +90,10 @@ class FaceSelectionRunner:
         found = self.detections(group)
         return not np.array_equal(select(found, "first").bbox, select(found, "largest_bbox_area").bbox)
 
+    def _rounding_changes_selection(self, group: groups.Group, rule: str) -> bool:
+        rows = np.asarray([one.bbox for one in self.detections(group)], dtype=np.float32)
+        return not np.array_equal(select_rows(np.round(rows), rule), select_rows(rows, rule))
+
     def _parts(self, case: Case) -> tuple[str, str, groups.Group]:
         rule, consumer, asset = case.boundary.split("|", 2)
         return rule, consumer, self._groups[asset]
@@ -126,6 +130,31 @@ class FaceSelectionRunner:
         out: list[Case] = []
         for group in self._groups.values():
             for rule, consumers in sorted(by_rule.items()):
+                # The consumer boundary: the vendors' declared rule, held as a
+                # claim about which face leaves the detector row set.
+                out.append(
+                    Case(
+                        name=f"select_consumer_{rule}_{group.asset_id}",
+                        consumer_id=CONSUMER_ID,
+                        tier=Tier.CONSUMER,
+                        fixture=self._fixture(group),
+                        boundary=f"{rule}|{'+'.join(sorted(consumers))}|{group.asset_id}",
+                        exact_bytes=True,
+                        rtol=0.0,
+                        atol=0.0,
+                        retained=("face_rows", "selection_rule"),
+                        ablations=(
+                            Ablation(
+                                primitive="selection_rule",
+                                swap="other_selection_rule",
+                                expect_breaks=self._rules_differ(group),
+                                kind="substitution",
+                            ),
+                        ),
+                        measurements=("rules_disagree",),
+                        note=f"declared by {', '.join(sorted(consumers))}",
+                    )
+                )
                 out.extend(
                     Case(
                         name=f"select_{rule}_{consumer}_{group.asset_id}",
@@ -144,6 +173,12 @@ class FaceSelectionRunner:
                                 primitive="selection_rule",
                                 swap="other_selection_rule",
                                 expect_breaks=self._rules_differ(group),
+                                kind="substitution",
+                            ),
+                            Ablation(
+                                primitive="face_rows",
+                                swap="rows_rounded_int",
+                                expect_breaks=self._rounding_changes_selection(group, rule),
                                 kind="substitution",
                             ),
                         ),
@@ -181,6 +216,9 @@ class FaceSelectionRunner:
         del case
         if ablation.swap == "other_selection_rule":
             return retained.replacing("selection_rule", OTHER[retained.text("selection_rule")])
+        if ablation.swap == "rows_rounded_int":
+            held = np.asarray(retained.array("face_rows"), dtype=np.float32)
+            return retained.replacing("face_rows", np.round(held))
         return retained.without(ablation.primitive)
 
     def measure(self, case: Case, retained: RetainedState, name: str) -> Measurement:

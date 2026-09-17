@@ -171,17 +171,42 @@ class ReactorFaceModelRunner:
         )
         return (*replay_cases, *export_cases)
 
+    def _held_value(self, label: str, key: str) -> npt.NDArray[np.generic]:
+        found = self._by_label[label]
+        base = {"landmark_3d_68": found.base.landmark_3d_68, "embedding": found.base.embedding}
+        if key in base:
+            return base[key]
+        return np.asarray(getattr(found, key))
+
     def _ablations(self, label: str) -> tuple[Ablation, ...]:
-        del label
-        return (
-            *(Ablation(primitive=one, expect_breaks=True) for one in retained_keys()),
+        #: The save serializes exact buffers, so a width substitution breaks
+        #: exactly when the round trip changes a value; expect_breaks states
+        #: what the round trip did to this photograph's arrays.
+        out: list[Ablation] = [Ablation(primitive=one, expect_breaks=True) for one in retained_keys()]
+        for key in retained_keys():
+            if key in {"gender", "age"}:
+                continue
+            held = self._held_value(label, key)
+            through = held.astype(np.float16).astype(held.dtype)
+            out.append(
+                Ablation(
+                    primitive=key,
+                    swap="through_float16",
+                    expect_breaks=not np.array_equal(held, through),
+                    kind="substitution",
+                )
+            )
+        age = np.asarray(self._held_value(label, "age"), dtype=np.int64)
+        out.append(
             Ablation(
-                primitive="gender",
-                swap="opposite_label",
-                expect_breaks=True,
+                primitive="age",
+                swap="age_to_decade",
+                expect_breaks=not np.array_equal(age, age // 10 * 10),
                 kind="substitution",
-            ),
+            )
         )
+        out.append(Ablation(primitive="gender", swap="opposite_label", expect_breaks=True, kind="substitution"))
+        return tuple(out)
 
     def _found(self, case: Case) -> FullObservation:
         return self._by_label[case.boundary.partition("|")[2]]
@@ -259,6 +284,12 @@ class ReactorFaceModelRunner:
             held = retained.integers("gender")
 
             return retained.replacing("gender", np.asarray(1 - held, dtype=held.dtype))
+        if ablation.swap == "through_float16":
+            held = retained.points(ablation.primitive)
+            return retained.replacing(ablation.primitive, held.astype(np.float16).astype(held.dtype))
+        if ablation.swap == "age_to_decade":
+            held = retained.integers("age")
+            return retained.replacing("age", np.asarray(held // 10 * 10, dtype=held.dtype))
         return retained.without(ablation.primitive)
 
     def measure(self, case: Case, retained: RetainedState, name: str) -> Measurement:

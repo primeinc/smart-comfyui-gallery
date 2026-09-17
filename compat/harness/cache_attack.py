@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any, Final
+from typing import Any, Final, cast
 
 import numpy as np
 
@@ -162,20 +162,24 @@ def _an_unregistered_container_is_loud(tmp: Path) -> Probe:
     def refuses(*_a: Any, **_k: Any) -> bytes:
         raise UnregisteredContainer("no adapter registered for vision.facestore.Face")
 
+    # The module is patched through an Any-typed handle: the injection is
+    # deliberately outside facestore's declared surface, and the checkers
+    # are right that it is -- that is the point of the probe.
+    patched = cast(Any, facestore)
     try:
-        facestore.UnregisteredContainer = UnregisteredContainer
-        facestore.freeze = refuses
+        patched.UnregisteredContainer = UnregisteredContainer
+        patched.freeze = refuses
         moved, _ = _counted("unwritable", lambda: cache.face_put("cache_attack_unregistered", {"a": 1}))
     except UnregisteredContainer as why:
         return Probe(name, True, f"propagated: {why}"[:88])
     except ESCAPES as why:
         return Probe(name, False, f"WRONG EXCEPTION {type(why).__name__}: {why}"[:88])
     finally:
-        facestore.freeze = encode
+        patched.freeze = encode
         if held is None:
-            del facestore.UnregisteredContainer
+            del patched.UnregisteredContainer
         else:
-            facestore.UnregisteredContainer = held
+            patched.UnregisteredContainer = held
     return Probe(name, False, f"SWALLOWED as a miss (unwritable moved {moved}); the import graph decides capture")
 
 

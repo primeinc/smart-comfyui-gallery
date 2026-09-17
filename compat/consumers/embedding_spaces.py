@@ -61,9 +61,40 @@ class EmbeddingSpaceRunner:
             self._vectors[key] = embed_with(space, self.crop(shot))
         return self._vectors[key]
 
+    def _production_embed(self, crop: np.ndarray) -> Float32Array:
+        # The application's own forward pass, mirrored from vision/faces.py
+        # (blob 1/127.5, mean 127.5, swapRB) over the SAME glintr100 file the
+        # producer's onnxruntime session reads.
+        import cv2
+
+        from compat.producers.insightface_pass import MODELS_ROOT, PACK
+
+        net = cv2.dnn.readNetFromONNX(str(MODELS_ROOT / "models" / PACK / "glintr100.onnx"))
+        blob = cv2.dnn.blobFromImage(crop, 1.0 / 127.5, (112, 112), (127.5, 127.5, 127.5), swapRB=True)
+        net.setInput(blob)
+        return np.asarray(net.forward(), dtype=np.float32).reshape(-1)
+
     def cases(self) -> tuple[Case, ...]:
         out: list[Case] = []
         for shot in self._shots.values():
+            # The consumer boundary: the application's cv2.dnn embedding and
+            # the producer's onnxruntime embedding are the same space over
+            # the same weights, within cross-runtime numerics.
+            out.append(
+                Case(
+                    name=f"space_production_glintr100_{shot.label}",
+                    consumer_id=CONSUMER_ID,
+                    tier=Tier.CONSUMER,
+                    fixture=shot.fixture,
+                    boundary=f"production_glintr100|{shot.label}",
+                    exact_bytes=False,
+                    rtol=0.0,
+                    atol=1e-3,
+                    retained=("aligned_crop_112",),
+                    measurements=("agreement_with_stored",),
+                    note="vision/faces.py forward against insightface get_feat on the same glintr100 bytes",
+                )
+            )
             for space in SPACES:
                 ablations = [
                     Ablation(primitive="aligned_crop_112", expect_breaks=True),
@@ -104,12 +135,16 @@ class EmbeddingSpaceRunner:
 
     def baseline(self, case: Case) -> Artifact:
         space, shot = self._parts(case)
+        if space == "production_glintr100":
+            return self._artifact(case.boundary, self.vector(STORED, shot))
         return self._artifact(case.boundary, self.vector(space, shot))
 
     def replay(self, case: Case, retained: RetainedState) -> Artifact:
         space, _ = self._parts(case)
         if retained.has("substituted_vector"):
             return self._artifact(case.boundary, retained.points("substituted_vector"))
+        if space == "production_glintr100":
+            return self._artifact(case.boundary, self._production_embed(retained.pixels("aligned_crop_112")))
         return self._artifact(case.boundary, embed_with(space, retained.pixels("aligned_crop_112")))
 
     def ablate(self, case: Case, retained: RetainedState, ablation: Ablation) -> RetainedState:
@@ -123,7 +158,7 @@ class EmbeddingSpaceRunner:
             raise KeyError(f"{CONSUMER_ID} has no measurement called {name!r}")
         del retained
         space, shot = self._parts(case)
-        mine = self.vector(space, shot)
+        mine = self._production_embed(self.crop(shot)) if space == "production_glintr100" else self.vector(space, shot)
         stored = self.vector(STORED, shot)
         agreement = cosine(mine, stored)
         return Measurement(

@@ -169,6 +169,32 @@ class ReferenceSetRunner:
         if len(self._references) < 2:
             return ()
         out: list[Case] = []
+        # The consumer boundary: set construction over ordered vendor
+        # references, with order sensitivity held as a measured claim.
+        out.extend(
+            Case(
+                name=f"refset_consumer_{how}_pair_AB",
+                consumer_id=CONSUMER_ID,
+                tier=Tier.CONSUMER,
+                fixture=self._fixture("pair_AB"),
+                boundary=f"{how}|pair_AB",
+                exact_bytes=True,
+                rtol=0.0,
+                atol=0.0,
+                retained=("reference_vectors",),
+                ablations=(
+                    Ablation(
+                        primitive="reference_vectors",
+                        swap="order_reversed",
+                        expect_breaks=_reversal_observable(how, "pair_AB"),
+                        kind="substitution",
+                    ),
+                ),
+                measurements=("set_semantics", "reversal_observed"),
+                note=f"the {how} boundary over an ordered pair of vendor references",
+            )
+            for how in COMBINERS
+        )
         for how in COMBINERS:
             out.extend(
                 Case(

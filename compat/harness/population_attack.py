@@ -143,10 +143,15 @@ def control_two_loaders_one_file(root: Path) -> Control:
         "entry.py::main",
     )
     fanned = {site: sorted(names) for site, names in _by_site(edges).items() if len(names) > 1}
+    # Exact identities, not just fan-out: a widened argument surface can
+    # also surface as ONE wrong merged identity per site.
+    exact = _artifacts(edges) == {"org/alpha", "beta.pth"}
     return Control(
         "C two_loaders_one_file",
-        not fanned,
-        "no site carries two artifacts" if not fanned else f"FAN-OUT {fanned}",
+        not fanned and exact,
+        "each site carries exactly its own artifact"
+        if not fanned and exact
+        else f"FAN-OUT {fanned}; artifacts={sorted(_artifacts(edges))}",
     )
 
 
@@ -378,6 +383,168 @@ def control_pinned_git_submodule(root: Path) -> Control:
     )
 
 
+def control_call_site_argument(root: Path) -> Control:
+    held = {
+        "entry.py": 'from helpers import build\n\ndef main():\n    build("org/fromcaller")\n',
+        "helpers.py": "from transformers import AutoModel\n\ndef build(model):\n    AutoModel.from_pretrained(model)\n",
+    }
+    edges = discovered(root, held, "entry.py::main")
+    found = "org/fromcaller" in _artifacts(edges)
+    moved = discovered(
+        root,
+        {**held, "entry.py": held["entry.py"].replace("org/fromcaller", "org/othercaller")},
+        "entry.py::main",
+    )
+    followed = "org/othercaller" in _artifacts(moved) and "org/fromcaller" not in _artifacts(moved)
+    return Control(
+        "M call_site_argument",
+        found and followed,
+        f"bound={sorted(_artifacts(edges))}; after changing the caller={sorted(_artifacts(moved))}",
+    )
+
+
+def control_wrapper_descent(root: Path) -> Control:
+    edges = discovered(
+        root,
+        {
+            "entry.py": (
+                "import torch\n\n"
+                "def load_model(ckpt):\n"
+                "    return torch.load(ckpt)\n\n"
+                "def main():\n"
+                '    load_model("weights.pth")\n'
+            )
+        },
+        "entry.py::main",
+    )
+    inner = [one for one in edges if one["model_variant_role"] == "torch_load"]
+    at_call = [one for one in edges if one["model_variant_role"] == "generic_model_load"]
+    bound = {str(one["artifact_logical_identity"]) for one in inner} == {"weights.pth"}
+    return Control(
+        "N wrapper_descent",
+        bound and not at_call,
+        f"inner={sorted(str(one['artifact_logical_identity']) for one in inner)}; wrapper-site edges={len(at_call)}",
+    )
+
+
+def control_argparse_default(root: Path) -> Control:
+    body = (
+        "import argparse\n"
+        "from transformers import AutoModel\n\n"
+        "def main():\n"
+        "    parser = argparse.ArgumentParser()\n"
+        '    parser.add_argument("--model", default="org/argmodel")\n'
+        "    args = parser.parse_args()\n"
+        "    AutoModel.from_pretrained(args.model)\n"
+    )
+    edges = discovered(root, {"entry.py": body}, "entry.py::main")
+    found = "org/argmodel" in _artifacts(edges)
+    bare = discovered(
+        root,
+        {"entry.py": body.replace(', default="org/argmodel"', ", required=True")},
+        "entry.py::main",
+    )
+    withheld = any("UNRESOLVED" in str(one["model_variant_id"]) for one in bare)
+    return Control(
+        "O argparse_default",
+        found and withheld,
+        f"default bound={found}; required-with-no-default stays unresolved={withheld}",
+    )
+
+
+def control_pack_name(root: Path) -> Control:
+    edges = discovered(
+        root,
+        {
+            "entry.py": (
+                "from insightface.app import FaceAnalysis\n\n"
+                "def main():\n    FaceAnalysis(name='antelopev2', root='./')\n"
+            )
+        },
+        "entry.py::main",
+    )
+    required = {
+        str(one["artifact_logical_identity"]) for one in edges if str(one.get("discovery_status")) == "REQUIRED"
+    }
+    return Control("P pack_name", required == {"antelopev2"}, f"required={sorted(required)}")
+
+
+def control_hub_pair(root: Path) -> Control:
+    edges = discovered(
+        root,
+        {
+            "entry.py": (
+                "from huggingface_hub import hf_hub_download\n\ndef main():\n"
+                '    hf_hub_download("org/repo", "file.safetensors")\n'
+            )
+        },
+        "entry.py::main",
+    )
+    return Control(
+        "Q hub_pair",
+        _artifacts(edges) == {"org/repo/file.safetensors"} and len(edges) == 1,
+        f"{len(edges)} edge(s); artifacts={sorted(_artifacts(edges))}",
+    )
+
+
+def control_slice_dataflow(root: Path) -> Control:
+    edges = discovered(
+        root,
+        {
+            "entry.py": (
+                "from safetensors.torch import load_file\n\n"
+                "def main(model):\n"
+                '    sd = load_file("weights.safetensors")\n'
+                '    model.load_state_dict(sd["part"])\n'
+            )
+        },
+        "entry.py::main",
+    )
+    named = {str(one["artifact_logical_identity"]) for one in edges}
+    both = named == {"weights.safetensors"} and len(edges) == 2
+    return Control("R slice_dataflow", both, f"{len(edges)} edge(s); artifacts={sorted(named)}")
+
+
+def control_rulings(root: Path) -> Control:
+    files = {"entry.py": "def main():\n    return 1\n"}
+    key = ("control", "entry.py::main reaches no loader")
+    original = dict(population.RULINGS)
+    try:
+        population.RULINGS.clear()
+        population.RULINGS[key] = "a written test verdict"
+        edges = discovered(root, files, "entry.py::main")
+        applied = any(str(one["discovery_status"]) == "NOT_ON_BOUNDARY" for one in edges)
+
+        population.RULINGS.clear()
+        population.RULINGS[("control", "entry.py:999")] = "rules a site that does not exist"
+        edges = discovered(root, files, "entry.py::main")
+        # discover() does not surface staleness -- build() does -- so the
+        # dangling ruling must simply match nothing here.
+        dangled = not any("ruled:" in str(one["discovery_evidence"]) for one in edges)
+
+        population.RULINGS.clear()
+        population.RULINGS[("control", "entry.py:4")] = "must not downgrade a bound site"
+        bound = discovered(
+            root,
+            {
+                "entry.py": (
+                    "from transformers import AutoModel\n\ndef main():\n"
+                    '    AutoModel.from_pretrained("org/still-required")\n'
+                )
+            },
+            "entry.py::main",
+        )
+        kept = any(str(one["discovery_status"]) == "REQUIRED" for one in bound)
+    finally:
+        population.RULINGS.clear()
+        population.RULINGS.update(original)
+    return Control(
+        "S rulings",
+        applied and dangled and kept,
+        f"applies to unresolved={applied}; dangling matches nothing={dangled}; bound site kept={kept}",
+    )
+
+
 CONTROLS: Final[tuple[tuple[str, Callable[[Path], Control]], ...]] = (
     ("A deep_call_chain", control_deep_call_chain),
     ("B unreachable_loader", control_unreachable_loader),
@@ -391,6 +558,13 @@ CONTROLS: Final[tuple[tuple[str, Callable[[Path], Control]], ...]] = (
     ("J pinned_git_submodule", control_pinned_git_submodule),
     ("K imported_alias", control_imported_alias),
     ("L branch_specific_selection", control_branch_specific_selection),
+    ("M call_site_argument", control_call_site_argument),
+    ("N wrapper_descent", control_wrapper_descent),
+    ("O argparse_default", control_argparse_default),
+    ("P pack_name", control_pack_name),
+    ("Q hub_pair", control_hub_pair),
+    ("R slice_dataflow", control_slice_dataflow),
+    ("S rulings", control_rulings),
 )
 
 
